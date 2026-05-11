@@ -140,6 +140,8 @@
     <div id="dash-liabilities-alert"></div>
     <!-- Alerta presupuesto excedido -->
     <div id="dash-budget-alert" style="display:none;"></div>
+    <!-- Alerta cartera vencida -->
+    <div id="dash-cartera-alert" style="display:none;"></div>
 
     <!-- Balance Hero -->
     <div class="balance-hero">
@@ -197,6 +199,11 @@
         <div class="stat-chip-icon">📊</div>
         <div class="stat-chip-val" style="color:var(--primary);">PDF</div>
         <div class="stat-chip-lbl">Reporte</div>
+      </button>
+      <button class="stat-chip" onclick="navigate('cartera')">
+        <div class="stat-chip-icon">🧾</div>
+        <div class="stat-chip-val" style="color:#0891b2;" id="dash-cartera-chip-val">Cobrar</div>
+        <div class="stat-chip-lbl">Cartera</div>
       </button>
     </div>
 
@@ -333,6 +340,71 @@
 
     <!-- Lista de productos -->
     <div id="inventory-list"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     CARTERA DE CLIENTES (Cuentas por Cobrar)
+     Ecuador · NIIF PYMES · SRI
+═══════════════════════════════════════════════════ -->
+<div id="screen-cartera" class="screen">
+  <div class="topbar">
+    <button class="topbar-action" onclick="navigate('dashboard')">←</button>
+    <div class="topbar-title">🧾 Cartera de Clientes</div>
+    <div style="width:36px;"></div>
+  </div>
+  <div class="content">
+
+    <!-- Resumen hero cartera -->
+    <div class="card" style="background:linear-gradient(135deg,#0c4a6e,#0891b2);color:white;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+        <div>
+          <div style="font-size:12px;opacity:.8;margin-bottom:4px;font-weight:600;letter-spacing:.5px;">CARTERA TOTAL</div>
+          <div style="font-size:28px;font-weight:800;" id="cartera-total">$ 0</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:12px;opacity:.8;margin-bottom:4px;">Por cobrar</div>
+          <div style="font-size:20px;font-weight:700;" id="cartera-pendiente">$ 0</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div style="background:rgba(255,255,255,.15);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">COBRADO</div>
+          <div style="font-size:14px;font-weight:700;" id="cartera-cobrado">$ 0</div>
+        </div>
+        <div style="background:rgba(239,68,68,.3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">VENCIDA</div>
+          <div style="font-size:14px;font-weight:700;" id="cartera-vencida-count">0 docs</div>
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">CLIENTES</div>
+          <div style="font-size:14px;font-weight:700;" id="cartera-total-count">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aging de cartera vencida (solo si hay vencidos) -->
+    <div id="cartera-aging-card" style="display:none;" class="card" style="margin-bottom:12px;">
+      <div class="card-header" style="margin-bottom:10px;">
+        <div class="card-title" style="color:var(--danger);">⚠️ Cartera Vencida</div>
+        <div style="font-size:11px;color:var(--gray-400);">Por antigüedad</div>
+      </div>
+      <div id="cartera-aging-list"></div>
+    </div>
+
+    <!-- Filtros de estado -->
+    <div class="filter-bar" style="margin-bottom:12px;">
+      <button class="filter-chip active" data-cf="all"     onclick="setCarteraFilter('all')">Todos</button>
+      <button class="filter-chip"        data-cf="pending" onclick="setCarteraFilter('pending')">⏳ Pendiente</button>
+      <button class="filter-chip"        data-cf="partial" onclick="setCarteraFilter('partial')">🔵 Parcial</button>
+      <button class="filter-chip"        data-cf="overdue" onclick="setCarteraFilter('overdue')">🔴 Vencida</button>
+      <button class="filter-chip"        data-cf="paid"    onclick="setCarteraFilter('paid')">✅ Cobrada</button>
+    </div>
+
+    <!-- Lista de documentos por cobrar -->
+    <div id="cartera-list"></div>
+
   </div>
 </div>
 
@@ -591,6 +663,26 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Contabilidad Ecuador 🇪🇨</div>
+      <button class="settings-item" onclick="openIvaPlaceholder()">
+        <div class="settings-item-icon">🏛️</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">IVA · SRI Ecuador</div>
+          <div class="settings-item-desc" style="color:#0891b2;">Próximamente · IVA 15% / País de origen</div>
+        </div>
+        <div class="settings-item-arrow" style="color:#0891b2;">🔜</div>
+      </button>
+      <button class="settings-item" onclick="openFacturacionPlaceholder()">
+        <div class="settings-item-icon">📄</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Facturación Electrónica</div>
+          <div class="settings-item-desc" style="color:#0891b2;">Próximamente · Factura PDF / SRI</div>
+        </div>
+        <div class="settings-item-arrow" style="color:#0891b2;">🔜</div>
+      </button>
     </div>
 
     <div class="settings-section">

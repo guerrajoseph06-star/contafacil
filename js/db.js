@@ -21,6 +21,8 @@ const DB = (() => {
     inventory:    'cf_inventory',
     recurring:    'cf_recurring',
     budgets:      'cf_budgets',
+    receivables:  'cf_receivables',
+    fixedAssets:  'cf_fixed_assets',
     onboarded:    'cf_onboarded',
   };
 
@@ -495,6 +497,108 @@ const DB = (() => {
     }).sort((a, b) => b.pct - a.pct);
   }
 
+  // ── Cuentas por Cobrar (Cartera de Clientes) ─────────────
+  // Ecuador NIIF PYMES · SRI · plazo de crédito · cartera vencida
+  // status: 'pending' | 'partial' | 'paid' | 'overdue'
+
+  function _calcReceivableStatus(rec) {
+    const paid  = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+    if (paid >= rec.totalAmount) return 'paid';
+    const today = new Date();
+    const due   = new Date(rec.dueDate + 'T12:00:00');
+    if (paid > 0) return today > due ? 'overdue' : 'partial';
+    return today > due ? 'overdue' : 'pending';
+  }
+
+  function getReceivables() { return load(KEYS.receivables) || []; }
+
+  function getReceivableById(id) {
+    return getReceivables().find(r => r.id === id) || null;
+  }
+
+  function addReceivable(data) {
+    const list = getReceivables();
+    const rec = {
+      id:          uuid(),
+      createdAt:   new Date().toISOString(),
+      clientName:  data.clientName  || '',
+      ruc:         data.ruc         || '',
+      description: data.description || '',
+      totalAmount: parseFloat(data.totalAmount) || 0,
+      issueDate:   data.issueDate   || new Date().toISOString().split('T')[0],
+      dueDate:     data.dueDate     || '',
+      notes:       data.notes       || '',
+      payments:    [],
+    };
+    rec.status = _calcReceivableStatus(rec);
+    list.push(rec);
+    save(KEYS.receivables, list);
+    return rec;
+  }
+
+  function updateReceivable(id, data) {
+    const list = getReceivables();
+    const idx  = list.findIndex(r => r.id === id);
+    if (idx < 0) return null;
+    list[idx] = { ...list[idx], ...data, id, payments: list[idx].payments || [] };
+    list[idx].status = _calcReceivableStatus(list[idx]);
+    save(KEYS.receivables, list);
+    return list[idx];
+  }
+
+  function deleteReceivable(id) {
+    save(KEYS.receivables, getReceivables().filter(r => r.id !== id));
+  }
+
+  function addReceivablePayment(receivableId, payment) {
+    const list = getReceivables();
+    const idx  = list.findIndex(r => r.id === receivableId);
+    if (idx < 0) return null;
+    const p = {
+      id:     uuid(),
+      date:   payment.date   || new Date().toISOString().split('T')[0],
+      amount: parseFloat(payment.amount) || 0,
+      notes:  payment.notes  || '',
+    };
+    list[idx].payments = [...(list[idx].payments || []), p];
+    list[idx].status   = _calcReceivableStatus(list[idx]);
+    save(KEYS.receivables, list);
+    return list[idx];
+  }
+
+  // Estadísticas de cartera con aging (cartera vencida por rango de días)
+  function getReceivableStats() {
+    const list  = getReceivables();
+    const today = new Date();
+    let totalCartera = 0, totalCobrado = 0, totalPendiente = 0;
+    const aging = { d30: 0, d60: 0, d90: 0, d90plus: 0 };
+
+    list.forEach(rec => {
+      const paid    = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+      const pending = Math.max(rec.totalAmount - paid, 0);
+      totalCartera  += rec.totalAmount;
+      totalCobrado  += paid;
+      totalPendiente += pending;
+
+      const due = new Date(rec.dueDate + 'T12:00:00');
+      if (pending > 0 && today > due) {
+        const daysOver = Math.floor((today - due) / 86400000);
+        if      (daysOver <= 30) aging.d30     += pending;
+        else if (daysOver <= 60) aging.d60     += pending;
+        else if (daysOver <= 90) aging.d90     += pending;
+        else                     aging.d90plus += pending;
+      }
+    });
+
+    return {
+      total:          list.length,
+      totalCartera,   totalCobrado,   totalPendiente,
+      overdueCount:   list.filter(r => r.status === 'overdue').length,
+      pendingCount:   list.filter(r => r.status === 'pending' || r.status === 'partial').length,
+      aging,
+    };
+  }
+
   // ── Estadísticas multi-mes (para gráficas) ────────────────
   function getLast6MonthsStats() {
     const result = [];
@@ -552,6 +656,8 @@ const DB = (() => {
     getRecurringById, getNextExecution, processRecurringExpenses,
     getLast6MonthsStats,
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
+    getReceivables, getReceivableById, addReceivable, updateReceivable,
+    deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,
     exportData, importData,
   };

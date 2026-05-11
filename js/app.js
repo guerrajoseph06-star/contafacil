@@ -65,11 +65,14 @@ function navigate(screen, params = {}) {
   // FAB: contexto dinámico según pantalla
   const fab = document.getElementById('fab');
   if (fab) {
-    const fabScreens = ['dashboard', 'journal', 'inventory'];
+    const fabScreens = ['dashboard', 'journal', 'inventory', 'cartera'];
     fab.style.display = fabScreens.includes(screen) ? 'flex' : 'none';
     if (screen === 'inventory') {
       fab.title = 'Agregar producto';
       fab.onclick = () => openProductForm();
+    } else if (screen === 'cartera') {
+      fab.title = 'Nueva venta a crédito';
+      fab.onclick = () => openReceivableForm();
     } else {
       fab.title = 'Nueva transacción';
       fab.onclick = () => { setFormType('expense'); navigate('form'); };
@@ -82,6 +85,7 @@ function navigate(screen, params = {}) {
     case 'form':       renderForm(params.id); break;
     case 'reports':    renderReports();    break;
     case 'inventory':  renderInventory();  break;
+    case 'cartera':    renderCartera();    break;
     case 'settings':   renderSettings();   break;
   }
   window.scrollTo(0, 0);
@@ -182,6 +186,18 @@ function renderDashboard() {
 
   // Alertas de presupuesto excedido
   renderBudgetAlerts();
+
+  // Alerta cartera vencida
+  renderCarteraAlert();
+
+  // Chip de cartera con monto pendiente
+  const carteraStats = DB.getReceivableStats();
+  const chipVal = document.getElementById('dash-cartera-chip-val');
+  if (chipVal && carteraStats.totalPendiente > 0) {
+    chipVal.textContent = fmt(carteraStats.totalPendiente);
+  } else if (chipVal) {
+    chipVal.textContent = 'Cobrar';
+  }
 
   // Próximos gastos recurrentes
   renderUpcomingRecurrings();
@@ -1899,6 +1915,457 @@ function renderCharts() {
       });
     }
   }
+}
+
+// ── Cartera de Clientes (Cuentas por Cobrar) ──────────────────────────────────
+// Ecuador · NIIF PYMES · SRI · cartera vencida · cobros parciales
+
+let carteraFilter = 'all';
+
+const CARTERA_STATUS = {
+  pending: { label: '⏳ Pendiente',  color: '#f59e0b', bg: '#fef3c7' },
+  partial: { label: '🔵 Cobro parcial', color: '#0891b2', bg: '#e0f2fe' },
+  overdue: { label: '🔴 Vencida',    color: '#dc2626', bg: '#fee2e2' },
+  paid:    { label: '✅ Cobrada',    color: '#16a34a', bg: '#f0fdf4' },
+};
+
+function setCarteraFilter(f) {
+  carteraFilter = f;
+  document.querySelectorAll('[data-cf]').forEach(c =>
+    c.classList.toggle('active', c.dataset.cf === f)
+  );
+  renderCarteraList();
+}
+
+function renderCartera() {
+  const stats = DB.getReceivableStats();
+  const s     = DB.getSettings();
+
+  // Hero KPIs
+  document.getElementById('cartera-total').textContent      = fmt(stats.totalCartera);
+  document.getElementById('cartera-pendiente').textContent  = fmt(stats.totalPendiente);
+  document.getElementById('cartera-cobrado').textContent    = fmt(stats.totalCobrado);
+  document.getElementById('cartera-vencida-count').textContent = stats.overdueCount + ' doc' + (stats.overdueCount !== 1 ? 's' : '');
+  document.getElementById('cartera-total-count').textContent   = stats.total;
+
+  // Aging card
+  const agingCard = document.getElementById('cartera-aging-card');
+  const { d30, d60, d90, d90plus } = stats.aging;
+  const totalVencida = d30 + d60 + d90 + d90plus;
+  if (totalVencida > 0 && agingCard) {
+    agingCard.style.display = 'block';
+    document.getElementById('cartera-aging-list').innerHTML = `
+      ${d30     > 0 ? agingRow('1–30 días',   fmt(d30),     '#f59e0b') : ''}
+      ${d60     > 0 ? agingRow('31–60 días',  fmt(d60),     '#ea580c') : ''}
+      ${d90     > 0 ? agingRow('61–90 días',  fmt(d90),     '#dc2626') : ''}
+      ${d90plus > 0 ? agingRow('+90 días',    fmt(d90plus), '#7f1d1d') : ''}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1.5px solid var(--gray-200);margin-top:4px;font-weight:700;font-size:14px;">
+        <span>Total cartera vencida</span>
+        <span style="color:var(--danger);">${fmt(totalVencida)}</span>
+      </div>
+    `;
+  } else if (agingCard) {
+    agingCard.style.display = 'none';
+  }
+
+  renderCarteraList();
+}
+
+function agingRow(label, val, color) {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--gray-100);">
+    <span style="font-size:13px;color:var(--gray-700);">${label}</span>
+    <span style="font-size:14px;font-weight:700;color:${color};">${val}</span>
+  </div>`;
+}
+
+function renderCarteraList() {
+  const all = DB.getReceivables()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const filtered = carteraFilter === 'all' ? all : all.filter(r => r.status === carteraFilter);
+
+  const container = document.getElementById('cartera-list');
+  if (!container) return;
+
+  if (!filtered.length) {
+    container.innerHTML = emptyHTML('🧾', 'Sin registros',
+      carteraFilter === 'all'
+        ? 'Toca + para registrar una venta a crédito'
+        : 'No hay documentos en este estado');
+    return;
+  }
+
+  container.innerHTML = filtered.map(rec => {
+    const paid    = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+    const pending = Math.max(rec.totalAmount - paid, 0);
+    const pct     = rec.totalAmount > 0 ? Math.min(Math.round((paid / rec.totalAmount) * 100), 100) : 0;
+    const st      = CARTERA_STATUS[rec.status] || CARTERA_STATUS.pending;
+    const due     = rec.dueDate ? new Date(rec.dueDate + 'T12:00:00') : null;
+    const today   = new Date();
+    const daysLeft = due ? Math.ceil((due - today) / 86400000) : null;
+
+    let dueLabel = '';
+    if (rec.status !== 'paid' && due) {
+      if (daysLeft < 0)     dueLabel = `<span style="color:var(--danger);font-size:11px;">⚠️ Vencida hace ${Math.abs(daysLeft)} días</span>`;
+      else if (daysLeft === 0) dueLabel = `<span style="color:var(--warning);font-size:11px;">⚠️ Vence hoy</span>`;
+      else if (daysLeft <= 7)  dueLabel = `<span style="color:#b45309;font-size:11px;">Vence en ${daysLeft} días</span>`;
+      else                     dueLabel = `<span style="color:var(--gray-400);font-size:11px;">Vence ${fmtDate(rec.dueDate)}</span>`;
+    }
+
+    return `
+      <div class="card" style="margin-bottom:10px;padding:14px;cursor:pointer;border-left:4px solid ${st.color};"
+           onclick="openReceivableDetail('${rec.id}')">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="font-size:28px;">🧾</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+              <div style="font-size:15px;font-weight:700;color:var(--gray-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rec.clientName}</div>
+              <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${st.bg};color:${st.color};white-space:nowrap;">${st.label}</span>
+            </div>
+            <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">${rec.description || 'Sin descripción'}</div>
+            ${rec.ruc ? `<div style="font-size:11px;color:var(--gray-400);">RUC/CI: ${rec.ruc}</div>` : ''}
+            ${dueLabel}
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:17px;font-weight:800;color:var(--gray-900);">${fmt(rec.totalAmount)}</div>
+            ${rec.status !== 'paid' ? `<div style="font-size:12px;color:var(--danger);font-weight:600;">Por cobrar: ${fmt(pending)}</div>` : `<div style="font-size:12px;color:var(--success);">Cobrado ✅</div>`}
+          </div>
+        </div>
+        ${rec.status !== 'paid' && rec.status !== 'pending' ? `
+        <div style="margin-top:10px;">
+          <div style="background:var(--gray-100);border-radius:6px;height:6px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${st.color};border-radius:6px;"></div>
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:3px;text-align:right;">${pct}% cobrado</div>
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function openReceivableForm(editId = null) {
+  const rec  = editId ? DB.getReceivableById(editId) : null;
+  const sheet = document.getElementById('settings-sheet');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">${rec ? '✏️ Editar Venta a Crédito' : '🧾 Nueva Venta a Crédito'}</h3>
+
+    <div style="background:#e0f2fe;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#0c4a6e;line-height:1.6;">
+      💡 Registra ventas a crédito (plazo de cobro). La cartera vencida se calcula automáticamente según la fecha de vencimiento.
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cliente *</label>
+      <input type="text" class="form-control" id="cxc-client"
+        value="${rec?.clientName || ''}" placeholder="Nombre o razón social del cliente">
+    </div>
+    <div class="form-group">
+      <label class="form-label">RUC / Cédula (opcional)</label>
+      <input type="text" class="form-control" id="cxc-ruc"
+        value="${rec?.ruc || ''}" placeholder="Ej: 1712345678001" maxlength="13" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descripción de la venta *</label>
+      <input type="text" class="form-control" id="cxc-desc"
+        value="${rec?.description || ''}" placeholder="Ej: Venta mercadería mayo, Servicio consultoría">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto total *</label>
+      <input type="number" class="form-control" id="cxc-amount"
+        value="${rec?.totalAmount || ''}" placeholder="0.00" min="0" step="0.01" inputmode="decimal">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Fecha de venta *</label>
+        <input type="date" class="form-control" id="cxc-issue" value="${rec?.issueDate || today()}">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Fecha de vencimiento *</label>
+        <input type="date" class="form-control" id="cxc-due" value="${rec?.dueDate || ''}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <textarea class="form-control" id="cxc-notes" rows="2"
+        placeholder="# factura, acuerdo de pago, cuotas...">${rec?.notes || ''}</textarea>
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="saveReceivable('${editId || ''}')">
+      ✅ ${rec ? 'Actualizar' : 'Registrar venta a crédito'}
+    </button>
+    ${rec ? `<button class="btn btn-danger btn-block mt-8" onclick="confirmDeleteReceivable('${rec.id}')">🗑️ Eliminar</button>` : ''}
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+  `;
+  sheet.classList.add('open');
+}
+
+function saveReceivable(editId) {
+  const clientName  = document.getElementById('cxc-client')?.value.trim();
+  const description = document.getElementById('cxc-desc')?.value.trim();
+  const totalAmount = parseFloat(document.getElementById('cxc-amount')?.value);
+  const issueDate   = document.getElementById('cxc-issue')?.value;
+  const dueDate     = document.getElementById('cxc-due')?.value;
+
+  if (!clientName)         { showToast('⚠️ Escribe el nombre del cliente'); return; }
+  if (!description)        { showToast('⚠️ Escribe la descripción'); return; }
+  if (!totalAmount || totalAmount <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
+  if (!issueDate)          { showToast('⚠️ Selecciona la fecha de la venta'); return; }
+  if (!dueDate)            { showToast('⚠️ Selecciona la fecha de vencimiento'); return; }
+
+  const data = {
+    clientName, description, totalAmount, issueDate, dueDate,
+    ruc:   document.getElementById('cxc-ruc')?.value.trim() || '',
+    notes: document.getElementById('cxc-notes')?.value.trim() || '',
+  };
+
+  if (editId) {
+    DB.updateReceivable(editId, data);
+    showToast('✅ Venta a crédito actualizada');
+  } else {
+    DB.addReceivable(data);
+    showToast('✅ Venta a crédito registrada');
+  }
+  closeSettingsSheet();
+  renderCartera();
+}
+
+function confirmDeleteReceivable(id) {
+  const rec = DB.getReceivableById(id);
+  if (!rec) return;
+  if (!confirm(`¿Eliminar la cuenta por cobrar de "${rec.clientName}"?\n\nEsta acción no se puede deshacer.`)) return;
+  DB.deleteReceivable(id);
+  closeSettingsSheet();
+  renderCartera();
+  showToast('🗑️ Eliminado');
+}
+
+function openReceivableDetail(id) {
+  const rec = DB.getReceivableById(id);
+  if (!rec) return;
+
+  const paid    = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+  const pending = Math.max(rec.totalAmount - paid, 0);
+  const pct     = rec.totalAmount > 0 ? Math.min(Math.round((paid / rec.totalAmount) * 100), 100) : 0;
+  const st      = CARTERA_STATUS[rec.status] || CARTERA_STATUS.pending;
+
+  const paymentsHTML = rec.payments?.length
+    ? rec.payments.map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);">
+          <div>
+            <div style="font-size:13px;font-weight:600;">${fmtDate(p.date)}</div>
+            ${p.notes ? `<div style="font-size:11px;color:var(--gray-400);">${p.notes}</div>` : ''}
+          </div>
+          <div style="font-size:15px;font-weight:700;color:var(--success);">+${fmt(p.amount)}</div>
+        </div>`).join('')
+    : '<p style="color:var(--gray-400);font-size:13px;text-align:center;padding:12px 0;">Sin cobros registrados</p>';
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <!-- Encabezado cliente -->
+    <div style="text-align:center;padding:8px 0 16px;">
+      <div style="font-size:48px;margin-bottom:8px;">🧾</div>
+      <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${st.bg};color:${st.color};">${st.label}</span>
+      <div style="font-size:20px;font-weight:800;margin-top:10px;">${rec.clientName}</div>
+      ${rec.ruc ? `<div style="font-size:12px;color:var(--gray-400);">RUC/CI: ${rec.ruc}</div>` : ''}
+      <div style="font-size:13px;color:var(--gray-500);margin-top:4px;">${rec.description}</div>
+    </div>
+
+    <!-- Montos -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div style="background:var(--gray-50);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--gray-500);font-weight:600;margin-bottom:2px;">TOTAL</div>
+        <div style="font-size:15px;font-weight:800;">${fmt(rec.totalAmount)}</div>
+      </div>
+      <div style="background:#f0fdf4;border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--gray-500);font-weight:600;margin-bottom:2px;">COBRADO</div>
+        <div style="font-size:15px;font-weight:800;color:var(--success);">${fmt(paid)}</div>
+      </div>
+      <div style="background:${pending > 0 ? '#fff1f2' : '#f0fdf4'};border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--gray-500);font-weight:600;margin-bottom:2px;">PENDIENTE</div>
+        <div style="font-size:15px;font-weight:800;color:${pending > 0 ? 'var(--danger)' : 'var(--success)'};">${fmt(pending)}</div>
+      </div>
+    </div>
+
+    <!-- Barra de progreso -->
+    ${rec.status !== 'pending' ? `
+    <div style="margin-bottom:16px;">
+      <div style="background:var(--gray-100);border-radius:8px;height:10px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${st.color};border-radius:8px;transition:width .4s;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:4px;text-align:right;">${pct}% cobrado</div>
+    </div>` : ''}
+
+    <!-- Fechas -->
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--gray-600);margin-bottom:16px;background:var(--gray-50);border-radius:10px;padding:10px 14px;">
+      <div><div style="font-size:10px;font-weight:600;color:var(--gray-400);">FECHA VENTA</div><div style="font-weight:600;">${fmtDate(rec.issueDate)}</div></div>
+      <div style="text-align:right;"><div style="font-size:10px;font-weight:600;color:var(--gray-400);">VENCIMIENTO</div><div style="font-weight:600;color:${rec.status === 'overdue' ? 'var(--danger)' : 'inherit'};">${rec.dueDate ? fmtDate(rec.dueDate) : '—'}</div></div>
+    </div>
+
+    ${rec.notes ? `<div style="background:var(--gray-50);border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--gray-700);">📝 ${rec.notes}</div>` : ''}
+
+    <!-- Historial de cobros -->
+    <div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Historial de cobros</div>
+    <div style="margin-bottom:16px;">${paymentsHTML}</div>
+
+    <!-- Botones -->
+    ${rec.status !== 'paid' ? `
+    <button class="btn btn-primary btn-block mb-8" onclick="openRegisterPayment('${rec.id}')">
+      💰 Registrar cobro
+    </button>` : ''}
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" style="flex:1;" onclick="openReceivableForm('${rec.id}')">✏️ Editar</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeSettingsSheet()">Cerrar</button>
+    </div>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function openRegisterPayment(receivableId) {
+  const rec = DB.getReceivableById(receivableId);
+  if (!rec) return;
+  const paid    = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+  const pending = Math.max(rec.totalAmount - paid, 0);
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">💰 Registrar Cobro</h3>
+    <div style="background:#f0fdf4;border-radius:10px;padding:12px;margin-bottom:16px;">
+      <div style="font-size:12px;color:var(--gray-500);">Cliente: <strong>${rec.clientName}</strong></div>
+      <div style="font-size:12px;color:var(--gray-500);">Saldo pendiente: <strong style="color:var(--danger);">${fmt(pending)}</strong></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto cobrado *</label>
+      <input type="number" class="form-control" id="pay-amount"
+        value="${pending}" placeholder="0.00" min="0.01" step="0.01" max="${pending}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha de cobro *</label>
+      <input type="date" class="form-control" id="pay-date" value="${today()}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <input type="text" class="form-control" id="pay-notes"
+        placeholder="Ej: Transferencia banco, efectivo, cuota #1">
+    </div>
+    <button class="btn btn-primary btn-block mt-8" onclick="saveReceivablePayment('${receivableId}')">
+      ✅ Confirmar cobro
+    </button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="openReceivableDetail('${receivableId}')">
+      ← Volver
+    </button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function saveReceivablePayment(receivableId) {
+  const amount = parseFloat(document.getElementById('pay-amount')?.value);
+  const date   = document.getElementById('pay-date')?.value;
+
+  if (!amount || amount <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
+  if (!date)                  { showToast('⚠️ Selecciona la fecha'); return; }
+
+  const rec = DB.addReceivablePayment(receivableId, {
+    amount,
+    date,
+    notes: document.getElementById('pay-notes')?.value.trim() || '',
+  });
+
+  if (rec.status === 'paid') {
+    showToast('🎉 ¡Cobro completo! Cartera cerrada.');
+  } else {
+    const paid    = (rec.payments || []).reduce((s, p) => s + p.amount, 0);
+    const pending = Math.max(rec.totalAmount - paid, 0);
+    showToast(`✅ Cobro registrado · Pendiente: ${fmt(pending)}`);
+  }
+
+  closeSettingsSheet();
+  renderCartera();
+}
+
+// Alerta cartera vencida en dashboard
+function renderCarteraAlert() {
+  const el = document.getElementById('dash-cartera-alert');
+  if (!el) return;
+  const stats = DB.getReceivableStats();
+  if (!stats.overdueCount && !stats.pendingCount) { el.style.display = 'none'; return; }
+
+  const { d30, d60, d90, d90plus } = stats.aging;
+  const totalVencida = d30 + d60 + d90 + d90plus;
+
+  if (totalVencida > 0) {
+    el.style.cssText = `display:flex;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:var(--radius);padding:12px 14px;gap:10px;align-items:center;margin-bottom:12px;color:#991b1b;`;
+    el.innerHTML = `
+      <span style="font-size:20px;">🧾</span>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:14px;">${stats.overdueCount} cuenta(s) por cobrar vencida(s)</div>
+        <div style="font-size:12px;opacity:.8;margin-top:2px;">Cartera vencida: ${fmt(totalVencida)}</div>
+      </div>
+      <button onclick="navigate('cartera')" style="font-size:12px;font-weight:700;background:none;color:inherit;white-space:nowrap;">Ver →</button>
+    `;
+  } else if (stats.pendingCount > 0) {
+    el.style.cssText = `display:flex;background:#e0f2fe;border:1.5px solid #7dd3fc;border-radius:var(--radius);padding:12px 14px;gap:10px;align-items:center;margin-bottom:12px;color:#0c4a6e;`;
+    el.innerHTML = `
+      <span style="font-size:20px;">🧾</span>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:14px;">${stats.pendingCount} cobro(s) por recibir</div>
+        <div style="font-size:12px;opacity:.8;margin-top:2px;">Pendiente: ${fmt(stats.totalPendiente)}</div>
+      </div>
+      <button onclick="navigate('cartera')" style="font-size:12px;font-weight:700;background:none;color:inherit;white-space:nowrap;">Ver →</button>
+    `;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// Placeholders IVA y Facturación
+function openIvaPlaceholder() {
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="text-align:center;padding:24px 0 16px;">
+      <div style="font-size:56px;margin-bottom:12px;">🏛️</div>
+      <h2 style="font-size:20px;font-weight:800;color:#0891b2;margin-bottom:8px;">IVA · SRI Ecuador</h2>
+      <p style="font-size:14px;color:var(--gray-500);line-height:1.6;">Próximamente podrás calcular y liquidar el IVA 15% según normativa SRI Ecuador.</p>
+    </div>
+    <div style="background:#e0f2fe;border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;color:#0c4a6e;margin-bottom:10px;">🗺️ Multi-país (próximamente)</div>
+      <div style="font-size:13px;color:#0c4a6e;line-height:1.7;">
+        🇪🇨 Ecuador — IVA 15% (SRI)<br>
+        🇨🇴 Colombia — IVA 19% (DIAN)<br>
+        🇲🇽 México — IVA 16% (SAT)<br>
+        🇵🇪 Perú — IGV 18% (SUNAT)
+      </div>
+    </div>
+    <div style="background:var(--gray-50);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--gray-600);line-height:1.6;">
+      Selecciona tu país de origen para aplicar automáticamente las tasas de IVA correctas en tus ventas y reportes.
+    </div>
+    <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">Entendido</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function openFacturacionPlaceholder() {
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="text-align:center;padding:24px 0 16px;">
+      <div style="font-size:56px;margin-bottom:12px;">📄</div>
+      <h2 style="font-size:20px;font-weight:800;color:#0891b2;margin-bottom:8px;">Facturación Electrónica</h2>
+      <p style="font-size:14px;color:var(--gray-500);line-height:1.6;">Próximamente podrás generar comprobantes de venta en PDF para tus clientes.</p>
+    </div>
+    <div style="background:#e0f2fe;border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;color:#0c4a6e;margin-bottom:10px;">📋 Incluirá:</div>
+      <div style="font-size:13px;color:#0c4a6e;line-height:1.8;">
+        ✅ Factura con datos del cliente (RUC/Cédula)<br>
+        ✅ Desglose de productos y servicios<br>
+        ✅ Cálculo de IVA automático<br>
+        ✅ Export PDF profesional<br>
+        ✅ Compatible con SRI Ecuador
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">Entendido</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
