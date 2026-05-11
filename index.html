@@ -381,6 +381,49 @@
       <button class="month-nav-btn" onclick="nextMonth()">›</button>
     </div>
 
+    <!-- ══ RESUMEN ANUAL (toggle) ══ -->
+    <div class="card no-print" style="margin-bottom:12px;">
+      <div class="card-header" style="cursor:pointer;" onclick="toggleAnnualView()">
+        <div class="card-title">📅 Resumen Anual <span id="annual-year-label"></span></div>
+        <span id="annual-toggle-icon" style="font-size:16px; color:var(--primary);">▼</span>
+      </div>
+      <div id="annual-view" style="display:none; margin-top:4px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <button onclick="annualYear--; renderAnnualView()" style="font-size:20px; width:36px; height:36px; border-radius:8px; background:var(--gray-100); border:none; cursor:pointer;">‹</button>
+          <span id="annual-year-title" style="font-weight:800; font-size:16px; color:var(--gray-900);"></span>
+          <button onclick="annualYear++; renderAnnualView()" style="font-size:20px; width:36px; height:36px; border-radius:8px; background:var(--gray-100); border:none; cursor:pointer;">›</button>
+        </div>
+
+        <!-- KPIs anuales -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px;" id="annual-kpis"></div>
+
+        <!-- Gráfica anual -->
+        <div style="position:relative; height:180px; margin-bottom:14px;">
+          <canvas id="chart-annual"></canvas>
+        </div>
+
+        <!-- Tabla 12 meses -->
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px;" id="annual-table">
+            <thead>
+              <tr style="background:var(--primary); color:white;">
+                <th style="padding:7px 10px; text-align:left; border-radius:6px 0 0 0;">Mes</th>
+                <th style="padding:7px 8px; text-align:right;">Ingresos</th>
+                <th style="padding:7px 8px; text-align:right;">Gastos</th>
+                <th style="padding:7px 10px; text-align:right; border-radius:0 6px 0 0;">Utilidad</th>
+              </tr>
+            </thead>
+            <tbody id="annual-tbody"></tbody>
+            <tfoot id="annual-tfoot"></tfoot>
+          </table>
+        </div>
+
+        <button class="btn btn-outline btn-block mt-12" onclick="exportAnnualExcel()" style="font-size:13px;">
+          📊 Exportar año completo a Excel
+        </button>
+      </div>
+    </div>
+
     <!-- ══ GRÁFICA: Evolución 6 meses ══ -->
     <div class="card no-print" style="margin-bottom:12px;" id="chart-evolution-card">
       <div class="card-header" style="margin-bottom:12px;">

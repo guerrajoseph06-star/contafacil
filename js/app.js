@@ -1323,6 +1323,161 @@ function renderUpcomingRecurrings() {
   `;
 }
 
+// ── Resumen Anual ─────────────────────────────────────────────────────────────
+let annualYear      = new Date().getFullYear();
+let annualOpen      = false;
+let _chartAnnual    = null;
+const MONTH_NAMES   = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function toggleAnnualView() {
+  annualOpen = !annualOpen;
+  document.getElementById('annual-view').style.display = annualOpen ? 'block' : 'none';
+  document.getElementById('annual-toggle-icon').textContent = annualOpen ? '▲' : '▼';
+  if (annualOpen) renderAnnualView();
+}
+
+function renderAnnualView() {
+  document.getElementById('annual-year-label').textContent = annualYear;
+  document.getElementById('annual-year-title').textContent = annualYear;
+
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const stats = DB.getMonthStats(annualYear, i + 1);
+    return { m: i + 1, label: MONTH_NAMES[i], ...stats };
+  });
+
+  const totalIncome  = months.reduce((s, m) => s + m.income, 0);
+  const totalExp     = months.reduce((s, m) => s + (m.opExpenses + m.cogs), 0);
+  const totalNet     = months.reduce((s, m) => s + m.netProfit, 0);
+  const bestMonth    = months.reduce((best, m) => m.netProfit > best.netProfit ? m : best, months[0]);
+
+  // KPIs
+  document.getElementById('annual-kpis').innerHTML = `
+    <div style="background:var(--gray-50); border-radius:10px; padding:10px; text-align:center;">
+      <div style="font-size:10px; color:var(--gray-500); font-weight:600; margin-bottom:4px;">INGRESOS</div>
+      <div style="font-size:14px; font-weight:800; color:var(--success);">${fmt(totalIncome)}</div>
+    </div>
+    <div style="background:var(--gray-50); border-radius:10px; padding:10px; text-align:center;">
+      <div style="font-size:10px; color:var(--gray-500); font-weight:600; margin-bottom:4px;">GASTOS</div>
+      <div style="font-size:14px; font-weight:800; color:var(--danger);">${fmt(totalExp)}</div>
+    </div>
+    <div style="background:${totalNet >= 0 ? '#f0fdf4' : '#fff1f2'}; border-radius:10px; padding:10px; text-align:center; border:1.5px solid ${totalNet >= 0 ? '#bbf7d0' : '#fecaca'};">
+      <div style="font-size:10px; color:var(--gray-500); font-weight:600; margin-bottom:4px;">UTILIDAD</div>
+      <div style="font-size:14px; font-weight:800; color:${totalNet >= 0 ? 'var(--success)' : 'var(--danger)'};">${totalNet >= 0 ? '+' : ''}${fmt(totalNet)}</div>
+    </div>
+  `;
+
+  // Tabla 12 meses
+  const now = new Date();
+  document.getElementById('annual-tbody').innerHTML = months.map(m => {
+    const isCurrentMonth = m.m === (now.getMonth() + 1) && annualYear === now.getFullYear();
+    const hasData = m.income > 0 || m.opExpenses > 0;
+    const netColor = m.netProfit > 0 ? 'var(--success)' : m.netProfit < 0 ? 'var(--danger)' : 'var(--gray-400)';
+    return `<tr style="background:${isCurrentMonth ? 'var(--primary-light)' : (m.m % 2 === 0 ? 'var(--gray-50)' : 'white')}; ${!hasData ? 'opacity:.5;' : ''}">
+      <td style="padding:7px 10px; font-weight:${isCurrentMonth ? '700' : '500'}; color:${isCurrentMonth ? 'var(--primary)' : 'inherit'};">${m.label}${isCurrentMonth ? ' ●' : ''}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--success); font-weight:600;">${m.income > 0 ? fmt(m.income) : '—'}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--danger);">${(m.opExpenses + m.cogs) > 0 ? fmt(m.opExpenses + m.cogs) : '—'}</td>
+      <td style="padding:7px 10px; text-align:right; font-weight:700; color:${netColor};">${hasData ? (m.netProfit >= 0 ? '+' : '') + fmt(m.netProfit) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Totales
+  document.getElementById('annual-tfoot').innerHTML = `
+    <tr style="background:var(--primary); color:white; font-weight:700;">
+      <td style="padding:8px 10px; border-radius:0 0 0 6px;">TOTAL ${annualYear}</td>
+      <td style="padding:8px 8px; text-align:right;">${fmt(totalIncome)}</td>
+      <td style="padding:8px 8px; text-align:right;">${fmt(totalExp)}</td>
+      <td style="padding:8px 10px; text-align:right; border-radius:0 0 6px 0;">${totalNet >= 0 ? '+' : ''}${fmt(totalNet)}</td>
+    </tr>
+  `;
+
+  // Gráfica anual (solo si Chart.js disponible)
+  const ctx = document.getElementById('chart-annual')?.getContext('2d');
+  if (ctx && typeof Chart !== 'undefined') {
+    if (_chartAnnual) { _chartAnnual.destroy(); _chartAnnual = null; }
+    _chartAnnual = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: MONTH_NAMES,
+        datasets: [
+          {
+            label: 'Ingresos',
+            data: months.map(m => m.income),
+            backgroundColor: 'rgba(22,163,74,0.75)',
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+          {
+            label: 'Gastos',
+            data: months.map(m => m.opExpenses + m.cogs),
+            backgroundColor: 'rgba(220,38,38,0.70)',
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12, padding: 8 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const s = DB.getSettings();
+                return ctx.dataset.label + ': ' + s.currencySymbol + ' ' +
+                  Number(ctx.raw).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+          y: {
+            grid: { color: '#f3f4f6' },
+            ticks: {
+              font: { size: 9 },
+              callback: val => {
+                const s = DB.getSettings();
+                if (val >= 1000000) return s.currencySymbol + (val / 1000000).toFixed(1) + 'M';
+                if (val >= 1000)    return s.currencySymbol + (val / 1000).toFixed(0) + 'K';
+                return val === 0 ? '0' : '';
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+}
+
+function exportAnnualExcel() {
+  if (typeof XLSX === 'undefined') { showToast('⚠️ Necesitas internet para cargar el módulo Excel', 4000); return; }
+
+  const s = DB.getSettings();
+  const rows = [
+    [s.companyName + ' — Resumen Anual ' + annualYear],
+    [],
+    ['Mes', 'Ingresos', 'Gastos Operativos', 'CMV', 'Gastos Total', 'Utilidad Neta'],
+  ];
+
+  let totIncome = 0, totExp = 0, totNet = 0;
+  Array.from({ length: 12 }, (_, i) => {
+    const stats = DB.getMonthStats(annualYear, i + 1);
+    const exp   = stats.opExpenses + stats.cogs;
+    totIncome += stats.income; totExp += exp; totNet += stats.netProfit;
+    rows.push([MONTH_NAMES[i], stats.income, stats.opExpenses, stats.cogs, exp, stats.netProfit]);
+  });
+  rows.push([]);
+  rows.push(['TOTAL', totIncome, '', '', totExp, totNet]);
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 10 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumen Anual ' + annualYear);
+  XLSX.writeFile(wb, `ContaFacil_Anual_${annualYear}_${s.companyName.replace(/\s+/g, '-')}.xlsx`);
+  showToast('📥 Resumen anual ' + annualYear + ' descargado', 3000);
+}
+
 // ── Exportar a Excel ──────────────────────────────────────────────────────────
 function exportToExcel() {
   if (typeof XLSX === 'undefined') {
