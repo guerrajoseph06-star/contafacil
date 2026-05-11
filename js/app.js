@@ -1,0 +1,1467 @@
+/**
+ * ContaFácil Pro — Application Logic v2.0
+ * Tipos correctos: income | expense | transfer | liability
+ */
+
+// ── Estado global ─────────────────────────────────────────────────────────────
+let currentScreen = 'dashboard';
+let editingTxId   = null;
+let formType      = 'expense';
+let journalFilter = 'all';
+let journalSearch = '';
+let reportYear    = new Date().getFullYear();
+let reportMonth   = new Date().getMonth() + 1;
+
+// ── Formatos ──────────────────────────────────────────────────────────────────
+function fmt(amount) {
+  const s = DB.getSettings();
+  return s.currencySymbol + ' ' + Number(amount).toLocaleString('es-CO', {
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  });
+}
+function fmtDate(str) {
+  return new Date(str + 'T12:00:00').toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+function today() { return new Date().toISOString().split('T')[0]; }
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, ms = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// ── Navegación ────────────────────────────────────────────────────────────────
+function navigate(screen, params = {}) {
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('screen-' + screen);
+  if (el) el.classList.add('active');
+  currentScreen = screen;
+
+  document.querySelectorAll('.nav-item').forEach(ni =>
+    ni.classList.toggle('active', ni.dataset.screen === screen)
+  );
+
+  // FAB: contexto dinámico según pantalla
+  const fab = document.getElementById('fab');
+  if (fab) {
+    const fabScreens = ['dashboard', 'journal', 'inventory'];
+    fab.style.display = fabScreens.includes(screen) ? 'flex' : 'none';
+    if (screen === 'inventory') {
+      fab.title = 'Agregar producto';
+      fab.onclick = () => openProductForm();
+    } else {
+      fab.title = 'Nueva transacción';
+      fab.onclick = () => { setFormType('expense'); navigate('form'); };
+    }
+  }
+
+  switch (screen) {
+    case 'dashboard':  renderDashboard();  break;
+    case 'journal':    renderJournal();    break;
+    case 'form':       renderForm(params.id); break;
+    case 'reports':    renderReports();    break;
+    case 'inventory':  renderInventory();  break;
+    case 'settings':   renderSettings();   break;
+  }
+  window.scrollTo(0, 0);
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+let obSlide = 0;
+const OB_SLIDES = [
+  { emoji:'👋', title:'¡Bienvenido a ContaFácil Pro!', text:'La app de contabilidad diseñada para emprendedores. Registra ingresos, gastos, deudas e inventario en segundos.' },
+  { emoji:'📒', title:'Diario Contable Correcto', text:'Diferenciamos ingresos, gastos, traslados entre cuentas y deudas/pasivos. Cada tipo se registra contablemente bien.' },
+  { emoji:'📦', title:'Control de Inventario', text:'Lleva el stock de tus productos. Cada venta descuenta automáticamente y cada compra lo repone.' },
+  { emoji:'📊', title:'Reportes en PDF', text:'Genera reportes mensuales profesionales con un toque. Sin internet, directo desde tu dispositivo.' },
+];
+
+function renderOnboarding() {
+  document.getElementById('ob-slides').innerHTML = OB_SLIDES.map((s, i) => `
+    <div class="ob-slide ${i === obSlide ? 'active' : ''}">
+      <div class="ob-emoji">${s.emoji}</div>
+      <h2 class="ob-title">${s.title}</h2>
+      <p class="ob-text">${s.text}</p>
+    </div>
+  `).join('');
+  document.getElementById('ob-dots').innerHTML = OB_SLIDES.map((_, i) =>
+    `<div class="ob-dot ${i === obSlide ? 'active' : ''}"></div>`
+  ).join('');
+  document.getElementById('ob-next').textContent = obSlide === OB_SLIDES.length - 1 ? '¡Comenzar!' : 'Siguiente →';
+}
+
+function obNext() {
+  if (obSlide < OB_SLIDES.length - 1) { obSlide++; renderOnboarding(); }
+  else finishOnboarding();
+}
+function obPrev() { if (obSlide > 0) { obSlide--; renderOnboarding(); } }
+
+function finishOnboarding() {
+  DB.markOnboarded();
+  document.getElementById('screen-onboarding').classList.remove('active');
+  document.getElementById('bottom-nav').style.display = 'flex';
+  navigate('dashboard');
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1;
+  const stats   = DB.getMonthStats(y, m);
+  const all     = DB.getAllTimeBalance();
+  const s       = DB.getSettings();
+  const pending = DB.getPendingLiabilities();
+
+  document.getElementById('dash-company').textContent  = s.companyName;
+  document.getElementById('dash-balance').textContent  = fmt(all.netProfit);
+  document.getElementById('dash-income').textContent   = fmt(stats.income);
+  document.getElementById('dash-expense').textContent  = fmt(stats.opExpenses);
+  document.getElementById('dash-month').textContent    =
+    new Date(y, m - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  // Utilidad neta del mes
+  const netEl = document.getElementById('dash-net');
+  netEl.textContent = (stats.netProfit >= 0 ? '+' : '') + fmt(stats.netProfit);
+  netEl.style.color = 'white';
+
+  // Panel de CMV del mes (solo si hay COGS)
+  const cogsPanel = document.getElementById('dash-cogs-panel');
+  if (cogsPanel) {
+    if (stats.cogs > 0) {
+      cogsPanel.style.display = 'block';
+      document.getElementById('dash-cogs-val').textContent     = fmt(stats.cogs);
+      document.getElementById('dash-gross-val').textContent    = (stats.grossProfit >= 0 ? '+' : '') + fmt(stats.grossProfit);
+      document.getElementById('dash-gross-val').style.color    = stats.grossProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+    } else {
+      cogsPanel.style.display = 'none';
+    }
+  }
+
+  // Alerta deudas pendientes
+  const alertEl = document.getElementById('dash-liabilities-alert');
+  if (pending.length) {
+    const total = pending.reduce((s, t) => s + t.amount, 0);
+    alertEl.style.display = 'flex';
+    alertEl.innerHTML = `
+      <span style="font-size:20px;">🔴</span>
+      <div>
+        <div style="font-weight:700; font-size:14px;">Deudas pendientes: ${fmt(total)}</div>
+        <div style="font-size:12px; opacity:.8;">${pending.length} deuda${pending.length > 1 ? 's' : ''} sin pagar</div>
+      </div>
+    `;
+  } else {
+    alertEl.style.display = 'none';
+  }
+
+  // Últimas 5 transacciones (excluir entradas de CMV auto-generadas)
+  const txs = DB.getTransactions().filter(t => !t.isCogs).slice(0, 5);
+  const recentEl = document.getElementById('dash-recent');
+  recentEl.innerHTML = txs.length
+    ? `<ul class="tx-list">${txs.map(txItemHTML).join('')}</ul>`
+    : emptyHTML('📭', 'Sin movimientos', 'Toca + para agregar tu primera transacción');
+
+  // Próximos gastos recurrentes
+  renderUpcomingRecurrings();
+}
+
+// ── Diario ────────────────────────────────────────────────────────────────────
+function renderJournal() {
+  let txs = DB.getTransactions();
+
+  if (journalFilter !== 'all') txs = txs.filter(t => t.type === journalFilter);
+  if (journalSearch.trim()) {
+    const q = journalSearch.toLowerCase();
+    txs = txs.filter(t => t.description.toLowerCase().includes(q) || (t.notes || '').toLowerCase().includes(q));
+  }
+
+  const groups = {};
+  txs.forEach(t => {
+    const d = new Date(t.date + 'T12:00:00');
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(t);
+  });
+
+  const list = document.getElementById('journal-list');
+  if (!txs.length) {
+    list.innerHTML = emptyHTML('🔍', 'Sin resultados', 'Cambia el filtro o agrega una transacción');
+    return;
+  }
+
+  list.innerHTML = Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(key => {
+    const [y, m] = key.split('-').map(Number);
+    const label = new Date(y, m - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    const items = groups[key];
+    const income  = items.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = items.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    return `
+      <div style="padding:10px 0 4px; font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.5px; display:flex; justify-content:space-between; align-items:center;">
+        <span>${label}</span>
+        <span>
+          <span style="color:var(--success)">+${fmt(income)}</span>
+          &nbsp;
+          <span style="color:var(--danger)">-${fmt(expense)}</span>
+        </span>
+      </div>
+      <div class="card" style="margin-bottom:8px; padding:4px 12px;">
+        <ul class="tx-list">${items.map(txItemHTML).join('')}</ul>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-tx-id]').forEach(el =>
+    el.addEventListener('click', () => openTxDetail(el.dataset.txId))
+  );
+}
+
+function setJournalFilter(f) {
+  journalFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.filter === f)
+  );
+  renderJournal();
+}
+
+// ── Ítem de transacción (display correcto por tipo) ───────────────────────────
+function txItemHTML(tx) {
+  const cat = DB.getCategoryById(tx.category);
+  let emoji, amountText, amountClass, metaText, extraStyle = '';
+
+  // CMV auto-generado: estilo diferente, no interactivo si se prefiere
+  if (tx.isCogs) {
+    emoji = '📦';
+    amountText = '-' + fmt(tx.amount);
+    amountClass = 'cogs';
+    metaText = fmtDate(tx.date) + ' · Costo de Ventas (CMV) · Auto';
+    extraStyle = 'opacity:.7; background:var(--gray-50);';
+  } else if (tx.type === 'income') {
+    emoji = cat ? cat.emoji : '💰';
+    amountText = '+' + fmt(tx.amount);
+    amountClass = 'income';
+    const cogsTag = tx.cogsAmount ? ` · CMV: -${fmt(tx.cogsAmount)}` : '';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + cogsTag;
+
+  } else if (tx.type === 'expense') {
+    emoji = cat ? cat.emoji : '💸';
+    amountText = '-' + fmt(tx.amount);
+    amountClass = 'expense';
+    const recTag = tx.isRecurring ? ' · 🔄 Auto' : '';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + recTag;
+
+  } else if (tx.type === 'transfer') {
+    const fromAcc = DB.getAccountById(tx.fromAccount);
+    const toAcc   = DB.getAccountById(tx.toAccount);
+    emoji = '↔️';
+    amountText = fmt(tx.amount);
+    amountClass = 'transfer';
+    const from = fromAcc ? fromAcc.emoji + ' ' + fromAcc.name : 'Cuenta';
+    const to   = toAcc   ? toAcc.emoji   + ' ' + toAcc.name   : 'Cuenta';
+    metaText = fmtDate(tx.date) + ` · ${from} → ${to}`;
+
+  } else if (tx.type === 'liability') {
+    emoji = cat ? cat.emoji : '🔴';
+    amountText = fmt(tx.amount);
+    amountClass = 'liability';
+    const status = tx.liabilityStatus === 'paid' ? ' ✅ Pagada' : ' 🔴 Pendiente';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + status;
+  }
+
+  return `
+    <li class="tx-item" data-tx-id="${tx.id}" style="${extraStyle}">
+      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
+      <div class="tx-info">
+        <div class="tx-desc">${tx.description}${tx.isCogs ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
+        <div class="tx-meta">${metaText}</div>
+      </div>
+      <div class="tx-amount ${amountClass}">${amountText}</div>
+    </li>
+  `;
+}
+
+// ── Formulario de transacción ─────────────────────────────────────────────────
+function renderForm(editId = null) {
+  editingTxId = editId || null;
+  const isEdit = !!editId;
+  let tx = isEdit ? DB.getTransactionById(editId) : null;
+  if (tx) formType = tx.type;
+
+  document.getElementById('form-title').textContent = isEdit ? 'Editar Transacción' : 'Nueva Transacción';
+  document.getElementById('btn-delete-tx').style.display = isEdit ? 'flex' : 'none';
+
+  updateTypeTabs();
+  renderFormFields(tx);
+}
+
+function updateTypeTabs() {
+  document.querySelectorAll('.type-tab').forEach(tab => {
+    tab.className = 'type-tab' + (tab.dataset.type === formType ? ' active-' + formType : '');
+  });
+  renderFormFields(editingTxId ? DB.getTransactionById(editingTxId) : null);
+}
+
+function setFormType(type) { formType = type; updateTypeTabs(); }
+
+// Renderiza los campos dinámicamente según el tipo
+function renderFormFields(tx) {
+  const container = document.getElementById('form-dynamic-fields');
+  const isTransfer   = formType === 'transfer';
+  const isLiability  = formType === 'liability';
+  const isIncome     = formType === 'income';
+  const isExpense    = formType === 'expense';
+
+  // Categorías filtradas por tipo
+  const catOptions = isTransfer ? '' :
+    '<option value="">— Categoría (opcional) —</option>' +
+    DB.getCategoriesByType(isLiability ? 'liability' : formType)
+      .map(c => `<option value="${c.id}" ${tx?.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`)
+      .join('');
+
+  // Cuentas
+  const accOptions = acc =>
+    '<option value="">— Cuenta (opcional) —</option>' +
+    DB.getAccounts().map(a => `<option value="${a.id}" ${tx?.[acc] === a.id ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
+
+  // Productos para inventario
+  const products = DB.getInventory();
+  const prodOptions = '<option value="">— Seleccionar producto —</option>' +
+    products.map(p => `<option value="${p.id}" ${tx?.productId === p.id ? 'selected' : ''}>${p.emoji || '📦'} ${p.name} (Stock: ${p.quantity} ${p.unit})</option>`).join('');
+
+  let html = '';
+
+  if (isTransfer) {
+    // TRASLADO: origen → destino (sin categoría)
+    html += `
+      <div style="background:var(--primary-light); border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--primary); font-weight:600;">
+        ↔️ Un traslado mueve dinero entre tus cuentas. <strong>No afecta ingresos ni gastos.</strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cuenta Origen (de)</label>
+        <select id="f-from-account" class="form-control">${accOptions('fromAccount')}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cuenta Destino (a)</label>
+        <select id="f-to-account" class="form-control">${accOptions('toAccount')}</select>
+      </div>
+    `;
+  } else if (isLiability) {
+    // DEUDA: con categoría de pasivos y estado
+    html += `
+      <div style="background:#fef3c7; border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px; color:#92400e; font-weight:600;">
+        🔴 Una deuda es dinero que <strong>debes</strong>. No afecta tu resultado hasta que la pagues.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoría de deuda</label>
+        <select id="f-category" class="form-control">${catOptions}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Acreedor (¿a quién le debes?)</label>
+        <input type="text" id="f-creditor" class="form-control" value="${tx?.creditor || ''}" placeholder="Ej: Alianza del Valle, Banco X">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select id="f-liability-status" class="form-control">
+          <option value="pending" ${tx?.liabilityStatus !== 'paid' ? 'selected' : ''}>🔴 Pendiente de pago</option>
+          <option value="paid"    ${tx?.liabilityStatus === 'paid'  ? 'selected' : ''}>✅ Pagada</option>
+        </select>
+      </div>
+    `;
+  } else {
+    // INGRESO o GASTO: categoría + cuenta + inventario opcional
+    html += `
+      <div class="form-group">
+        <label class="form-label">Categoría</label>
+        <select id="f-category" class="form-control">${catOptions}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cuenta</label>
+        <select id="f-account" class="form-control">${accOptions('account')}</select>
+      </div>
+    `;
+
+    // Sección inventario (solo si hay productos)
+    if (products.length) {
+      const checked = tx?.affectsInventory ? 'checked' : '';
+      html += `
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px; background:var(--gray-50); border-radius:8px;">
+            <input type="checkbox" id="f-affects-inv" ${checked} onchange="toggleInventorySection()" style="width:18px;height:18px; accent-color:var(--primary);">
+            <div>
+              <div style="font-weight:600; font-size:14px;">📦 ${isExpense ? 'Esta compra' : 'Esta venta'} afecta inventario</div>
+              <div style="font-size:12px; color:var(--gray-500);">${isExpense ? 'Suma stock al producto' : 'Resta stock del producto'}</div>
+            </div>
+          </label>
+        </div>
+        <div id="inv-section" style="display:${tx?.affectsInventory ? 'block' : 'none'}">
+          <div class="form-group">
+            <label class="form-label">Producto</label>
+            <select id="f-product" class="form-control">${prodOptions}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cantidad ${isExpense ? 'comprada' : 'vendida'}</label>
+            <input type="number" id="f-quantity" class="form-control" value="${tx?.quantity || ''}" placeholder="Ej: 6" min="0" step="1">
+          </div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div style="background:var(--gray-50); border-radius:8px; padding:12px; margin-bottom:12px; font-size:13px; color:var(--gray-500); text-align:center;">
+          📦 Agrega productos en <strong>Inventario</strong> para activar el control de stock.
+        </div>
+      `;
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleInventorySection() {
+  const cb  = document.getElementById('f-affects-inv');
+  const sec = document.getElementById('inv-section');
+  if (sec) sec.style.display = cb?.checked ? 'block' : 'none';
+}
+
+function submitForm() {
+  const amount = parseFloat(document.getElementById('f-amount')?.value);
+  const desc   = document.getElementById('f-desc')?.value.trim();
+  const date   = document.getElementById('f-date')?.value;
+  const notes  = document.getElementById('f-notes')?.value.trim();
+
+  if (!amount || amount <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
+  if (!desc)                  { showToast('⚠️ Escribe una descripción'); return; }
+  if (!date)                  { showToast('⚠️ Selecciona una fecha'); return; }
+
+  let data = { type: formType, amount, description: desc, date, notes };
+
+  if (formType === 'transfer') {
+    const from = document.getElementById('f-from-account')?.value;
+    const to   = document.getElementById('f-to-account')?.value;
+    if (!from || !to)         { showToast('⚠️ Selecciona cuenta origen y destino'); return; }
+    if (from === to)          { showToast('⚠️ Las cuentas deben ser diferentes'); return; }
+    data.fromAccount = from;
+    data.toAccount   = to;
+
+  } else if (formType === 'liability') {
+    data.category        = document.getElementById('f-category')?.value;
+    data.creditor        = document.getElementById('f-creditor')?.value.trim();
+    data.liabilityStatus = document.getElementById('f-liability-status')?.value || 'pending';
+
+  } else {
+    data.category = document.getElementById('f-category')?.value;
+    data.account  = document.getElementById('f-account')?.value;
+    const affectsInv = document.getElementById('f-affects-inv')?.checked;
+    if (affectsInv) {
+      const productId = document.getElementById('f-product')?.value;
+      const quantity  = parseFloat(document.getElementById('f-quantity')?.value);
+      if (!productId) { showToast('⚠️ Selecciona un producto'); return; }
+      if (!quantity)  { showToast('⚠️ Ingresa la cantidad'); return; }
+      data.affectsInventory = true;
+      data.productId = productId;
+      data.quantity  = quantity;
+    }
+  }
+
+  if (editingTxId) {
+    DB.updateTransaction(editingTxId, data);
+    showToast('✅ Transacción actualizada');
+  } else {
+    DB.addTransaction(data);
+    showToast('✅ Transacción guardada');
+  }
+
+  navigate('journal');
+}
+
+function deleteCurrentTx() {
+  if (!editingTxId) return;
+  if (!confirm('¿Eliminar esta transacción?')) return;
+  DB.deleteTransaction(editingTxId);
+  showToast('🗑️ Eliminada');
+  navigate('journal');
+}
+
+// ── Detalle de transacción (sheet) ────────────────────────────────────────────
+function openTxDetail(id) {
+  const tx  = DB.getTransactionById(id);
+  if (!tx) return;
+  const cat = DB.getCategoryById(tx.category);
+
+  const LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda / Pasivo' };
+  const BADGE  = { income:'badge-income', expense:'badge-expense', transfer:'badge-transfer', liability:'badge-liability' };
+  const COLORS = { income:'var(--success)', expense:'var(--danger)', transfer:'var(--primary)', liability:'var(--warning)' };
+
+  let amountSign = '', mainDetail = '';
+
+  if (tx.type === 'income')  amountSign = '+';
+  if (tx.type === 'expense') amountSign = '-';
+
+  if (tx.type === 'transfer') {
+    const from = DB.getAccountById(tx.fromAccount);
+    const to   = DB.getAccountById(tx.toAccount);
+    mainDetail = `
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Origen</span><span style="font-weight:600;">${from ? from.emoji + ' ' + from.name : '—'}</span></div>
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Destino</span><span style="font-weight:600;">${to ? to.emoji + ' ' + to.name : '—'}</span></div>
+    `;
+  } else if (tx.type === 'liability') {
+    const status = tx.liabilityStatus === 'paid' ? '✅ Pagada' : '🔴 Pendiente';
+    mainDetail = `
+      ${tx.creditor ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Acreedor</span><span style="font-weight:600;">${tx.creditor}</span></div>` : ''}
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Estado</span><span style="font-weight:600;">${status}</span></div>
+    `;
+  } else {
+    const acc = DB.getAccountById(tx.account);
+    mainDetail = `
+      ${cat ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Categoría</span><span style="font-weight:600;">${cat.emoji} ${cat.name}</span></div>` : ''}
+      ${acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : ''}
+      ${tx.affectsInventory ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Inventario</span><span style="font-weight:600; color:var(--primary);">📦 -${tx.quantity} unidades</span></div>` : ''}
+    `;
+  }
+
+  document.getElementById('detail-content').innerHTML = `
+    <div style="text-align:center; padding:8px 0 20px;">
+      <div style="font-size:52px; margin-bottom:8px;">${cat ? cat.emoji : (tx.type === 'transfer' ? '↔️' : tx.type === 'liability' ? '🔴' : '💰')}</div>
+      <span class="badge ${BADGE[tx.type]}" style="margin-bottom:12px;">${LABELS[tx.type]}</span>
+      <div style="font-size:36px; font-weight:800; color:${COLORS[tx.type]}; margin-bottom:4px;">${amountSign}${fmt(tx.amount)}</div>
+      <div style="font-size:18px; font-weight:600; margin-bottom:4px;">${tx.description}</div>
+      <div style="font-size:13px; color:var(--gray-500);">${fmtDate(tx.date)}</div>
+    </div>
+    <div class="divider"></div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${mainDetail}
+      ${tx.notes ? `<div><div style="color:var(--gray-500); font-size:14px; margin-bottom:4px;">Notas</div><div style="font-size:14px; color:var(--gray-700); background:var(--gray-50); border-radius:8px; padding:10px;">${tx.notes}</div></div>` : ''}
+    </div>
+    <div style="display:flex; gap:10px; margin-top:24px;">
+      <button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>
+      <button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>
+    </div>
+  `;
+  document.getElementById('detail-overlay').classList.add('open');
+}
+
+function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }
+
+// ── Reportes ───────────────────────────────────────────────────────────────────
+function renderReports() {
+  const pnl  = DB.getProfitStatement(reportYear, reportMonth);
+  const txs  = DB.getTransactionsByMonth(reportYear, reportMonth);
+  const s    = DB.getSettings();
+  const monthLabel = new Date(reportYear, reportMonth - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  document.getElementById('report-month-name').textContent = monthLabel;
+
+  // ── Estado de Resultados (P&L) ────────────────────────────
+  _renderPnL(pnl);
+
+  // ── Deudas del mes ────────────────────────────────────────
+  const liabilities = txs.filter(t => t.type === 'liability');
+  const liabEl = document.getElementById('report-liabilities-section');
+  if (liabilities.length) {
+    const totalLiab = liabilities.reduce((s, t) => s + t.amount, 0);
+    liabEl.style.display = 'block';
+    document.getElementById('report-liabilities-total').textContent = fmt(totalLiab);
+  } else {
+    liabEl.style.display = 'none';
+  }
+
+  // ── Gastos operativos por categoría (barra) ───────────────
+  const catTotals = {};
+  txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+    catTotals[t.category || 'otros'] = (catTotals[t.category || 'otros'] || 0) + t.amount;
+  });
+  const sorted = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxVal = sorted[0]?.[1] || 1;
+
+  document.getElementById('report-cat-breakdown').innerHTML = sorted.length
+    ? sorted.map(([catId, total]) => {
+        const cat = DB.getCategoryById(catId);
+        const pct = Math.round((total / maxVal) * 100);
+        return `
+          <div class="category-breakdown-item">
+            <div style="font-size:22px;">${cat ? cat.emoji : '📝'}</div>
+            <div class="cat-bar-wrap">
+              <div class="cat-bar-label">
+                <span style="font-weight:600;">${cat ? cat.name : 'Otros'}</span>
+                <span style="color:var(--danger); font-weight:700;">-${fmt(total)}</span>
+              </div>
+              <div class="cat-bar-track">
+                <div class="cat-bar-fill" style="width:${pct}%; background:${cat ? cat.color : '#6b7280'};"></div>
+              </div>
+            </div>
+          </div>`;
+      }).join('')
+    : '<p style="color:var(--gray-400); text-align:center; padding:16px 0; font-size:14px;">Sin gastos operativos este mes</p>';
+
+  // ── Libro Diario — tabla con columnas Debe/Haber ──────────
+  // El CMV aparece con tipografía especial para diferenciarlo
+  document.getElementById('print-tx-body').innerHTML = txs.length
+    ? txs.map(t => {
+        const cat     = DB.getCategoryById(t.category);
+        const acc     = DB.getAccountById(t.account);
+        const fromAcc = DB.getAccountById(t.fromAccount);
+        const toAcc   = DB.getAccountById(t.toAccount);
+
+        let debit = '', credit = '', typeLabel = '', catLabel = '';
+
+        if (t.isCogs) {
+          debit = '';  credit = fmt(t.amount);
+          typeLabel = 'CMV';
+          catLabel  = '📦 Costo de Ventas';
+        } else if (t.type === 'income') {
+          debit = fmt(t.amount); credit = '';
+          typeLabel = 'Ingreso';
+          catLabel  = acc ? acc.name : (cat ? cat.emoji + ' ' + cat.name : 'Ingresos');
+        } else if (t.type === 'expense') {
+          debit = ''; credit = fmt(t.amount);
+          typeLabel = 'Gasto';
+          catLabel  = cat ? cat.emoji + ' ' + cat.name : (acc ? acc.name : 'Gastos');
+        } else if (t.type === 'transfer') {
+          debit = fmt(t.amount); credit = fmt(t.amount);
+          typeLabel = 'Traslado';
+          catLabel  = (fromAcc ? fromAcc.name : '—') + ' → ' + (toAcc ? toAcc.name : '—');
+        } else if (t.type === 'liability') {
+          debit = ''; credit = fmt(t.amount);
+          typeLabel = 'Deuda';
+          catLabel  = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
+        }
+
+        const typeColors = { income:'#16a34a', expense:'#dc2626', transfer:'#2563eb', liability:'#d97706', CMV:'#7c3aed' };
+        const rowBg = t.isCogs ? 'background:#faf5ff;' : '';
+        return `<tr style="${rowBg}">
+          <td>${fmtDate(t.date)}</td>
+          <td>${t.description}${t.isCogs ? ' <em style="color:#9ca3af;font-size:11px;">(auto)</em>' : ''}</td>
+          <td style="color:${typeColors[typeLabel] || '#374151'}; font-weight:600;">${typeLabel}</td>
+          <td>${catLabel}</td>
+          <td style="color:#16a34a; font-weight:700; text-align:right;">${debit}</td>
+          <td style="color:#dc2626; font-weight:700; text-align:right;">${credit}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">Sin transacciones este mes</td></tr>';
+
+  // Info de impresión
+  document.getElementById('print-company').textContent   = s.companyName;
+  document.getElementById('print-period').textContent    = 'Período: ' + monthLabel;
+  document.getElementById('print-generated').textContent = 'Generado el ' + fmtDate(today());
+  document.getElementById('print-footer-company').textContent = s.companyName;
+}
+
+// Renderiza el Estado de Resultados (P&L) — pantalla y PDF
+function _renderPnL(pnl) {
+  const pnlEl = document.getElementById('pnl-section');
+  if (!pnlEl) return;
+
+  const pct = v => v !== null ? ' (' + v.toFixed(1) + '%)' : '';
+  const sign = v => (v >= 0 ? '+' : '') + fmt(v);
+  const colorNet = v => v >= 0 ? 'var(--success)' : 'var(--danger)';
+
+  pnlEl.innerHTML = `
+    <!-- INGRESOS -->
+    <div class="pnl-group">
+      <div class="pnl-group-title income-title">💰 Ingresos</div>
+      ${pnl.salesRevenue > 0 ? `
+        <div class="pnl-row">
+          <span>Ventas de productos</span>
+          <span class="pnl-val income">${fmt(pnl.salesRevenue)}</span>
+        </div>` : ''}
+      ${pnl.serviceIncome > 0 ? `
+        <div class="pnl-row">
+          <span>Servicios / otros ingresos</span>
+          <span class="pnl-val income">${fmt(pnl.serviceIncome)}</span>
+        </div>` : ''}
+      <div class="pnl-subtotal">
+        <span>Total Ingresos</span>
+        <span class="pnl-val income">${fmt(pnl.totalRevenue)}</span>
+      </div>
+    </div>
+
+    <!-- COSTO DE VENTAS -->
+    ${pnl.hasCogs ? `
+    <div class="pnl-group">
+      <div class="pnl-group-title cogs-title">📦 Costo de Mercadería Vendida</div>
+      <div class="pnl-row">
+        <span>CMV · Costo inventario vendido${pnl.cogsMargin > 0 ? ` <span class="pnl-pct">(${pnl.cogsMargin.toFixed(1)}% ventas)</span>` : ''}</span>
+        <span class="pnl-val danger">-${fmt(pnl.cogs)}</span>
+      </div>
+    </div>` : ''}
+
+    <!-- UTILIDAD BRUTA -->
+    <div class="pnl-grand ${pnl.grossProfit >= 0 ? 'positive' : 'negative'}">
+      <div>
+        <div class="pnl-grand-label">📊 UTILIDAD BRUTA</div>
+        <div class="pnl-grand-sub">${pnl.hasCogs ? 'Ventas − CMV' : 'Total Ingresos'}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="pnl-grand-val" style="color:${colorNet(pnl.grossProfit)};">${sign(pnl.grossProfit)}</div>
+        ${pnl.totalRevenue > 0 ? `<div class="pnl-grand-pct">${pnl.grossMargin.toFixed(1)}% margen</div>` : ''}
+      </div>
+    </div>
+
+    <!-- GASTOS OPERATIVOS -->
+    ${pnl.opExpenses > 0 ? `
+    <div class="pnl-group">
+      <div class="pnl-group-title expense-title">💸 Gastos Operativos</div>
+      ${Object.entries(pnl.expByCat).sort((a,b) => b[1]-a[1]).map(([catId, amt]) => {
+        const cat = DB.getCategoryById(catId);
+        return `<div class="pnl-row">
+          <span>${cat ? cat.emoji + ' ' + cat.name : 'Otros gastos'}</span>
+          <span class="pnl-val danger">-${fmt(amt)}</span>
+        </div>`;
+      }).join('')}
+      <div class="pnl-subtotal">
+        <span>Total Gastos Operativos</span>
+        <span class="pnl-val danger">-${fmt(pnl.opExpenses)}</span>
+      </div>
+    </div>` : ''}
+
+    <!-- UTILIDAD NETA -->
+    <div class="pnl-grand net ${pnl.netProfit >= 0 ? 'positive' : 'negative'}">
+      <div>
+        <div class="pnl-grand-label">🎯 UTILIDAD NETA</div>
+        <div class="pnl-grand-sub">Utilidad Bruta − Gastos Operativos</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="pnl-grand-val" style="color:${colorNet(pnl.netProfit)}; font-size:26px;">${sign(pnl.netProfit)}</div>
+        ${pnl.totalRevenue > 0 ? `<div class="pnl-grand-pct">${pnl.netMargin.toFixed(1)}% margen neto</div>` : ''}
+      </div>
+    </div>
+
+    <!-- Explicación si no hay datos suficientes -->
+    ${pnl.totalRevenue === 0 && pnl.opExpenses === 0 ? `
+    <div style="text-align:center; padding:24px 16px; color:var(--gray-400); font-size:14px;">
+      <div style="font-size:32px; margin-bottom:8px;">📊</div>
+      Registra ingresos y gastos para ver el Estado de Resultados
+    </div>` : ''}
+  `;
+}
+
+function prevMonth() {
+  reportMonth--;
+  if (reportMonth < 1) { reportMonth = 12; reportYear--; }
+  renderReports();
+}
+function nextMonth() {
+  reportMonth++;
+  if (reportMonth > 12) { reportMonth = 1; reportYear++; }
+  renderReports();
+}
+function printReport() {
+  showToast('📄 Preparando PDF...');
+  setTimeout(() => window.print(), 400);
+}
+
+// ── Inventario ─────────────────────────────────────────────────────────────────
+function renderInventory() {
+  const products = DB.getInventory();
+  const container = document.getElementById('inventory-list');
+
+  if (!products.length) {
+    container.innerHTML = emptyHTML('📦', 'Sin productos', 'Agrega tu primer producto con el botón +');
+    return;
+  }
+
+  container.innerHTML = products.map(p => `
+    <div class="card inv-card" style="margin-bottom:10px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="font-size:36px; width:48px; text-align:center;">${p.emoji || '📦'}</div>
+        <div style="flex:1;">
+          <div style="font-size:16px; font-weight:700;">${p.name}</div>
+          <div style="font-size:13px; color:var(--gray-500); margin-top:2px;">
+            ${p.unitCost ? 'Costo: ' + fmt(p.unitCost) + ' / ' + p.unit : p.unit}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:24px; font-weight:800; color:${p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)'};">${p.quantity}</div>
+          <div style="font-size:11px; color:var(--gray-500);">${p.unit}</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openProductForm('${p.id}')">✏️ Editar</button>
+        <button class="btn btn-outline btn-sm" onclick="adjustStock('${p.id}')">📥 Ajustar stock</button>
+        <button class="btn btn-icon" style="background:var(--danger-light); color:var(--danger);" onclick="deleteProduct('${p.id}')">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Total valor inventario
+  const totalValue = products.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
+  document.getElementById('inv-total-value').textContent = fmt(totalValue);
+  document.getElementById('inv-total-items').textContent = products.length + ' producto' + (products.length !== 1 ? 's' : '');
+}
+
+function openProductForm(editId = null) {
+  const p = editId ? DB.getProductById(editId) : null;
+  const EMOJIS = ['📦','👗','👕','👖','👟','👔','👜','🧴','💄','🍕','🧃','📱','🔧','📚','🪑','🖥️'];
+
+  const sheet = document.getElementById('settings-sheet');
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">${p ? 'Editar Producto' : 'Nuevo Producto'}</h3>
+    <div class="form-group">
+      <label class="form-label">Emoji / Ícono</label>
+      <div id="emoji-picker" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        ${EMOJIS.map(e => `<button onclick="selectEmoji('${e}')" style="font-size:24px; width:40px; height:40px; border-radius:8px; background:${(p?.emoji||'📦')===e?'var(--primary-light)':'var(--gray-100)'}; border:${(p?.emoji||'📦')===e?'2px solid var(--primary)':'2px solid transparent'};" data-emoji="${e}">${e}</button>`).join('')}
+      </div>
+      <input type="hidden" id="p-emoji" value="${p?.emoji || '📦'}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nombre del producto *</label>
+      <input type="text" class="form-control" id="p-name" value="${p?.name || ''}" placeholder="Ej: Blusas, Zapatos, Shampoo">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Stock actual</label>
+      <input type="number" class="form-control" id="p-qty" value="${p?.quantity ?? 0}" min="0" step="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Costo unitario (opcional)</label>
+      <input type="number" class="form-control" id="p-cost" value="${p?.unitCost || ''}" min="0" step="any" placeholder="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Unidad de medida</label>
+      <select class="form-control" id="p-unit">
+        ${['unidades','pares','metros','litros','kilos','cajas','docenas'].map(u => `<option ${(p?.unit||'unidades')===u?'selected':''}>${u}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block mt-16" onclick="saveProduct('${editId || ''}')">
+      ${p ? '✅ Actualizar' : '✅ Agregar Producto'}
+    </button>
+    ${p ? `<button class="btn btn-danger btn-block mt-8" onclick="deleteProduct('${p.id}')">🗑️ Eliminar producto</button>` : ''}
+  `;
+  sheet.classList.add('open');
+}
+
+function selectEmoji(e) {
+  document.getElementById('p-emoji').value = e;
+  document.querySelectorAll('#emoji-picker button').forEach(btn => {
+    const isSelected = btn.dataset.emoji === e;
+    btn.style.background = isSelected ? 'var(--primary-light)' : 'var(--gray-100)';
+    btn.style.border = isSelected ? '2px solid var(--primary)' : '2px solid transparent';
+  });
+}
+
+function saveProduct(editId) {
+  const name = document.getElementById('p-name')?.value.trim();
+  if (!name) { showToast('⚠️ Escribe el nombre del producto'); return; }
+  const data = {
+    name,
+    emoji:    document.getElementById('p-emoji')?.value || '📦',
+    quantity: parseFloat(document.getElementById('p-qty')?.value) || 0,
+    unitCost: parseFloat(document.getElementById('p-cost')?.value) || 0,
+    unit:     document.getElementById('p-unit')?.value || 'unidades',
+  };
+  if (editId) DB.updateProduct(editId, data);
+  else        DB.addProduct(data);
+  closeSettingsSheet();
+  renderInventory();
+  showToast(editId ? '✅ Producto actualizado' : '✅ Producto agregado');
+}
+
+function adjustStock(productId) {
+  const p = DB.getProductById(productId);
+  if (!p) return;
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">Ajustar Stock — ${p.emoji || '📦'} ${p.name}</h3>
+    <div style="text-align:center; margin:16px 0; padding:16px; background:var(--gray-50); border-radius:10px;">
+      <div style="font-size:13px; color:var(--gray-500);">Stock actual</div>
+      <div style="font-size:42px; font-weight:800; color:var(--primary);">${p.quantity}</div>
+      <div style="font-size:13px; color:var(--gray-500);">${p.unit}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nuevo stock</label>
+      <input type="number" class="form-control" id="adj-qty" value="${p.quantity}" min="0" step="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo</label>
+      <input type="text" class="form-control" id="adj-reason" placeholder="Ej: Conteo físico, Pérdida, Devolución">
+    </div>
+    <button class="btn btn-primary btn-block mt-16" onclick="
+      const qty = parseFloat(document.getElementById('adj-qty').value) || 0;
+      DB.updateProduct('${productId}', { quantity: qty });
+      closeSettingsSheet();
+      renderInventory();
+      showToast('✅ Stock ajustado a ' + qty + ' ${p.unit}');
+    ">✅ Guardar ajuste</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function deleteProduct(id) {
+  if (!confirm('¿Eliminar este producto? El historial de transacciones no se verá afectado.')) return;
+  DB.deleteProduct(id);
+  closeSettingsSheet();
+  renderInventory();
+  showToast('🗑️ Producto eliminado');
+}
+
+// ── Importar desde Excel / CSV ────────────────────────────────────────────────
+function importFromExcel() {
+  if (typeof XLSX === 'undefined') {
+    showToast('⚠️ Conecta a internet una vez para cargar el módulo Excel', 4000);
+    return;
+  }
+  const input = document.createElement('input');
+  input.type   = 'file';
+  input.accept = '.xlsx,.xls,.csv';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => _processExcelData(ev.target.result, file.name);
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+}
+
+function _processExcelData(buffer, filename) {
+  let rows;
+  try {
+    const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  } catch {
+    showToast('❌ No se pudo leer el archivo. Usa .xlsx o .csv'); return;
+  }
+
+  if (rows.length < 2) { showToast('⚠️ El archivo está vacío'); return; }
+
+  // Detectar columnas por encabezado (flexible, case-insensitive)
+  const header = rows[0].map(h => String(h).toLowerCase().trim());
+  const iNombre   = header.findIndex(h => h.includes('producto') || h.includes('nombre'));
+  const iCantidad = header.findIndex(h => h.includes('cantidad') || h.includes('qty') || h.includes('stock'));
+  const iCosto    = header.findIndex(h => h.includes('costo') || h.includes('precio') || h.includes('price'));
+
+  if (iNombre < 0) { showToast('❌ No se encontró columna "Producto" o "Nombre"'); return; }
+
+  let added = 0, updated = 0, skipped = 0;
+  const errors = [];
+
+  rows.slice(1).forEach((row, idx) => {
+    const lineNum = idx + 2;
+    const nombre   = String(row[iNombre] ?? '').trim();
+    const cantStr  = iCantidad >= 0 ? row[iCantidad] : 0;
+    const costoStr = iCosto    >= 0 ? row[iCosto]    : 0;
+
+    if (!nombre) return; // fila vacía — silencioso
+
+    const cantidad = parseFloat(cantStr);
+    const costo    = parseFloat(costoStr);
+
+    if (iCantidad >= 0 && isNaN(cantidad)) {
+      errors.push(`Fila ${lineNum}: cantidad inválida ("${cantStr}")`); skipped++; return;
+    }
+    if (iCosto >= 0 && isNaN(costo)) {
+      errors.push(`Fila ${lineNum}: costo inválido ("${costoStr}")`); skipped++; return;
+    }
+
+    const existente = DB.getInventory().find(
+      p => p.name.toLowerCase() === nombre.toLowerCase()
+    );
+
+    if (existente) {
+      // Suma cantidad, actualiza costo si se indicó
+      const newQty  = (existente.quantity || 0) + (isNaN(cantidad) ? 0 : cantidad);
+      const newCost = (!isNaN(costo) && costo > 0) ? costo : existente.unitCost;
+      DB.updateProduct(existente.id, { quantity: newQty, unitCost: newCost });
+      updated++;
+    } else {
+      DB.addProduct({
+        name:     nombre,
+        quantity: isNaN(cantidad) ? 0 : cantidad,
+        unitCost: isNaN(costo)    ? 0 : costo,
+        emoji:    '📦',
+        unit:     'unidades',
+      });
+      added++;
+    }
+  });
+
+  renderInventory();
+  const msg = `✅ ${added} agregados · ${updated} actualizados${skipped ? ` · ${skipped} omitidos` : ''}`;
+  showToast(msg, 4000);
+  if (errors.length) {
+    console.warn('Errores de importación:', errors);
+    setTimeout(() => showToast('⚠️ ' + errors[0], 4000), 2800);
+  }
+}
+
+function openImportSheet() {
+  const xlsxReady = typeof XLSX !== 'undefined';
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">📊 Importar Inventario</h3>
+
+    ${!xlsxReady ? `
+      <div style="background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:#92400e;">
+        ⚠️ <strong>Se necesita internet una vez</strong> para cargar el módulo de Excel.<br>
+        Después funciona sin conexión.
+      </div>
+    ` : ''}
+
+    <div style="background:var(--primary-light);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--primary);line-height:1.6;">
+      <strong>Formato requerido del archivo Excel:</strong><br><br>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="background:var(--primary);color:white;">
+          <th style="padding:6px 10px;text-align:left;border-radius:4px 0 0 0;">Producto</th>
+          <th style="padding:6px 10px;text-align:left;">Cantidad</th>
+          <th style="padding:6px 10px;text-align:left;border-radius:0 4px 0 0;">Costo</th>
+        </tr>
+        <tr style="background:white;">
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">Blusas</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">10</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">25000</td>
+        </tr>
+        <tr style="background:#f9fafb;">
+          <td style="padding:6px 10px;">Jeans</td>
+          <td style="padding:6px 10px;">5</td>
+          <td style="padding:6px 10px;">50000</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.6;">
+      • Si el producto <strong>ya existe</strong>, la cantidad se <strong>suma</strong> al stock actual.<br>
+      • Si es <strong>nuevo</strong>, se crea automáticamente.<br>
+      • Las filas vacías se ignoran.
+    </div>
+
+    <button class="btn btn-primary btn-block mb-12" onclick="importFromExcel()">
+      📂 Seleccionar archivo Excel / CSV
+    </button>
+    <button class="btn btn-outline btn-block mb-12" onclick="showExcelTemplate()">
+      📥 Descargar plantilla de ejemplo
+    </button>
+    <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">
+      Cancelar
+    </button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function showExcelTemplate() {
+  if (typeof XLSX === 'undefined') { showToast('⚠️ Conecta a internet una vez para cargar el módulo'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Producto', 'Cantidad', 'Costo'],
+    ['Blusas',   10,         25000],
+    ['Jeans',    5,          50000],
+    ['Zapatos',  8,          80000],
+  ]);
+  ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+  XLSX.writeFile(wb, 'plantilla-inventario.xlsx');
+  showToast('📥 Plantilla descargada');
+}
+
+// ── Gastos Recurrentes ────────────────────────────────────────────────────────
+const FREQ_LABELS = { monthly: 'Mensual' };
+const DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
+
+function fmtNextExec(r) {
+  const d = DB.getNextExecution(r);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return 'Hoy';
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
+}
+
+// Renderiza la pantalla principal de recurrentes (dentro del sheet de settings)
+function openRecurringManager() {
+  const list = DB.getRecurrings();
+  const total = list.filter(r => r.isActive).reduce((s, r) => s + r.amount, 0);
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <h3 class="sheet-title" style="margin:0;">⚙️ Gastos Recurrentes</h3>
+      <button class="btn btn-primary btn-sm" onclick="openRecurringForm()">+ Nuevo</button>
+    </div>
+
+    ${list.length ? `
+      <div style="background:var(--primary-light); border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:12px; color:var(--primary); font-weight:600;">Total fijo mensual</div>
+          <div style="font-size:22px; font-weight:800; color:var(--primary);">${fmt(total)}</div>
+        </div>
+        <div style="font-size:11px; color:var(--primary); text-align:right;">
+          ${list.filter(r => r.isActive).length} activo(s)<br>
+          ${list.filter(r => !r.isActive).length} inactivo(s)
+        </div>
+      </div>
+    ` : ''}
+
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+      ${list.length ? list.map(r => {
+        const cat = DB.getCategoryById(r.category);
+        const acc = DB.getAccountById(r.account);
+        return `
+          <div style="background:${r.isActive ? 'var(--white)' : 'var(--gray-50)'}; border:1.5px solid ${r.isActive ? 'var(--gray-200)' : 'var(--gray-200)'}; border-radius:12px; padding:14px; ${r.isActive ? '' : 'opacity:.6;'}">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div style="font-size:26px;">${cat ? cat.emoji : '💸'}</div>
+              <div style="flex:1;">
+                <div style="font-weight:700; font-size:15px;">${r.name}</div>
+                <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+                  Día ${r.dayOfMonth} de cada mes &nbsp;·&nbsp;
+                  ${cat ? cat.name : 'Sin categoría'}
+                  ${acc ? ' · ' + acc.name : ''}
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:17px; font-weight:800; color:var(--danger);">${fmt(r.amount)}</div>
+                <div style="font-size:11px; color:var(--gray-400); margin-top:1px;">
+                  Próx: ${r.isActive ? fmtNextExec(r) : 'Pausado'}
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--gray-100);">
+              <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openRecurringForm('${r.id}')">✏️ Editar</button>
+              <button class="btn btn-sm" style="flex:1; background:${r.isActive ? '#fef3c7' : '#dcfce7'}; color:${r.isActive ? '#92400e' : '#166534'};"
+                onclick="toggleRecurring('${r.id}', ${!r.isActive})">
+                ${r.isActive ? '⏸ Pausar' : '▶️ Activar'}
+              </button>
+              <button class="btn btn-sm btn-icon" style="background:var(--danger-light); color:var(--danger); border-radius:8px; width:36px;"
+                onclick="confirmDeleteRecurring('${r.id}')">🗑️</button>
+            </div>
+          </div>
+        `;
+      }).join('') : `
+        <div style="text-align:center; padding:40px 20px; color:var(--gray-400);">
+          <div style="font-size:48px; margin-bottom:12px;">🔄</div>
+          <div style="font-size:16px; font-weight:600; color:var(--gray-700); margin-bottom:6px;">Sin gastos recurrentes</div>
+          <p style="font-size:14px; line-height:1.5;">Configura Internet, Arriendo y otros gastos fijos para que se registren solos cada mes.</p>
+        </div>
+      `}
+    </div>
+
+    <div style="background:var(--gray-50); border-radius:10px; padding:12px; font-size:13px; color:var(--gray-600); line-height:1.6;">
+      💡 Los gastos recurrentes se registran automáticamente cuando abres la app. Si no abriste la app en varios meses, se generan todos los meses pendientes.
+    </div>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+// Formulario para agregar / editar un gasto recurrente
+function openRecurringForm(editId = null) {
+  const r   = editId ? DB.getRecurringById(editId) : null;
+  const cats = DB.getCategoriesByType('expense');
+  const accs = DB.getAccounts();
+
+  const catOpts = '<option value="">— Categoría (recomendada) —</option>' +
+    cats.map(c => `<option value="${c.id}" ${r?.category === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('');
+
+  const accOpts = '<option value="">— Cuenta (opcional) —</option>' +
+    accs.map(a => `<option value="${a.id}" ${r?.account === a.id ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
+
+  const dayOpts = DAYS.map(d =>
+    `<option value="${d}" ${(r?.dayOfMonth ?? 1) === d ? 'selected' : ''}>${d}</option>`
+  ).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">${r ? 'Editar Gasto Recurrente' : 'Nuevo Gasto Recurrente'}</h3>
+
+    <div style="background:var(--primary-light); border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--primary); line-height:1.6;">
+      🔄 Este gasto se registrará <strong>automáticamente</strong> cada mes en el día que indiques.
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Nombre del gasto *</label>
+      <input type="text" class="form-control" id="rec-name"
+        value="${r?.name || ''}" placeholder="Ej: Internet, Arriendo, Netflix">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Monto mensual *</label>
+      <input type="number" class="form-control" id="rec-amount"
+        value="${r?.amount || ''}" placeholder="0" min="0" step="any" inputmode="decimal">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Categoría</label>
+      <select class="form-control" id="rec-category">${catOpts}</select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cuenta de débito</label>
+      <select class="form-control" id="rec-account">${accOpts}</select>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Día del mes *</label>
+        <select class="form-control" id="rec-day">${dayOpts}</select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Fecha de inicio</label>
+        <input type="date" class="form-control" id="rec-start"
+          value="${r?.startDate || today()}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <input type="text" class="form-control" id="rec-notes"
+        value="${r?.notes || ''}" placeholder="Ej: Plan básico, proveedor X">
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="saveRecurring('${editId || ''}')">
+      ✅ ${r ? 'Actualizar' : 'Guardar gasto recurrente'}
+    </button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="openRecurringManager()">
+      ← Volver a la lista
+    </button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function saveRecurring(editId) {
+  const name   = document.getElementById('rec-name')?.value.trim();
+  const amount = parseFloat(document.getElementById('rec-amount')?.value);
+
+  if (!name)            { showToast('⚠️ Escribe el nombre del gasto'); return; }
+  if (!amount || amount <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
+
+  const data = {
+    name,
+    amount,
+    category:   document.getElementById('rec-category')?.value || '',
+    account:    document.getElementById('rec-account')?.value  || '',
+    dayOfMonth: parseInt(document.getElementById('rec-day')?.value) || 1,
+    startDate:  document.getElementById('rec-start')?.value || today(),
+    notes:      document.getElementById('rec-notes')?.value.trim() || '',
+  };
+
+  if (editId) {
+    DB.updateRecurring(editId, data);
+    showToast('✅ Gasto recurrente actualizado');
+  } else {
+    DB.addRecurring(data);
+    showToast('✅ Gasto recurrente configurado');
+  }
+
+  // Procesar inmediatamente por si el día ya pasó este mes
+  const generated = DB.processRecurringExpenses();
+  if (generated.length) showToast(`🔄 ${generated.length} gasto(s) generado(s) automáticamente`, 3500);
+
+  openRecurringManager();
+  if (currentScreen === 'dashboard') renderDashboard();
+}
+
+function toggleRecurring(id, newActive) {
+  DB.updateRecurring(id, { isActive: newActive });
+  if (newActive) {
+    const generated = DB.processRecurringExpenses();
+    if (generated.length) showToast(`🔄 ${generated.length} gasto(s) generado(s)`, 3000);
+  }
+  openRecurringManager();
+  showToast(newActive ? '▶️ Recurrente activado' : '⏸ Recurrente pausado');
+}
+
+function confirmDeleteRecurring(id) {
+  const r = DB.getRecurringById(id);
+  if (!r) return;
+  if (!confirm(`¿Eliminar "${r.name}"?\n\nLas transacciones históricas ya generadas NO se borrarán.`)) return;
+  DB.deleteRecurring(id);
+  openRecurringManager();
+  showToast('🗑️ Gasto recurrente eliminado');
+}
+
+// Renderiza el bloque de "Próximos pagos" del dashboard
+function renderUpcomingRecurrings() {
+  const el = document.getElementById('dash-upcoming');
+  if (!el) return;
+  const actives = DB.getRecurrings().filter(r => r.isActive);
+  if (!actives.length) { el.style.display = 'none'; return; }
+
+  // Ordenar por próxima ejecución
+  const sorted = actives
+    .map(r => ({ r, next: DB.getNextExecution(r) }))
+    .sort((a, b) => a.next - b.next)
+    .slice(0, 4);
+
+  const now   = new Date();
+  const items = sorted.map(({ r, next }) => {
+    const cat    = DB.getCategoryById(r.category);
+    const daysTo = Math.ceil((next - now) / 86400000);
+    const label  = daysTo <= 0 ? '<span style="color:var(--danger);font-weight:700;">Hoy</span>'
+                 : daysTo === 1 ? '<span style="color:var(--warning);font-weight:600;">Mañana</span>'
+                 : `<span style="color:var(--gray-500);">en ${daysTo} días</span>`;
+    return `
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--gray-100);">
+        <div style="font-size:20px;">${cat ? cat.emoji : '💸'}</div>
+        <div style="flex:1;">
+          <div style="font-size:14px; font-weight:600;">${r.name}</div>
+          <div style="font-size:12px;">${label} · día ${r.dayOfMonth}</div>
+        </div>
+        <div style="font-size:14px; font-weight:700; color:var(--danger);">${fmt(r.amount)}</div>
+      </div>
+    `;
+  }).join('');
+
+  const totalMensual = actives.reduce((s, r) => s + r.amount, 0);
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header" style="margin-bottom:4px;">
+        <div class="card-title">🔄 Gastos Automáticos</div>
+        <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="openRecurringManager(); document.getElementById('settings-sheet').classList.add('open');">Gestionar →</button>
+      </div>
+      <div style="font-size:12px; color:var(--gray-400); margin-bottom:10px;">Total fijo: ${fmt(totalMensual)}/mes</div>
+      ${items}
+    </div>
+  `;
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+function renderSettings() {
+  const s = DB.getSettings();
+  document.getElementById('settings-company-val').textContent  = s.companyName;
+  document.getElementById('settings-currency-val').textContent = s.currency;
+
+  const recs   = DB.getRecurrings();
+  const active = recs.filter(r => r.isActive);
+  const descEl = document.getElementById('settings-recurring-desc');
+  if (descEl) {
+    descEl.textContent = active.length
+      ? `${active.length} activo(s) · ${fmt(active.reduce((s, r) => s + r.amount, 0))}/mes`
+      : 'Internet, arriendo, suscripciones…';
+  }
+}
+
+function openSettingsSheet(type) {
+  const s = DB.getSettings();
+  const content = document.getElementById('settings-sheet-content');
+
+  if (type === 'company') {
+    content.innerHTML = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Información del Negocio</h3>
+      <div class="form-group"><label class="form-label">Nombre del negocio</label>
+        <input class="form-control" id="s-company" value="${s.companyName}" placeholder="Ej: Tienda Doña María"></div>
+      <div class="form-group"><label class="form-label">Propietario</label>
+        <input class="form-control" id="s-owner" value="${s.ownerName || ''}" placeholder="Tu nombre"></div>
+      <button class="btn btn-primary btn-block mt-16" onclick="DB.updateSettings({companyName:document.getElementById('s-company').value,ownerName:document.getElementById('s-owner').value}); closeSettingsSheet(); renderSettings(); showToast('✅ Guardado');">Guardar</button>
+    `;
+  } else if (type === 'currency') {
+    const currencies = [['COP','$','Peso colombiano'],['MXN','$','Peso mexicano'],['PEN','S/','Sol peruano'],['CLP','$','Peso chileno'],['ARS','$','Peso argentino'],['USD','$','Dólar'],['EUR','€','Euro'],['BRL','R$','Real brasileño']];
+    content.innerHTML = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Moneda</h3>
+      ${currencies.map(([code, sym, name]) => `
+        <button class="settings-item" onclick="DB.updateSettings({currency:'${code}',currencySymbol:'${sym}'}); closeSettingsSheet(); renderSettings(); showToast('✅ Moneda: ${code}');">
+          <span style="font-size:18px; font-weight:700; width:38px; color:var(--primary);">${sym}</span>
+          <div class="settings-item-info"><div class="settings-item-label">${name}</div><div class="settings-item-desc">${code}</div></div>
+          ${s.currency === code ? '<span style="color:var(--success); font-size:20px;">✓</span>' : ''}
+        </button>`).join('')}
+    `;
+  } else if (type === 'export') {
+    content.innerHTML = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Exportar / Importar</h3>
+      <p style="font-size:14px; color:var(--gray-600); margin-bottom:20px; line-height:1.6;">Guarda una copia de seguridad o transfiere tus datos a otro dispositivo.</p>
+      <button class="btn btn-primary btn-block mb-12" onclick="exportData()">📥 Exportar datos (JSON)</button>
+      <div class="form-group"><label class="form-label">Importar datos</label>
+        <input type="file" class="form-control" id="import-file" accept=".json" onchange="importData(this)"></div>
+      <div style="background:var(--warning-light); border-radius:8px; padding:12px; margin-top:12px; font-size:13px; color:var(--warning);">⚠️ Importar reemplazará todos los datos actuales.</div>
+    `;
+  } else if (type === 'guide') {
+    content.innerHTML = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Guía de Uso</h3>
+      <div class="guide-step"><div class="guide-num">1</div><div class="guide-text"><strong>Ingreso</strong> — Ventas, servicios, comisiones. Suma al resultado neto.</div></div>
+      <div class="guide-step"><div class="guide-num">2</div><div class="guide-text"><strong>Gasto</strong> — Arriendo, internet, compras, salarios. Resta al resultado neto.</div></div>
+      <div class="guide-step"><div class="guide-num">3</div><div class="guide-text"><strong>Traslado</strong> — Mover dinero entre Caja y Banco. <strong>NO afecta el resultado</strong>.</div></div>
+      <div class="guide-step"><div class="guide-num">4</div><div class="guide-text"><strong>Deuda/Pasivo</strong> — Dinero que debes. Ej: "Alianza del Valle". <strong>NO afecta el resultado</strong> hasta que la registres como gasto al pagar.</div></div>
+      <div class="guide-step"><div class="guide-num">5</div><div class="guide-text"><strong>Inventario</strong> — Registra productos. Al vender con "afecta inventario", el stock baja automáticamente.</div></div>
+      <div class="guide-step"><div class="guide-num">6</div><div class="guide-text"><strong>PDF</strong> — En Reportes, elige el mes y toca "Generar PDF". El libro diario muestra columnas Debe/Haber.</div></div>
+      <button class="btn btn-secondary mt-16" onclick="closeSettingsSheet()">Entendido ✓</button>
+    `;
+  } else if (type === 'about') {
+    content.innerHTML = `
+      <div class="sheet-handle"></div>
+      <div style="text-align:center; padding:20px 0;">
+        <div style="font-size:64px; margin-bottom:12px;">💼</div>
+        <h2 style="font-size:22px; font-weight:800; color:var(--primary); margin-bottom:6px;">ContaFácil Pro</h2>
+        <p style="font-size:14px; color:var(--gray-500);">v2.0 — Contabilidad correcta para emprendedores</p>
+        <p style="font-size:13px; color:var(--gray-400); margin-top:12px;">100% offline · Datos guardados en tu dispositivo</p>
+      </div>
+      <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+    `;
+  }
+
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function closeSettingsSheet() { document.getElementById('settings-sheet').classList.remove('open'); }
+
+// ── Export / Import ────────────────────────────────────────────────────────────
+function exportData() {
+  const blob = new Blob([DB.exportData()], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `contafacil-backup-${today()}.json` });
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ Datos exportados');
+}
+
+function importData(input) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { DB.importData(e.target.result); closeSettingsSheet(); navigate('dashboard'); showToast('✅ Datos importados'); }
+    catch { showToast('❌ Archivo inválido'); }
+  };
+  reader.readAsText(input.files[0]);
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function emptyHTML(icon, title, text) {
+  return `<div class="empty-state"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><p class="empty-state-text">${text}</p></div>`;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  DB.init();
+
+  // Procesar gastos recurrentes pendientes al abrir la app
+  setTimeout(() => {
+    const generated = DB.processRecurringExpenses();
+    if (generated.length) {
+      const names = [...new Set(generated.map(g => g.name))].join(', ');
+      showToast(`🔄 ${generated.length} gasto(s) automático(s) registrado(s): ${names}`, 4500);
+      if (currentScreen === 'dashboard') renderDashboard();
+      if (currentScreen === 'journal')   renderJournal();
+    }
+  }, 800);
+
+  if (!DB.isOnboarded()) {
+    document.getElementById('screen-onboarding').classList.add('active');
+    document.getElementById('bottom-nav').style.display = 'none';
+    document.getElementById('fab').style.display = 'none';
+    renderOnboarding();
+  } else {
+    navigate('dashboard');
+  }
+
+  document.getElementById('journal-search').addEventListener('input', e => {
+    journalSearch = e.target.value;
+    renderJournal();
+  });
+
+  document.getElementById('detail-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('detail-overlay')) closeDetail();
+  });
+  document.getElementById('settings-sheet').addEventListener('click', e => {
+    if (e.target === document.getElementById('settings-sheet')) closeSettingsSheet();
+  });
+
+  document.querySelectorAll('.nav-item').forEach(item =>
+    item.addEventListener('click', () => navigate(item.dataset.screen))
+  );
+
+  document.getElementById('dash-recent').addEventListener('click', e => {
+    const li = e.target.closest('[data-tx-id]');
+    if (li) openTxDetail(li.dataset.txId);
+  });
+});

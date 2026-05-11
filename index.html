@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ContaFácil">
+  <link rel="manifest" href="manifest.json">
+  <title>ContaFácil Pro</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Estilos adicionales v2 */
+    .tx-icon.liability { background: #fef3c7; }
+    .tx-amount.liability { color: var(--warning); }
+    .badge-liability { background: #fef3c7; color: #92400e; }
+    .type-tab.active-liability { background: var(--white); color: var(--warning); box-shadow: var(--shadow-sm); }
+
+    /* Alerta deudas */
+    #dash-liabilities-alert {
+      display: none;
+      background: #fef3c7;
+      border: 1.5px solid #fcd34d;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      color: #92400e;
+    }
+
+    /* ── Estado de Resultados (P&L) ── */
+    #pnl-section { display:flex; flex-direction:column; gap:0; }
+
+    .pnl-group { margin-bottom:4px; }
+    .pnl-group-title {
+      font-size:11px; font-weight:700; text-transform:uppercase;
+      letter-spacing:.6px; padding:10px 0 6px;
+      border-bottom:1px solid var(--gray-100);
+    }
+    .pnl-group-title.income-title  { color:var(--success); }
+    .pnl-group-title.cogs-title    { color:#7c3aed; }
+    .pnl-group-title.expense-title { color:var(--danger); }
+
+    .pnl-row {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:7px 0; font-size:14px; color:var(--gray-700);
+      border-bottom:1px solid var(--gray-50);
+    }
+    .pnl-val { font-weight:600; }
+    .pnl-val.income  { color:var(--success); }
+    .pnl-val.danger  { color:var(--danger); }
+    .pnl-pct { font-size:11px; color:var(--gray-400); margin-left:4px; }
+
+    .pnl-subtotal {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:8px 0; font-size:14px; font-weight:700;
+      border-top:1.5px solid var(--gray-200); margin-top:2px;
+    }
+
+    .pnl-grand {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:14px 16px; border-radius:var(--radius);
+      margin:10px 0; background:var(--gray-50);
+      border:1.5px solid var(--gray-200);
+    }
+    .pnl-grand.net { background:linear-gradient(135deg,#f0fdf4,#dcfce7); border-color:#bbf7d0; }
+    .pnl-grand.net.negative { background:linear-gradient(135deg,#fff1f2,#fee2e2); border-color:#fecaca; }
+    .pnl-grand.positive:not(.net) { border-color:#a7f3d0; }
+    .pnl-grand-label { font-size:13px; font-weight:800; color:var(--gray-900); }
+    .pnl-grand-sub   { font-size:11px; color:var(--gray-500); margin-top:2px; }
+    .pnl-grand-val   { font-size:22px; font-weight:800; }
+    .pnl-grand-pct   { font-size:11px; color:var(--gray-500); text-align:right; margin-top:2px; }
+
+    /* CMV en diario */
+    .tx-icon.cogs { background:#ede9fe; }
+    .tx-amount.cogs { color:#7c3aed; }
+
+    /* Print v2: tabla Debe/Haber */
+    @media print {
+      .bottom-nav, .fab, .topbar, .btn, .filter-bar,
+      #screen-onboarding, #screen-journal, #screen-form,
+      #screen-settings, #screen-inventory, .no-print { display: none !important; }
+
+      body { background: white; max-width: none; font-size: 12px; }
+      #screen-reports { display: block !important; padding: 0; }
+
+      .print-header { display: block !important; text-align: center; padding: 20px; border-bottom: 3px solid #2563eb; margin-bottom: 20px; }
+      .print-header h1 { font-size: 24px; color: #2563eb; }
+      .print-header p  { color: #6b7280; font-size: 13px; margin-top: 4px; }
+
+      .print-summary-box { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; page-break-inside: avoid; }
+      .print-summary-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
+      .print-summary-item .lbl { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; }
+      .print-summary-item .val { font-size: 20px; font-weight: 800; margin-top: 4px; }
+
+      .card { box-shadow: none !important; border: 1px solid #e5e7eb; page-break-inside: avoid; }
+      .report-summary { page-break-inside: avoid; }
+
+      .print-footer { margin-top: 30px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 10px; }
+
+      /* Tabla libro diario */
+      #print-tx-body tr:nth-child(even) td { background: #f9fafb; }
+      .report-cat-section { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     ONBOARDING
+═══════════════════════════════════════════════════ -->
+<div id="screen-onboarding" class="screen">
+  <div class="onboarding-wrap">
+    <div style="text-align:center; margin-bottom:8px;">
+      <div style="font-size:26px; font-weight:900; color:var(--primary); letter-spacing:-1px;">💼 ContaFácil Pro</div>
+    </div>
+    <div class="ob-steps" id="ob-slides"></div>
+    <div id="ob-dots" class="ob-dots"></div>
+    <div class="ob-actions">
+      <button id="ob-next" class="btn btn-primary btn-block" onclick="obNext()">Siguiente →</button>
+      <button class="btn btn-secondary btn-block" onclick="obPrev()">Anterior</button>
+      <button class="btn" style="color:var(--gray-400); font-size:13px;" onclick="finishOnboarding()">Saltar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     DASHBOARD
+═══════════════════════════════════════════════════ -->
+<div id="screen-dashboard" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo"><span>💼</span><span id="dash-company">Mi Negocio</span></div>
+    <button class="topbar-action" onclick="openSettingsSheet('guide')">❓</button>
+  </div>
+  <div class="content">
+    <!-- Alerta deudas pendientes -->
+    <div id="dash-liabilities-alert"></div>
+
+    <!-- Balance Hero -->
+    <div class="balance-hero">
+      <div class="balance-label">🎯 Utilidad Neta Acumulada</div>
+      <div class="balance-amount" id="dash-balance">$ 0</div>
+      <div class="balance-row">
+        <div class="balance-mini">
+          <div class="balance-mini-label">📅 <span id="dash-month">Este mes</span></div>
+          <div class="balance-mini-amount" id="dash-net">$ 0</div>
+        </div>
+        <div class="balance-mini">
+          <div class="balance-mini-label">💰 Ingresos</div>
+          <div class="balance-mini-amount" id="dash-income">$ 0</div>
+        </div>
+        <div class="balance-mini">
+          <div class="balance-mini-label">💸 Gastos Op.</div>
+          <div class="balance-mini-amount" id="dash-expense">$ 0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel CMV (visible solo si hay ventas con inventario) -->
+    <div id="dash-cogs-panel" style="display:none; background:white; border-radius:var(--radius); padding:12px 16px; margin-bottom:12px; box-shadow:var(--shadow-sm); border-left:4px solid #7c3aed;">
+      <div style="font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">📦 Costos de Ventas este mes</div>
+      <div style="display:flex; gap:12px;">
+        <div style="flex:1; text-align:center; padding:8px; background:#faf5ff; border-radius:8px;">
+          <div style="font-size:11px; color:#9ca3af;">CMV</div>
+          <div style="font-size:16px; font-weight:800; color:#7c3aed;" id="dash-cogs-val">$ 0</div>
+        </div>
+        <div style="flex:1; text-align:center; padding:8px; background:#f0fdf4; border-radius:8px;">
+          <div style="font-size:11px; color:#9ca3af;">Utilidad Bruta</div>
+          <div style="font-size:16px; font-weight:800;" id="dash-gross-val">$ 0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accesos rápidos -->
+    <div class="stat-chips">
+      <button class="stat-chip" onclick="setFormType('income'); navigate('form')">
+        <div class="stat-chip-icon">💰</div>
+        <div class="stat-chip-val" style="color:var(--success);">Ingreso</div>
+        <div class="stat-chip-lbl">Registrar</div>
+      </button>
+      <button class="stat-chip" onclick="setFormType('expense'); navigate('form')">
+        <div class="stat-chip-icon">💸</div>
+        <div class="stat-chip-val" style="color:var(--danger);">Gasto</div>
+        <div class="stat-chip-lbl">Registrar</div>
+      </button>
+      <button class="stat-chip" onclick="setFormType('liability'); navigate('form')">
+        <div class="stat-chip-icon">🔴</div>
+        <div class="stat-chip-val" style="color:var(--warning);">Deuda</div>
+        <div class="stat-chip-lbl">Registrar</div>
+      </button>
+      <button class="stat-chip" onclick="navigate('reports')">
+        <div class="stat-chip-icon">📊</div>
+        <div class="stat-chip-val" style="color:var(--primary);">PDF</div>
+        <div class="stat-chip-lbl">Reporte</div>
+      </button>
+    </div>
+
+    <!-- Próximos gastos automáticos (visible solo si hay recurrentes) -->
+    <div id="dash-upcoming" style="display:none;"></div>
+
+    <!-- Recientes -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Movimientos Recientes</div>
+        <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="navigate('journal')">Ver todos →</button>
+      </div>
+      <div id="dash-recent"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     DIARIO
+═══════════════════════════════════════════════════ -->
+<div id="screen-journal" class="screen">
+  <div class="topbar">
+    <div class="topbar-title">📒 Diario Contable</div>
+  </div>
+  <div class="content">
+    <input type="search" class="form-control mb-12" id="journal-search"
+      placeholder="🔍 Buscar..." style="background:var(--white);">
+
+    <div class="filter-bar">
+      <button class="filter-chip active" data-filter="all"       onclick="setJournalFilter('all')">Todos</button>
+      <button class="filter-chip"        data-filter="income"    onclick="setJournalFilter('income')">💰 Ingresos</button>
+      <button class="filter-chip"        data-filter="expense"   onclick="setJournalFilter('expense')">💸 Gastos</button>
+      <button class="filter-chip"        data-filter="transfer"  onclick="setJournalFilter('transfer')">↔️ Traslados</button>
+      <button class="filter-chip"        data-filter="liability" onclick="setJournalFilter('liability')">🔴 Deudas</button>
+    </div>
+
+    <div id="journal-list"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     FORMULARIO — Nueva / Editar Transacción
+═══════════════════════════════════════════════════ -->
+<div id="screen-form" class="screen">
+  <div class="topbar">
+    <button class="topbar-action" onclick="navigate('journal')">←</button>
+    <div class="topbar-title" id="form-title">Nueva Transacción</div>
+    <div style="width:36px;"></div>
+  </div>
+  <div class="content">
+    <!-- Tipo (dinámico: cambia el formulario) -->
+    <div class="type-tabs">
+      <button class="type-tab" data-type="income"    onclick="setFormType('income')">💰 Ingreso</button>
+      <button class="type-tab" data-type="expense"   onclick="setFormType('expense')">💸 Gasto</button>
+      <button class="type-tab" data-type="transfer"  onclick="setFormType('transfer')">↔️ Traslado</button>
+      <button class="type-tab" data-type="liability" onclick="setFormType('liability')">🔴 Deuda</button>
+    </div>
+
+    <!-- Monto (siempre presente) -->
+    <div class="amount-input-wrap">
+      <div style="font-size:13px; color:var(--gray-400); margin-bottom:4px;">MONTO</div>
+      <input type="number" id="f-amount" class="amount-input-large"
+        placeholder="0" min="0" step="any" inputmode="decimal">
+    </div>
+
+    <!-- Descripción (siempre presente) -->
+    <div class="form-group">
+      <label class="form-label">Descripción *</label>
+      <input type="text" id="f-desc" class="form-control"
+        placeholder="Ej: Venta de blusas al cliente García" maxlength="120">
+    </div>
+
+    <!-- Fecha (siempre presente) -->
+    <div class="form-group">
+      <label class="form-label">Fecha *</label>
+      <input type="date" id="f-date" class="form-control">
+    </div>
+
+    <!-- Campos dinámicos según tipo -->
+    <div id="form-dynamic-fields"></div>
+
+    <!-- Notas (siempre presente) -->
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <textarea id="f-notes" class="form-control" rows="2"
+        placeholder="Factura #, nombre cliente, detalles..."></textarea>
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="submitForm()">
+      ✅ Guardar
+    </button>
+    <button id="btn-delete-tx" class="btn btn-danger btn-block mt-8"
+      onclick="deleteCurrentTx()" style="display:none;">
+      🗑️ Eliminar Transacción
+    </button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     INVENTARIO
+═══════════════════════════════════════════════════ -->
+<div id="screen-inventory" class="screen">
+  <div class="topbar">
+    <div class="topbar-title">📦 Inventario</div>
+  </div>
+  <div class="content">
+
+    <!-- Resumen hero -->
+    <div class="card" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:white;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:13px;opacity:.8;margin-bottom:4px;">Valor total en inventario</div>
+          <div style="font-size:28px;font-weight:800;" id="inv-total-value">$ 0</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:13px;opacity:.8;margin-bottom:4px;">Productos</div>
+          <div style="font-size:20px;font-weight:700;" id="inv-total-items">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de acción -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn btn-primary" style="flex:1;gap:6px;" onclick="openProductForm()">
+        ➕ Agregar producto
+      </button>
+      <button class="btn btn-outline" style="flex:1;gap:6px;" onclick="openImportSheet()">
+        📊 Importar Excel
+      </button>
+    </div>
+
+    <!-- Lista de productos -->
+    <div id="inventory-list"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     REPORTES
+═══════════════════════════════════════════════════ -->
+<div id="screen-reports" class="screen">
+  <div class="topbar no-print">
+    <div class="topbar-title">📊 Reportes</div>
+    <button class="topbar-action no-print" onclick="printReport()" title="PDF">🖨️</button>
+  </div>
+
+  <!-- Encabezado solo en impresión -->
+  <div class="print-header" id="print-header-block">
+    <h1 id="print-company">Mi Negocio</h1>
+    <p id="print-period">Reporte mensual</p>
+    <p id="print-generated">Generado hoy</p>
+  </div>
+
+  <!-- Resumen de impresión -->
+  <div class="print-summary-box" style="display:none; margin: 0 16px 16px;">
+    <div class="print-summary-item">
+      <div class="lbl">💰 Ingresos</div>
+      <div class="val" id="print-summary-income" style="color:#16a34a;">$ 0</div>
+    </div>
+    <div class="print-summary-item">
+      <div class="lbl">💸 Gastos</div>
+      <div class="val" id="print-summary-expense" style="color:#dc2626;">$ 0</div>
+    </div>
+    <div class="print-summary-item">
+      <div class="lbl">📈 Resultado</div>
+      <div class="val" id="print-summary-net">$ 0</div>
+    </div>
+    <div class="print-summary-item" id="print-liab-row">
+      <div class="lbl">🔴 Deudas</div>
+      <div class="val" id="print-summary-liab" style="color:#d97706;">$ 0</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Navegación de mes -->
+    <div class="month-nav no-print">
+      <button class="month-nav-btn" onclick="prevMonth()">‹</button>
+      <div class="month-name" id="report-month-name">Mayo 2026</div>
+      <button class="month-nav-btn" onclick="nextMonth()">›</button>
+    </div>
+
+    <!-- ══ ESTADO DE RESULTADOS (P&L) ══ -->
+    <div class="card" style="margin-bottom:12px; padding:16px 20px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="font-size:16px; font-weight:800; color:var(--gray-900);">📈 Estado de Resultados</div>
+        <div style="font-size:11px; color:var(--gray-400); font-weight:500; margin-left:auto;">NIIF PYMES</div>
+      </div>
+      <div style="font-size:12px; color:var(--gray-400); margin-bottom:14px;">Utilidad Bruta = Ventas − CMV &nbsp;·&nbsp; Utilidad Neta = Utilidad Bruta − Gastos</div>
+      <div id="pnl-section"></div>
+    </div>
+
+    <!-- Deudas del mes -->
+    <div id="report-liabilities-section" style="display:none; margin-bottom:12px;">
+      <div class="card" style="background:#fef3c7; border:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:13px; font-weight:700; color:#92400e;">🔴 Deudas / Pasivos del mes</div>
+            <div style="font-size:12px; color:#b45309; margin-top:2px;">No afectan el resultado neto</div>
+          </div>
+          <div style="font-size:20px; font-weight:800; color:#d97706;" id="report-liabilities-total">$ 0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gastos por categoría -->
+    <div class="card report-cat-section">
+      <div class="card-header">
+        <div class="card-title">Gastos por Categoría</div>
+      </div>
+      <div id="report-cat-breakdown"></div>
+    </div>
+
+    <!-- Botón PDF -->
+    <button class="btn btn-primary btn-block no-print" onclick="printReport()" style="margin-bottom:10px;">
+      🖨️ Generar PDF / Imprimir
+    </button>
+
+    <div class="card no-print" style="background:var(--primary-light); border:none; margin-bottom:12px;">
+      <div style="font-size:13px; color:var(--primary); font-weight:600; margin-bottom:4px;">💡 ¿Cómo obtener el PDF?</div>
+      <div style="font-size:13px; color:var(--gray-700); line-height:1.6;">
+        Toca <strong>"Generar PDF / Imprimir"</strong> → en el diálogo selecciona <strong>"Guardar como PDF"</strong> como destino. El libro diario incluye columnas <strong>Debe / Haber</strong>.
+      </div>
+    </div>
+
+    <!-- Tabla Libro Diario (visible en pantalla y en PDF) -->
+    <div class="card" style="overflow-x:auto; padding:0;">
+      <div style="padding:12px 16px; border-bottom:1px solid var(--gray-100);">
+        <div class="card-title">📒 Libro Diario — Detalle de Transacciones</div>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:left; white-space:nowrap;">Fecha</th>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:left;">Descripción</th>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:left; white-space:nowrap;">Tipo</th>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:left;">Categoría</th>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:right; white-space:nowrap;">Debe (+)</th>
+            <th style="background:var(--primary); color:white; padding:8px 10px; text-align:right; white-space:nowrap;">Haber (−)</th>
+          </tr>
+        </thead>
+        <tbody id="print-tx-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Footer de impresión -->
+    <div class="print-footer" style="display:none; margin-top:24px; text-align:center; font-size:11px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px;">
+      <p>Generado con ContaFácil Pro · <span id="print-footer-company"></span></p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     CONFIGURACIÓN
+═══════════════════════════════════════════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="topbar"><div class="topbar-title">⚙️ Configuración</div></div>
+  <div class="content">
+    <div class="settings-section">
+      <div class="settings-section-title">Empresa</div>
+      <button class="settings-item" onclick="openSettingsSheet('company')">
+        <div class="settings-item-icon">🏢</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Información del negocio</div>
+          <div class="settings-item-desc" id="settings-company-val">Mi Negocio</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+      <button class="settings-item" onclick="openSettingsSheet('currency')">
+        <div class="settings-item-icon">💱</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Moneda</div>
+          <div class="settings-item-desc" id="settings-currency-val">COP</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Automatización</div>
+      <button class="settings-item" onclick="openRecurringManager()">
+        <div class="settings-item-icon">🔄</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Gastos Recurrentes</div>
+          <div class="settings-item-desc" id="settings-recurring-desc">Internet, arriendo, suscripciones…</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Datos</div>
+      <button class="settings-item" onclick="openSettingsSheet('export')">
+        <div class="settings-item-icon">📤</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Exportar / Importar</div>
+          <div class="settings-item-desc">Copia de seguridad</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Ayuda</div>
+      <button class="settings-item" onclick="openSettingsSheet('guide')">
+        <div class="settings-item-icon">📖</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Guía de uso</div>
+          <div class="settings-item-desc">Cómo usar la app correctamente</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+      <button class="settings-item" onclick="openSettingsSheet('about')">
+        <div class="settings-item-icon">ℹ️</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Acerca de</div>
+          <div class="settings-item-desc">ContaFácil Pro v2.0</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     NAV INFERIOR (5 secciones)
+═══════════════════════════════════════════════════ -->
+<nav class="bottom-nav" id="bottom-nav">
+  <button class="nav-item active" data-screen="dashboard">
+    <span class="nav-icon">🏠</span><span>Inicio</span>
+  </button>
+  <button class="nav-item" data-screen="journal">
+    <span class="nav-icon">📒</span><span>Diario</span>
+  </button>
+  <button class="nav-item" data-screen="inventory">
+    <span class="nav-icon">📦</span><span>Inventario</span>
+  </button>
+  <button class="nav-item" data-screen="reports">
+    <span class="nav-icon">📊</span><span>Reportes</span>
+  </button>
+  <button class="nav-item" data-screen="settings">
+    <span class="nav-icon">⚙️</span><span>Ajustes</span>
+  </button>
+</nav>
+
+<!-- FAB — el onclick se asigna dinámicamente en navigate() según la pantalla activa -->
+<button class="fab" id="fab" title="Nueva transacción">+</button>
+
+
+<!-- ═══════════════════════════════════════════════════
+     MODALES
+═══════════════════════════════════════════════════ -->
+<!-- Detalle transacción -->
+<div class="modal-overlay" id="detail-overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- Sheet multipropósito (settings, inventario, etc.) -->
+<div class="modal-overlay" id="settings-sheet">
+  <div class="sheet" id="settings-sheet-content"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- Scripts -->
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
