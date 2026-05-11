@@ -460,6 +460,25 @@ const DB = (() => {
     return generated;
   }
 
+  // ── Estadísticas multi-mes (para gráficas) ────────────────
+  function getLast6MonthsStats() {
+    const result = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear(), m = d.getMonth() + 1;
+      const stats = getMonthStats(y, m);
+      result.push({
+        year: y, month: m,
+        label: d.toLocaleDateString('es-CO', { month: 'short', year: '2-digit' }),
+        income:    stats.income,
+        expenses:  stats.opExpenses + stats.cogs,
+        netProfit: stats.netProfit,
+      });
+    }
+    return result;
+  }
+
   // ── Onboarding ─────────────────────────────────────────────
   function isOnboarded() { return !!localStorage.getItem(KEYS.onboarded); }
   function markOnboarded() { localStorage.setItem(KEYS.onboarded, '1'); }
@@ -496,6 +515,7 @@ const DB = (() => {
     getSettings, updateSettings,
     getRecurrings, addRecurring, updateRecurring, deleteRecurring,
     getRecurringById, getNextExecution, processRecurringExpenses,
+    getLast6MonthsStats,
     isOnboarded, markOnboarded,
     exportData, importData,
   };

@@ -645,6 +645,9 @@ function renderReports() {
   document.getElementById('print-period').textContent    = 'Período: ' + monthLabel;
   document.getElementById('print-generated').textContent = 'Generado el ' + fmtDate(today());
   document.getElementById('print-footer-company').textContent = s.companyName;
+
+  // ── Gráficas interactivas ─────────────────────────────────
+  renderCharts();
 }
 
 // Renderiza el Estado de Resultados (P&L) — pantalla y PDF
@@ -1312,6 +1315,165 @@ function renderUpcomingRecurrings() {
       ${items}
     </div>
   `;
+}
+
+// ── Gráficas (Chart.js) ───────────────────────────────────────────────────────
+let _chartEvolution = null;
+let _chartDonut     = null;
+
+function renderCharts() {
+  if (typeof Chart === 'undefined') {
+    // Chart.js no disponible (sin internet), ocultar cards de gráficas
+    const ec = document.getElementById('chart-evolution-card');
+    const dc = document.getElementById('chart-donut-card');
+    if (ec) ec.style.display = 'none';
+    if (dc) dc.style.display = 'none';
+    return;
+  }
+
+  const months = DB.getLast6MonthsStats();
+
+  // ── Barras: Ingresos vs Gastos 6 meses ───────────────────
+  const ctx1 = document.getElementById('chart-evolution')?.getContext('2d');
+  if (ctx1) {
+    if (_chartEvolution) { _chartEvolution.destroy(); _chartEvolution = null; }
+    _chartEvolution = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => m.label),
+        datasets: [
+          {
+            label: 'Ingresos',
+            data:  months.map(m => m.income),
+            backgroundColor: 'rgba(22,163,74,0.80)',
+            borderColor:     '#16a34a',
+            borderWidth: 1.5,
+            borderRadius: 6,
+            borderSkipped: false,
+          },
+          {
+            label: 'Gastos',
+            data:  months.map(m => m.expenses),
+            backgroundColor: 'rgba(220,38,38,0.75)',
+            borderColor:     '#dc2626',
+            borderWidth: 1.5,
+            borderRadius: 6,
+            borderSkipped: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { font: { size: 11 }, boxWidth: 14, padding: 12 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const s = DB.getSettings();
+                return ctx.dataset.label + ': ' + s.currencySymbol + ' ' +
+                  Number(ctx.raw).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 10 } },
+          },
+          y: {
+            grid: { color: '#f3f4f6' },
+            ticks: {
+              font: { size: 10 },
+              callback: val => {
+                const s = DB.getSettings();
+                if (val >= 1000000) return s.currencySymbol + ' ' + (val / 1000000).toFixed(1) + 'M';
+                if (val >= 1000)    return s.currencySymbol + ' ' + (val / 1000).toFixed(0) + 'K';
+                return s.currencySymbol + ' ' + val;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  // ── Donut: gastos por categoría del mes seleccionado ─────
+  const txs = DB.getTransactionsByMonth(reportYear, reportMonth);
+  const catTotals = {};
+  txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+    const k = t.category || '__otros__';
+    catTotals[k] = (catTotals[k] || 0) + t.amount;
+  });
+
+  const entries = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const donutCard = document.getElementById('chart-donut-card');
+
+  if (!entries.length) {
+    if (donutCard) donutCard.style.display = 'none';
+    if (_chartDonut) { _chartDonut.destroy(); _chartDonut = null; }
+  } else {
+    if (donutCard) donutCard.style.display = 'block';
+    const monthLabel = new Date(reportYear, reportMonth - 1, 1)
+      .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    const el = document.getElementById('chart-donut-month');
+    if (el) el.textContent = monthLabel;
+
+    const donutLabels = entries.map(([id]) => {
+      const c = DB.getCategoryById(id);
+      return c ? c.emoji + ' ' + c.name : '📝 Otros';
+    });
+    const donutData   = entries.map(([, v]) => v);
+    const donutColors = entries.map(([id]) => {
+      const c = DB.getCategoryById(id);
+      return c?.color || '#6b7280';
+    });
+
+    const ctx2 = document.getElementById('chart-donut')?.getContext('2d');
+    if (ctx2) {
+      if (_chartDonut) { _chartDonut.destroy(); _chartDonut = null; }
+      _chartDonut = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: donutLabels,
+          datasets: [{
+            data:            donutData,
+            backgroundColor: donutColors,
+            borderWidth:     2,
+            borderColor:     '#ffffff',
+            hoverOffset:     10,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '62%',
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { size: 10 }, boxWidth: 12, padding: 8 },
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const s     = DB.getSettings();
+                  const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                  const pct   = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+                  return ctx.label + ': ' + s.currencySymbol + ' ' +
+                    Number(ctx.raw).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) +
+                    ' (' + pct + '%)';
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+  }
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────

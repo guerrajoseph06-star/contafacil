@@ -9,6 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* Estilos adicionales v2 */
     .tx-icon.liability { background: #fef3c7; }
@@ -378,6 +379,17 @@
       <button class="month-nav-btn" onclick="nextMonth()">›</button>
     </div>
 
+    <!-- ══ GRÁFICA: Evolución 6 meses ══ -->
+    <div class="card no-print" style="margin-bottom:12px;" id="chart-evolution-card">
+      <div class="card-header" style="margin-bottom:12px;">
+        <div class="card-title">📈 Evolución 6 Meses</div>
+        <div style="font-size:11px; color:var(--gray-400);">Ingresos vs Gastos</div>
+      </div>
+      <div style="position:relative; height:200px;">
+        <canvas id="chart-evolution"></canvas>
+      </div>
+    </div>
+
     <!-- ══ ESTADO DE RESULTADOS (P&L) ══ -->
     <div class="card" style="margin-bottom:12px; padding:16px 20px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -407,6 +419,17 @@
         <div class="card-title">Gastos por Categoría</div>
       </div>
       <div id="report-cat-breakdown"></div>
+    </div>
+
+    <!-- ══ GRÁFICA: Donut distribución gastos ══ -->
+    <div class="card no-print" style="margin-bottom:12px; display:none;" id="chart-donut-card">
+      <div class="card-header" style="margin-bottom:8px;">
+        <div class="card-title">🥧 Distribución de Gastos</div>
+        <div style="font-size:11px; color:var(--gray-400);" id="chart-donut-month"></div>
+      </div>
+      <div style="position:relative; height:240px; max-width:300px; margin:0 auto;">
+        <canvas id="chart-donut"></canvas>
+      </div>
     </div>
 
     <!-- Botón PDF -->
