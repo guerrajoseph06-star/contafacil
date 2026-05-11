@@ -443,10 +443,15 @@
       </div>
     </div>
 
-    <!-- Botón PDF -->
-    <button class="btn btn-primary btn-block no-print" onclick="printReport()" style="margin-bottom:10px;">
-      🖨️ Generar PDF / Imprimir
-    </button>
+    <!-- Botones de acción del reporte -->
+    <div style="display:flex; gap:8px; margin-bottom:10px;" class="no-print">
+      <button class="btn btn-primary" style="flex:1;" onclick="printReport()">
+        🖨️ Generar PDF
+      </button>
+      <button class="btn btn-outline" style="flex:1;" onclick="exportToExcel()">
+        📊 Exportar Excel
+      </button>
+    </div>
 
     <div class="card no-print" style="background:var(--primary-light); border:none; margin-bottom:12px;">
       <div style="font-size:13px; color:var(--primary); font-weight:600; margin-bottom:4px;">💡 ¿Cómo obtener el PDF?</div>

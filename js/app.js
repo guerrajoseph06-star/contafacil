@@ -1323,6 +1323,109 @@ function renderUpcomingRecurrings() {
   `;
 }
 
+// ── Exportar a Excel ──────────────────────────────────────────────────────────
+function exportToExcel() {
+  if (typeof XLSX === 'undefined') {
+    showToast('⚠️ Necesitas internet una vez para cargar el módulo Excel', 4000);
+    return;
+  }
+
+  const s         = DB.getSettings();
+  const txs       = DB.getTransactionsByMonth(reportYear, reportMonth);
+  const pnl       = DB.getProfitStatement(reportYear, reportMonth);
+  const monthLabel = new Date(reportYear, reportMonth - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  const TYPE_LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda' };
+
+  // ── Hoja 1: Transacciones detalladas ─────────────────────
+  const txRows = [
+    ['Fecha', 'Descripción', 'Tipo', 'Categoría', 'Cuenta', 'Monto', 'Debe (+)', 'Haber (−)', 'Notas'],
+  ];
+
+  txs.forEach(t => {
+    const cat     = DB.getCategoryById(t.category);
+    const acc     = DB.getAccountById(t.account);
+    const fromAcc = DB.getAccountById(t.fromAccount);
+    const toAcc   = DB.getAccountById(t.toAccount);
+    let debit = '', credit = '', catLabel = '', accLabel = '';
+
+    if (t.isCogs) {
+      credit = t.amount; catLabel = 'Costo de Ventas (CMV)';
+    } else if (t.type === 'income') {
+      debit  = t.amount;
+      catLabel = cat ? cat.name : 'Ingresos';
+      accLabel = acc ? acc.name : '';
+    } else if (t.type === 'expense') {
+      credit = t.amount;
+      catLabel = cat ? cat.name : 'Gastos';
+      accLabel = acc ? acc.name : '';
+    } else if (t.type === 'transfer') {
+      debit = t.amount; credit = t.amount;
+      catLabel = (fromAcc?.name || '—') + ' → ' + (toAcc?.name || '—');
+    } else if (t.type === 'liability') {
+      credit = t.amount;
+      catLabel = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
+    }
+
+    txRows.push([
+      t.date,
+      t.description + (t.isCogs ? ' (auto-CMV)' : ''),
+      t.isCogs ? 'CMV' : (TYPE_LABELS[t.type] || t.type),
+      catLabel,
+      accLabel,
+      t.amount,
+      debit,
+      credit,
+      t.notes || '',
+    ]);
+  });
+
+  // ── Hoja 2: Estado de Resultados ─────────────────────────
+  const pnlRows = [
+    ['ContaFácil Pro — ' + s.companyName],
+    ['Estado de Resultados · ' + monthLabel],
+    [],
+    ['INGRESOS', ''],
+  ];
+  if (pnl.salesRevenue > 0)  pnlRows.push(['  Ventas de productos',  pnl.salesRevenue]);
+  if (pnl.serviceIncome > 0) pnlRows.push(['  Servicios / otros',     pnl.serviceIncome]);
+  pnlRows.push(['TOTAL INGRESOS', pnl.totalRevenue]);
+  if (pnl.hasCogs) {
+    pnlRows.push([]);
+    pnlRows.push(['COSTO MERCADERÍA VENDIDA (CMV)', -pnl.cogs]);
+  }
+  pnlRows.push([]);
+  pnlRows.push(['UTILIDAD BRUTA', pnl.grossProfit]);
+  pnlRows.push([]);
+  pnlRows.push(['GASTOS OPERATIVOS', '']);
+  Object.entries(pnl.expByCat).forEach(([catId, val]) => {
+    const cat = DB.getCategoryById(catId);
+    pnlRows.push(['  ' + (cat ? cat.name : 'Otros'), -val]);
+  });
+  pnlRows.push(['TOTAL GASTOS', -pnl.opExpenses]);
+  pnlRows.push([]);
+  pnlRows.push(['UTILIDAD NETA', pnl.netProfit]);
+
+  // ── Crear libro Excel ─────────────────────────────────────
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet(txRows);
+  ws1['!cols'] = [
+    { wch: 12 }, { wch: 32 }, { wch: 10 }, { wch: 22 },
+    { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 28 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Transacciones');
+
+  const ws2 = XLSX.utils.aoa_to_sheet(pnlRows);
+  ws2['!cols'] = [{ wch: 34 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Estado de Resultados');
+
+  const filename = `ContaFacil_${s.companyName.replace(/\s+/g,'-')}_${reportYear}-${String(reportMonth).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('📥 Excel descargado: ' + filename, 3500);
+}
+
 // ── Presupuesto por categoría ─────────────────────────────────────────────────
 function openBudgetManager() {
   const cats    = DB.getCategoriesByType('expense');
