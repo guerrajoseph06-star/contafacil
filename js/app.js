@@ -163,6 +163,9 @@ function renderDashboard() {
     ? `<ul class="tx-list">${txs.map(txItemHTML).join('')}</ul>`
     : emptyHTML('📭', 'Sin movimientos', 'Toca + para agregar tu primera transacción');
 
+  // Alertas de presupuesto excedido
+  renderBudgetAlerts();
+
   // Próximos gastos recurrentes
   renderUpcomingRecurrings();
 }
@@ -645,6 +648,9 @@ function renderReports() {
   document.getElementById('print-period').textContent    = 'Período: ' + monthLabel;
   document.getElementById('print-generated').textContent = 'Generado el ' + fmtDate(today());
   document.getElementById('print-footer-company').textContent = s.companyName;
+
+  // ── Presupuesto ───────────────────────────────────────────
+  renderBudgetStatus();
 
   // ── Gráficas interactivas ─────────────────────────────────
   renderCharts();
@@ -1317,6 +1323,151 @@ function renderUpcomingRecurrings() {
   `;
 }
 
+// ── Presupuesto por categoría ─────────────────────────────────────────────────
+function openBudgetManager() {
+  const cats    = DB.getCategoriesByType('expense');
+  const budgets = DB.getBudgets();
+  const now     = new Date();
+  const status  = DB.getBudgetStatus(now.getFullYear(), now.getMonth() + 1);
+  const totalBudget = Object.values(budgets).reduce((s, v) => s + v, 0);
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <h3 class="sheet-title" style="margin:0;">🎯 Presupuesto Mensual</h3>
+    </div>
+
+    ${totalBudget > 0 ? `
+      <div style="background:var(--primary-light); border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:12px; color:var(--primary); font-weight:600;">Total presupuestado</div>
+          <div style="font-size:22px; font-weight:800; color:var(--primary);">${fmt(totalBudget)}/mes</div>
+        </div>
+        <div style="font-size:11px; color:var(--primary);">${Object.keys(budgets).length} categoría(s)</div>
+      </div>
+    ` : `
+      <div style="background:var(--gray-50); border-radius:10px; padding:14px; margin-bottom:16px; font-size:13px; color:var(--gray-600); line-height:1.6;">
+        🎯 Define cuánto puedes gastar por categoría cada mes. Te avisaremos cuando estés cerca del límite.
+      </div>
+    `}
+
+    <div style="font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px;">Límite por categoría</div>
+
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+      ${cats.map(cat => {
+        const limit = budgets[cat.id] || 0;
+        const st    = status.find(s => s.catId === cat.id);
+        const pct   = st ? st.pct : 0;
+        const isOver = st?.isOver, isWarn = st?.isWarning;
+        const barColor = isOver ? 'var(--danger)' : isWarn ? '#f59e0b' : 'var(--primary)';
+        return `
+          <div style="background:var(--white); border:1.5px solid var(--gray-100); border-radius:12px; padding:12px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:${limit > 0 ? '8px' : '0'};">
+              <span style="font-size:20px;">${cat.emoji}</span>
+              <div style="flex:1; font-weight:600; font-size:14px;">${cat.name}</div>
+              <input type="number" min="0" step="1000" placeholder="Sin límite"
+                value="${limit || ''}"
+                style="width:110px; padding:6px 10px; border:1.5px solid var(--gray-200); border-radius:8px; font-size:13px; text-align:right;"
+                onchange="DB.setBudget('${cat.id}', this.value); openBudgetManager();"
+                inputmode="decimal">
+            </div>
+            ${limit > 0 && st ? `
+              <div style="background:var(--gray-100); border-radius:4px; height:6px; overflow:hidden;">
+                <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:4px; transition:width .3s;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:4px; color:var(--gray-500);">
+                <span style="color:${isOver ? 'var(--danger)' : isWarn ? '#b45309' : 'var(--gray-500)'};">
+                  ${isOver ? '⚠️ Excedido en ' + fmt(Math.abs(st.remaining)) : 'Gastado: ' + fmt(st.usedAmt)}
+                </span>
+                <span>${pct}% de ${fmt(limit)}</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div style="background:var(--gray-50); border-radius:10px; padding:12px; font-size:13px; color:var(--gray-600); line-height:1.6;">
+      💡 Deja en blanco las categorías sin límite. Los cambios aplican al mes actual inmediatamente.
+    </div>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+  if (currentScreen === 'settings') renderSettings();
+}
+
+function renderBudgetStatus() {
+  const now    = new Date();
+  const status = DB.getBudgetStatus(reportYear, reportMonth);
+  const card   = document.getElementById('budget-status-card');
+  const list   = document.getElementById('budget-status-list');
+  if (!card || !list) return;
+
+  if (!status.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  list.innerHTML = status.map(st => {
+    const barColor  = st.isOver ? 'var(--danger)' : st.isWarning ? '#f59e0b' : 'var(--primary)';
+    const textColor = st.isOver ? 'var(--danger)' : st.isWarning ? '#b45309' : 'var(--gray-500)';
+    const icon      = st.isOver ? '🔴' : st.isWarning ? '🟡' : '🟢';
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span>${st.cat ? st.cat.emoji : '📝'}</span>
+            <span style="font-size:13px; font-weight:600;">${st.cat ? st.cat.name : 'Sin categoría'}</span>
+            <span style="font-size:12px;">${icon}</span>
+          </div>
+          <span style="font-size:12px; color:${textColor}; font-weight:700;">
+            ${fmt(st.usedAmt)} / ${fmt(st.limit)}
+          </span>
+        </div>
+        <div style="background:var(--gray-100); border-radius:6px; height:8px; overflow:hidden;">
+          <div style="height:100%; width:${st.pct}%; background:${barColor}; border-radius:6px; transition:width .4s;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:3px; color:${textColor};">
+          <span>${st.isOver ? '⚠️ Excedido en ' + fmt(Math.abs(st.remaining)) : 'Disponible: ' + fmt(Math.max(st.remaining, 0))}</span>
+          <span>${st.pct}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBudgetAlerts() {
+  const now    = new Date();
+  const status = DB.getBudgetStatus(now.getFullYear(), now.getMonth() + 1);
+  const el     = document.getElementById('dash-budget-alert');
+  if (!el) return;
+  const alerts = status.filter(s => s.isOver || s.isWarning);
+  if (!alerts.length) { el.style.display = 'none'; return; }
+
+  const overCount = alerts.filter(s => s.isOver).length;
+  const warnCount = alerts.filter(s => s.isWarning).length;
+  const isRed = overCount > 0;
+
+  el.style.display = 'flex';
+  el.style.cssText = `
+    display:flex; background:${isRed ? '#fee2e2' : '#fef3c7'};
+    border:1.5px solid ${isRed ? '#fca5a5' : '#fcd34d'};
+    border-radius:var(--radius); padding:12px 14px; gap:10px;
+    align-items:center; margin-bottom:12px;
+    color:${isRed ? '#991b1b' : '#92400e'};
+  `;
+  el.innerHTML = `
+    <span style="font-size:20px;">${isRed ? '🔴' : '🟡'}</span>
+    <div style="flex:1;">
+      <div style="font-weight:700; font-size:14px;">
+        ${overCount > 0 ? overCount + ' categoría(s) sobre presupuesto' : ''}
+        ${warnCount > 0 ? (overCount > 0 ? ' · ' : '') + warnCount + ' cerca del límite' : ''}
+      </div>
+      <div style="font-size:12px; opacity:.8; margin-top:2px;">
+        ${alerts.slice(0, 2).map(s => (s.cat?.emoji || '📝') + ' ' + (s.cat?.name || 'Sin cat')).join(' · ')}
+      </div>
+    </div>
+    <button onclick="navigate('reports')" style="font-size:12px; font-weight:700; background:none; color:inherit; white-space:nowrap;">Ver →</button>
+  `;
+}
+
 // ── Gráficas (Chart.js) ───────────────────────────────────────────────────────
 let _chartEvolution = null;
 let _chartDonut     = null;
@@ -1489,6 +1640,15 @@ function renderSettings() {
     descEl.textContent = active.length
       ? `${active.length} activo(s) · ${fmt(active.reduce((s, r) => s + r.amount, 0))}/mes`
       : 'Internet, arriendo, suscripciones…';
+  }
+
+  const budgets    = DB.getBudgets();
+  const budgetCount = Object.keys(budgets).length;
+  const budgetDesc  = document.getElementById('settings-budget-desc');
+  if (budgetDesc) {
+    budgetDesc.textContent = budgetCount
+      ? `${budgetCount} categoría(s) · ${fmt(Object.values(budgets).reduce((s, v) => s + v, 0))}/mes`
+      : 'Límites por categoría de gasto';
   }
 }
 

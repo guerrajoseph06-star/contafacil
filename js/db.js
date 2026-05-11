@@ -20,6 +20,7 @@ const DB = (() => {
     accounts:     'cf_accounts',
     inventory:    'cf_inventory',
     recurring:    'cf_recurring',
+    budgets:      'cf_budgets',
     onboarded:    'cf_onboarded',
   };
 
@@ -460,6 +461,40 @@ const DB = (() => {
     return generated;
   }
 
+  // ── Presupuestos por categoría ────────────────────────────
+  // Estructura: { [categoryId]: amount }
+  function getBudgets() { return load(KEYS.budgets) || {}; }
+  function setBudget(categoryId, amount) {
+    const b = getBudgets();
+    if (!amount || amount <= 0) { delete b[categoryId]; }
+    else                        { b[categoryId] = parseFloat(amount); }
+    save(KEYS.budgets, b);
+  }
+  function deleteBudget(categoryId) {
+    const b = getBudgets();
+    delete b[categoryId];
+    save(KEYS.budgets, b);
+  }
+  // Retorna estado de presupuesto para cada categoría que tiene límite
+  function getBudgetStatus(year, month) {
+    const budgets = getBudgets();
+    if (!Object.keys(budgets).length) return [];
+    const txs = getTransactionsByMonth(year, month);
+    const spent = {};
+    txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+      const k = t.category || '__sin_cat__';
+      spent[k] = (spent[k] || 0) + t.amount;
+    });
+    return Object.entries(budgets).map(([catId, limit]) => {
+      const cat       = getCategories().find(c => c.id === catId);
+      const usedAmt   = spent[catId] || 0;
+      const pct       = Math.min(Math.round((usedAmt / limit) * 100), 100);
+      const isOver    = usedAmt > limit;
+      const isWarning = !isOver && pct >= 80;
+      return { catId, cat, limit, usedAmt, remaining: limit - usedAmt, pct, isOver, isWarning };
+    }).sort((a, b) => b.pct - a.pct);
+  }
+
   // ── Estadísticas multi-mes (para gráficas) ────────────────
   function getLast6MonthsStats() {
     const result = [];
@@ -516,6 +551,7 @@ const DB = (() => {
     getRecurrings, addRecurring, updateRecurring, deleteRecurring,
     getRecurringById, getNextExecution, processRecurringExpenses,
     getLast6MonthsStats,
+    getBudgets, setBudget, deleteBudget, getBudgetStatus,
     isOnboarded, markOnboarded,
     exportData, importData,
   };

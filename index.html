@@ -138,6 +138,8 @@
   <div class="content">
     <!-- Alerta deudas pendientes -->
     <div id="dash-liabilities-alert"></div>
+    <!-- Alerta presupuesto excedido -->
+    <div id="dash-budget-alert" style="display:none;"></div>
 
     <!-- Balance Hero -->
     <div class="balance-hero">
@@ -421,6 +423,15 @@
       <div id="report-cat-breakdown"></div>
     </div>
 
+    <!-- ══ PRESUPUESTO POR CATEGORÍA ══ -->
+    <div class="card no-print" style="margin-bottom:12px; display:none;" id="budget-status-card">
+      <div class="card-header" style="margin-bottom:12px;">
+        <div class="card-title">🎯 Presupuesto Mensual</div>
+        <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="openBudgetManager()">Editar →</button>
+      </div>
+      <div id="budget-status-list"></div>
+    </div>
+
     <!-- ══ GRÁFICA: Donut distribución gastos ══ -->
     <div class="card no-print" style="margin-bottom:12px; display:none;" id="chart-donut-card">
       <div class="card-header" style="margin-bottom:8px;">
@@ -500,6 +511,14 @@
 
     <div class="settings-section">
       <div class="settings-section-title">Automatización</div>
+      <button class="settings-item" onclick="openBudgetManager()">
+        <div class="settings-item-icon">🎯</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Presupuesto Mensual</div>
+          <div class="settings-item-desc" id="settings-budget-desc">Límites por categoría de gasto</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
       <button class="settings-item" onclick="openRecurringManager()">
         <div class="settings-item-icon">🔄</div>
         <div class="settings-item-info">
