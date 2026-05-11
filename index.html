@@ -578,6 +578,22 @@
     </div>
 
     <div class="settings-section">
+      <div class="settings-section-title">Apariencia</div>
+      <div class="settings-item" onclick="toggleDarkMode()" style="cursor:pointer;">
+        <div class="settings-item-icon">🌙</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Modo Oscuro</div>
+          <div class="settings-item-desc" id="settings-dark-desc">Tema claro activo</div>
+        </div>
+        <div class="dark-toggle" id="dark-toggle-wrap">
+          <div class="dark-toggle-track" id="dark-toggle-track">
+            <div class="dark-toggle-thumb"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <div class="settings-section-title">Datos</div>
       <button class="settings-item" onclick="openSettingsSheet('export')">
         <div class="settings-item-icon">📤</div>

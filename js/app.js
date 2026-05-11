@@ -5,6 +5,21 @@
 
 // ── Estado global ─────────────────────────────────────────────────────────────
 let currentScreen = 'dashboard';
+
+// ── Modo Oscuro ───────────────────────────────────────────────────────────────
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#1a2035' : '#2563eb');
+  const track = document.getElementById('dark-toggle-track');
+  const desc  = document.getElementById('settings-dark-desc');
+  if (track) track.classList.toggle('on', dark);
+  if (desc)  desc.textContent = dark ? 'Tema oscuro activo' : 'Tema claro activo';
+}
+function toggleDarkMode() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  localStorage.setItem('cf_dark_mode', isDark ? '0' : '1');
+  applyTheme(!isDark);
+}
 let editingTxId   = null;
 let formType      = 'expense';
 let journalFilter = 'all';
@@ -1891,6 +1906,10 @@ function renderSettings() {
   document.getElementById('settings-company-val').textContent  = s.companyName;
   document.getElementById('settings-currency-val').textContent = s.currency;
 
+  // Sincronizar toggle modo oscuro
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  applyTheme(isDark);
+
   const recs   = DB.getRecurrings();
   const active = recs.filter(r => r.isActive);
   const descEl = document.getElementById('settings-recurring-desc');
@@ -2003,6 +2022,10 @@ function emptyHTML(icon, title, text) {
 // ── Init ───────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   DB.init();
+
+  // Aplicar tema guardado (modo oscuro)
+  const savedDark = localStorage.getItem('cf_dark_mode') === '1';
+  applyTheme(savedDark);
 
   // Procesar gastos recurrentes pendientes al abrir la app
   setTimeout(() => {
