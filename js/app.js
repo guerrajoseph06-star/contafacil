@@ -8,15 +8,17 @@ let currentScreen = 'dashboard';
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#1a2035' : '#2563eb');
+  // Usar clase en body — más compatible con Chrome Android que data-theme en html
+  document.body.classList.toggle('dark-mode', dark);
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', dark ? '#1a2035' : '#2563eb');
   const track = document.getElementById('dark-toggle-track');
   const desc  = document.getElementById('settings-dark-desc');
   if (track) track.classList.toggle('on', dark);
-  if (desc)  desc.textContent = dark ? 'Tema oscuro activo' : 'Tema claro activo';
+  if (desc)  desc.textContent = dark ? '🌙 Tema oscuro activo' : '☀️ Tema claro activo';
 }
 function toggleDarkMode() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const isDark = document.body.classList.contains('dark-mode');
   localStorage.setItem('cf_dark_mode', isDark ? '0' : '1');
   applyTheme(!isDark);
 }
@@ -1665,7 +1667,6 @@ function openBudgetManager() {
     </div>
   `;
   document.getElementById('settings-sheet').classList.add('open');
-  if (currentScreen === 'settings') renderSettings();
 }
 
 function renderBudgetStatus() {
@@ -1907,7 +1908,7 @@ function renderSettings() {
   document.getElementById('settings-currency-val').textContent = s.currency;
 
   // Sincronizar toggle modo oscuro
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const isDark = document.body.classList.contains('dark-mode');
   applyTheme(isDark);
 
   const recs   = DB.getRecurrings();
