@@ -329,7 +329,7 @@
     </div>
 
     <!-- Botones de acción -->
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="btn btn-primary" style="flex:1;gap:6px;" onclick="openProductForm()">
         ➕ Agregar producto
       </button>
@@ -337,6 +337,10 @@
         📊 Importar Excel
       </button>
     </div>
+
+    <!-- Búsqueda inventario -->
+    <input type="search" class="form-control mb-12" id="inventory-search"
+      placeholder="🔍 Buscar por nombre o código SKU..." style="background:var(--white);">
 
     <!-- Lista de productos -->
     <div id="inventory-list"></div>
@@ -667,6 +671,14 @@
 
     <div class="settings-section">
       <div class="settings-section-title">Contabilidad Ecuador 🇪🇨</div>
+      <button class="settings-item" onclick="openRegimenGeneral()">
+        <div class="settings-item-icon">📋</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Régimen Tributario</div>
+          <div class="settings-item-desc">RIMPE vs Régimen General · SRI</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
       <button class="settings-item" onclick="openIvaPlaceholder()">
         <div class="settings-item-icon">🏛️</div>
         <div class="settings-item-info">

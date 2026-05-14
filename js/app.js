@@ -813,46 +813,57 @@ function printReport() {
 
 // ── Inventario ─────────────────────────────────────────────────────────────────
 function renderInventory() {
-  const products = DB.getInventory();
+  const search   = (document.getElementById('inventory-search')?.value || '').toLowerCase().trim();
+  const allProds = DB.getInventory();
+  const products = search
+    ? allProds.filter(p =>
+        p.name.toLowerCase().includes(search) ||
+        (p.sku || '').toLowerCase().includes(search)
+      )
+    : allProds;
+
   const container = document.getElementById('inventory-list');
 
-  if (!products.length) {
+  if (!allProds.length) {
     container.innerHTML = emptyHTML('📦', 'Sin productos', 'Agrega tu primer producto con el botón +');
-    return;
-  }
-
-  container.innerHTML = products.map(p => `
-    <div class="card inv-card" style="margin-bottom:10px;">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <div style="font-size:36px; width:48px; text-align:center;">${p.emoji || '📦'}</div>
-        <div style="flex:1;">
-          <div style="font-size:16px; font-weight:700;">${p.name}</div>
-          <div style="font-size:13px; color:var(--gray-500); margin-top:2px;">
-            ${p.unitCost ? 'Costo: ' + fmt(p.unitCost) + ' / ' + p.unit : p.unit}
+  } else if (!products.length) {
+    container.innerHTML = emptyHTML('🔍', 'Sin resultados', 'No hay productos con ese nombre o código');
+  } else {
+    container.innerHTML = products.map(p => `
+      <div class="card inv-card" style="margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:36px; width:48px; text-align:center;">${p.emoji || '📦'}</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:16px; font-weight:700;">${p.name}</div>
+            ${p.sku ? `<div style="font-size:11px; color:var(--primary); font-family:monospace; margin-top:2px; background:var(--primary-light); display:inline-block; padding:1px 7px; border-radius:5px;">📊 ${p.sku}</div>` : ''}
+            <div style="font-size:13px; color:var(--gray-500); margin-top:2px;">
+              ${p.unitCost ? 'Costo: ' + fmt(p.unitCost) + ' / ' + p.unit : p.unit}
+            </div>
+          </div>
+          <div style="text-align:right; flex-shrink:0;">
+            <div style="font-size:24px; font-weight:800; color:${p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)'};">${p.quantity}</div>
+            <div style="font-size:11px; color:var(--gray-500);">${p.unit}</div>
           </div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:24px; font-weight:800; color:${p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)'};">${p.quantity}</div>
-          <div style="font-size:11px; color:var(--gray-500);">${p.unit}</div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openProductForm('${p.id}')">✏️ Editar</button>
+          <button class="btn btn-outline btn-sm" onclick="adjustStock('${p.id}')">📥 Ajustar stock</button>
+          <button class="btn btn-icon" style="background:var(--danger-light); color:var(--danger);" onclick="deleteProduct('${p.id}')">🗑️</button>
         </div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openProductForm('${p.id}')">✏️ Editar</button>
-        <button class="btn btn-outline btn-sm" onclick="adjustStock('${p.id}')">📥 Ajustar stock</button>
-        <button class="btn btn-icon" style="background:var(--danger-light); color:var(--danger);" onclick="deleteProduct('${p.id}')">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+  }
 
-  // Total valor inventario
-  const totalValue = products.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
+  // Total valor inventario (siempre sobre todos los productos, no los filtrados)
+  const totalValue = allProds.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
   document.getElementById('inv-total-value').textContent = fmt(totalValue);
-  document.getElementById('inv-total-items').textContent = products.length + ' producto' + (products.length !== 1 ? 's' : '');
+  document.getElementById('inv-total-items').textContent = allProds.length + ' producto' + (allProds.length !== 1 ? 's' : '');
 }
 
 function openProductForm(editId = null) {
   const p = editId ? DB.getProductById(editId) : null;
   const EMOJIS = ['📦','👗','👕','👖','👟','👔','👜','🧴','💄','🍕','🧃','📱','🔧','📚','🪑','🖥️'];
+  const hasBarcode = 'BarcodeDetector' in window;
 
   const sheet = document.getElementById('settings-sheet');
   document.getElementById('settings-sheet-content').innerHTML = `
@@ -868,6 +879,26 @@ function openProductForm(editId = null) {
     <div class="form-group">
       <label class="form-label">Nombre del producto *</label>
       <input type="text" class="form-control" id="p-name" value="${p?.name || ''}" placeholder="Ej: Blusas, Zapatos, Shampoo">
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        Código / SKU
+        <span style="font-size:11px; color:var(--gray-400); font-weight:400;"> — código de barras o código interno</span>
+      </label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" class="form-control" id="p-sku"
+          value="${p?.sku || ''}"
+          placeholder="Ej: 7501234567890, CAM-RJ-M, ALI-ARR-1K"
+          style="flex:1; font-family:monospace; letter-spacing:.5px;">
+        ${hasBarcode
+          ? `<button type="button" onclick="openBarcodeScanner('p-sku')"
+               style="padding:0 14px; border-radius:10px; background:var(--primary); color:white; border:none; cursor:pointer; font-size:20px;" title="Escanear código de barras">📷</button>`
+          : `<button type="button" onclick="showToast('📷 Abre en Chrome Android para escanear',3000)"
+               style="padding:0 14px; border-radius:10px; background:var(--gray-100); color:var(--gray-400); border:none; cursor:pointer; font-size:20px; opacity:.6;" title="Solo disponible en Chrome Android">📷</button>`}
+      </div>
+      <div style="font-size:11px; color:var(--gray-400); margin-top:5px;">
+        💡 Código interno libre (ej: CAM-AZ-M) o EAN-13 del fabricante. Sin obligación de formato.
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Stock actual</label>
@@ -906,6 +937,7 @@ function saveProduct(editId) {
   const data = {
     name,
     emoji:    document.getElementById('p-emoji')?.value || '📦',
+    sku:      document.getElementById('p-sku')?.value.trim() || '',
     quantity: parseFloat(document.getElementById('p-qty')?.value) || 0,
     unitCost: parseFloat(document.getElementById('p-cost')?.value) || 0,
     unit:     document.getElementById('p-unit')?.value || 'unidades',
@@ -991,44 +1023,68 @@ function _processExcelData(buffer, filename) {
   const iNombre   = header.findIndex(h => h.includes('producto') || h.includes('nombre'));
   const iCantidad = header.findIndex(h => h.includes('cantidad') || h.includes('qty') || h.includes('stock'));
   const iCosto    = header.findIndex(h => h.includes('costo') || h.includes('precio') || h.includes('price'));
+  const iSku      = header.findIndex(h => h.includes('sku') || h.includes('codigo') || h.includes('código') || h.includes('code'));
+  const iAccion   = header.findIndex(h => h.includes('accion') || h.includes('acción') || h.includes('operacion') || h.includes('operación') || h.includes('accion'));
 
   if (iNombre < 0) { showToast('❌ No se encontró columna "Producto" o "Nombre"'); return; }
 
-  let added = 0, updated = 0, skipped = 0;
+  let added = 0, updated = 0, deleted = 0, skipped = 0;
   const errors = [];
 
   rows.slice(1).forEach((row, idx) => {
-    const lineNum = idx + 2;
+    const lineNum  = idx + 2;
     const nombre   = String(row[iNombre] ?? '').trim();
     const cantStr  = iCantidad >= 0 ? row[iCantidad] : 0;
     const costoStr = iCosto    >= 0 ? row[iCosto]    : 0;
+    const skuVal   = iSku      >= 0 ? String(row[iSku]    || '').trim() : '';
+    const accion   = iAccion   >= 0 ? String(row[iAccion] || '').toLowerCase().trim() : 'agregar';
 
     if (!nombre) return; // fila vacía — silencioso
 
     const cantidad = parseFloat(cantStr);
     const costo    = parseFloat(costoStr);
 
-    if (iCantidad >= 0 && isNaN(cantidad)) {
+    const existente = DB.getInventory().find(
+      p => p.name.toLowerCase() === nombre.toLowerCase() ||
+           (skuVal && p.sku && p.sku.toLowerCase() === skuVal.toLowerCase())
+    );
+
+    // ── Eliminar ─────────────────────────────────────
+    if (accion === 'eliminar' || accion === 'delete' || accion === 'borrar') {
+      if (existente) {
+        DB.deleteProduct(existente.id);
+        deleted++;
+      }
+      return;
+    }
+
+    // ── Reducir stock ─────────────────────────────────
+    const esReduccion = accion === 'reducir' || accion === 'restar' || accion === 'descontar' || cantidad < 0;
+    const absQty      = Math.abs(isNaN(cantidad) ? 0 : cantidad);
+
+    if (iCantidad >= 0 && isNaN(cantidad) && !esReduccion) {
       errors.push(`Fila ${lineNum}: cantidad inválida ("${cantStr}")`); skipped++; return;
     }
-    if (iCosto >= 0 && isNaN(costo)) {
+    if (iCosto >= 0 && isNaN(costo) && String(costoStr).trim() !== '') {
       errors.push(`Fila ${lineNum}: costo inválido ("${costoStr}")`); skipped++; return;
     }
 
-    const existente = DB.getInventory().find(
-      p => p.name.toLowerCase() === nombre.toLowerCase()
-    );
-
     if (existente) {
-      // Suma cantidad, actualiza costo si se indicó
-      const newQty  = (existente.quantity || 0) + (isNaN(cantidad) ? 0 : cantidad);
+      let newQty;
+      if (esReduccion) {
+        newQty = Math.max(0, (existente.quantity || 0) - absQty);
+      } else {
+        newQty = (existente.quantity || 0) + (isNaN(cantidad) ? 0 : cantidad);
+      }
       const newCost = (!isNaN(costo) && costo > 0) ? costo : existente.unitCost;
-      DB.updateProduct(existente.id, { quantity: newQty, unitCost: newCost });
+      const newSku  = skuVal || existente.sku || '';
+      DB.updateProduct(existente.id, { quantity: newQty, unitCost: newCost, sku: newSku });
       updated++;
-    } else {
+    } else if (!esReduccion) {
       DB.addProduct({
         name:     nombre,
-        quantity: isNaN(cantidad) ? 0 : cantidad,
+        sku:      skuVal,
+        quantity: isNaN(cantidad) ? 0 : Math.max(0, cantidad),
         unitCost: isNaN(costo)    ? 0 : costo,
         emoji:    '📦',
         unit:     'unidades',
@@ -1038,8 +1094,12 @@ function _processExcelData(buffer, filename) {
   });
 
   renderInventory();
-  const msg = `✅ ${added} agregados · ${updated} actualizados${skipped ? ` · ${skipped} omitidos` : ''}`;
-  showToast(msg, 4000);
+  const parts = [];
+  if (added)   parts.push(added   + ' agregado' + (added   !== 1 ? 's' : ''));
+  if (updated) parts.push(updated + ' actualizado' + (updated !== 1 ? 's' : ''));
+  if (deleted) parts.push(deleted + ' eliminado' + (deleted !== 1 ? 's' : ''));
+  if (skipped) parts.push(skipped + ' omitido' + (skipped  !== 1 ? 's' : ''));
+  showToast('✅ ' + parts.join(' · '), 4000);
   if (errors.length) {
     console.warn('Errores de importación:', errors);
     setTimeout(() => showToast('⚠️ ' + errors[0], 4000), 2800);
@@ -1059,31 +1119,48 @@ function openImportSheet() {
       </div>
     ` : ''}
 
-    <div style="background:var(--primary-light);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--primary);line-height:1.6;">
-      <strong>Formato requerido del archivo Excel:</strong><br><br>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <div style="background:var(--primary-light);border-radius:10px;padding:14px;margin-bottom:12px;font-size:13px;color:var(--primary);line-height:1.6;">
+      <strong>Columnas del archivo Excel:</strong><br><br>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
         <tr style="background:var(--primary);color:white;">
-          <th style="padding:6px 10px;text-align:left;border-radius:4px 0 0 0;">Producto</th>
-          <th style="padding:6px 10px;text-align:left;">Cantidad</th>
-          <th style="padding:6px 10px;text-align:left;border-radius:0 4px 0 0;">Costo</th>
+          <th style="padding:5px 8px;text-align:left;">Producto*</th>
+          <th style="padding:5px 8px;text-align:left;">SKU</th>
+          <th style="padding:5px 8px;text-align:left;">Cantidad</th>
+          <th style="padding:5px 8px;text-align:left;">Costo</th>
+          <th style="padding:5px 8px;text-align:left;">Accion</th>
         </tr>
         <tr style="background:white;">
-          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">Blusas</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">10</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">25000</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">Blusas</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-family:monospace;">BLU-001</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">10</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">25.00</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;color:#16a34a;">agregar</td>
         </tr>
         <tr style="background:#f9fafb;">
-          <td style="padding:6px 10px;">Jeans</td>
-          <td style="padding:6px 10px;">5</td>
-          <td style="padding:6px 10px;">50000</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">Jeans</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-family:monospace;">JEA-32</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">5</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;"></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;color:#d97706;">reducir</td>
+        </tr>
+        <tr style="background:white;">
+          <td style="padding:5px 8px;">Gorras</td>
+          <td style="padding:5px 8px;font-family:monospace;">GOR-001</td>
+          <td style="padding:5px 8px;"></td>
+          <td style="padding:5px 8px;"></td>
+          <td style="padding:5px 8px;color:#dc2626;">eliminar</td>
         </tr>
       </table>
+      </div>
     </div>
 
-    <div style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.6;">
-      • Si el producto <strong>ya existe</strong>, la cantidad se <strong>suma</strong> al stock actual.<br>
-      • Si es <strong>nuevo</strong>, se crea automáticamente.<br>
-      • Las filas vacías se ignoran.
+    <div style="font-size:12px;color:var(--gray-600);margin-bottom:16px;line-height:1.7;">
+      ✅ <strong>agregar</strong> (default) — suma al stock o crea si no existe<br>
+      🔽 <strong>reducir</strong> — descuenta del stock actual<br>
+      🗑️ <strong>eliminar</strong> — borra el producto del inventario<br>
+      🔍 Busca por <strong>nombre</strong> o <strong>SKU</strong> para coincidir<br>
+      📊 SKU: código de barras, EAN-13, o código interno
     </div>
 
     <button class="btn btn-primary btn-block mb-12" onclick="importFromExcel()">
@@ -1102,12 +1179,14 @@ function openImportSheet() {
 function showExcelTemplate() {
   if (typeof XLSX === 'undefined') { showToast('⚠️ Conecta a internet una vez para cargar el módulo'); return; }
   const ws = XLSX.utils.aoa_to_sheet([
-    ['Producto', 'Cantidad', 'Costo'],
-    ['Blusas',   10,         25000],
-    ['Jeans',    5,          50000],
-    ['Zapatos',  8,          80000],
+    ['Producto',  'SKU',        'Cantidad', 'Costo',  'Accion'],
+    ['Blusas',    'BLU-RJ-M',   10,         25.00,    'agregar'],
+    ['Jeans',     'JEA-AZ-32',  5,          50.00,    'agregar'],
+    ['Zapatos',   '7501234567890', 8,        80.00,    'agregar'],
+    ['Camisetas', 'CAM-BL-S',  -3,          '',       'reducir'],
+    ['Gorras',    'GOR-001',    '',          '',       'eliminar'],
   ]);
-  ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
   XLSX.writeFile(wb, 'plantilla-inventario.xlsx');
@@ -2337,7 +2416,138 @@ function renderCarteraAlert() {
   }
 }
 
-// Placeholders IVA y Facturación
+// ── Escáner de código de barras (BarcodeDetector API — nativo Chrome) ─────────
+// 100% offline, sin IA, sin servidor externo. Solo cámara del dispositivo.
+async function openBarcodeScanner(targetFieldId) {
+  if (!('BarcodeDetector' in window)) {
+    showToast('📷 Escáner disponible en Chrome Android actualizado', 4000);
+    return;
+  }
+
+  const sheet = document.getElementById('settings-sheet');
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title" style="text-align:center;">📷 Escanear Código</h3>
+    <div style="position:relative; background:#000; border-radius:14px; overflow:hidden; margin-bottom:14px;">
+      <video id="barcode-video" autoplay playsinline muted
+        style="width:100%; max-height:260px; object-fit:cover; display:block;"></video>
+      <!-- Marco de guía -->
+      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;">
+        <div style="width:75%; height:120px; border:3px solid #38bdf8; border-radius:10px; box-shadow:0 0 0 2000px rgba(0,0,0,.4);"></div>
+      </div>
+      <div id="scan-hint" style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,.7); color:white; padding:10px; text-align:center; font-size:13px;">
+        📦 Apunta al código de barras o QR...
+      </div>
+    </div>
+    <p style="font-size:12px; color:var(--gray-500); text-align:center; margin-bottom:14px;">
+      Soporta EAN-13, EAN-8, Code 128, QR y más. Sin internet — funciona en tu dispositivo.
+    </p>
+    <button class="btn btn-secondary btn-block" onclick="stopBarcodeScanner()">✕ Cancelar</button>
+  `;
+  sheet.classList.add('open');
+  window._barcodeScanActive = true;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('barcode-video');
+    if (!video) { stream.getTracks().forEach(t => t.stop()); return; }
+    video.srcObject = stream;
+    window._barcodeStream = stream;
+    await video.play();
+
+    const formats = ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e','itf','codabar'];
+    const detector = new BarcodeDetector({ formats });
+
+    const scan = async () => {
+      if (!window._barcodeScanActive) return;
+      const vid = document.getElementById('barcode-video');
+      if (!vid || vid.readyState < 2) { requestAnimationFrame(scan); return; }
+      try {
+        const codes = await detector.detect(vid);
+        if (codes.length > 0) {
+          const raw = codes[0].rawValue;
+          stopBarcodeScanner();
+          const field = document.getElementById(targetFieldId);
+          if (field) { field.value = raw; field.dispatchEvent(new Event('input')); }
+          showToast('✅ Código detectado: ' + raw, 3000);
+          return;
+        }
+      } catch (_) {}
+      requestAnimationFrame(scan);
+    };
+    requestAnimationFrame(scan);
+
+  } catch (err) {
+    stopBarcodeScanner();
+    if (err.name === 'NotAllowedError') {
+      showToast('❌ Permiso de cámara denegado. Actívalo en ajustes del navegador.', 4000);
+    } else {
+      showToast('❌ No se pudo acceder a la cámara.', 3000);
+    }
+  }
+}
+
+function stopBarcodeScanner() {
+  window._barcodeScanActive = false;
+  if (window._barcodeStream) {
+    window._barcodeStream.getTracks().forEach(t => t.stop());
+    window._barcodeStream = null;
+  }
+  closeSettingsSheet();
+}
+
+// ── Régimen Tributario Ecuador ─────────────────────────────────────────────────
+function openRegimenGeneral() {
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">📋 Régimen Tributario · SRI Ecuador</h3>
+
+    <div style="background:#f0fdf4;border-radius:12px;padding:14px;margin-bottom:10px;border:1.5px solid #bbf7d0;">
+      <div style="font-size:13px;font-weight:800;color:#166534;margin-bottom:8px;">🟢 RIMPE — Negocio Popular</div>
+      <div style="font-size:12px;color:#166534;line-height:1.8;">
+        📌 Ingresos hasta <strong>$20,000 / año</strong><br>
+        💰 Pago único anual (desde ~$60)<br>
+        🧾 No emite facturas — usa RISE<br>
+        📊 Sin declaración mensual de IVA<br>
+        📒 Sin contabilidad formal obligatoria
+      </div>
+    </div>
+
+    <div style="background:#eff6ff;border-radius:12px;padding:14px;margin-bottom:10px;border:1.5px solid #bfdbfe;">
+      <div style="font-size:13px;font-weight:800;color:#1d4ed8;margin-bottom:8px;">🔵 RIMPE — Emprendedor</div>
+      <div style="font-size:12px;color:#1d4ed8;line-height:1.8;">
+        📌 Ingresos entre <strong>$20,001 y $300,000 / año</strong><br>
+        💰 Impuesto: <strong>2% sobre ingresos brutos</strong><br>
+        🧾 Facturas electrónicas SRI obligatorias<br>
+        📊 Declara IVA mensual (Form. 104A)<br>
+        📒 Contabilidad simplificada
+      </div>
+    </div>
+
+    <div style="background:#fff7ed;border-radius:12px;padding:14px;margin-bottom:10px;border:1.5px solid #fed7aa;">
+      <div style="font-size:13px;font-weight:800;color:#9a3412;margin-bottom:8px;">🟠 Régimen General</div>
+      <div style="font-size:12px;color:#9a3412;line-height:1.8;">
+        📌 Ingresos <strong>superiores a $300,000/año</strong> o sociedades<br>
+        💰 Impuesto a la renta: <strong>25% sobre utilidad neta</strong><br>
+        🧾 Facturas electrónicas + retenciones (Form. 103)<br>
+        📊 Declara IVA mensual (Form. 104)<br>
+        📒 <strong>Contabilidad completa NIIF obligatoria</strong><br>
+        👔 Requiere Contador Público Autorizado (CPA)
+      </div>
+    </div>
+
+    <div style="background:var(--primary-light);border-radius:10px;padding:12px;font-size:12px;color:var(--primary);line-height:1.7;margin-bottom:20px;">
+      💡 <strong>ContaFácil Pro</strong> aplica principios <strong>NIIF PYMES</strong> compatibles con todos los regímenes. Estado de Resultados, Cartera de Clientes y Balance General en los módulos activos.
+    </div>
+
+    <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">Entendido ✓</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+// ── Placeholders IVA y Facturación
 function openIvaPlaceholder() {
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
@@ -2479,7 +2689,15 @@ function openSettingsSheet(type) {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
-function closeSettingsSheet() { document.getElementById('settings-sheet').classList.remove('open'); }
+function closeSettingsSheet() {
+  // Detener cámara del escáner si estaba activa
+  if (window._barcodeStream) {
+    window._barcodeStream.getTracks().forEach(t => t.stop());
+    window._barcodeStream = null;
+    window._barcodeScanActive = false;
+  }
+  document.getElementById('settings-sheet').classList.remove('open');
+}
 
 // ── Export / Import ────────────────────────────────────────────────────────────
 function exportData() {
@@ -2537,6 +2755,8 @@ document.addEventListener('DOMContentLoaded', () => {
     journalSearch = e.target.value;
     renderJournal();
   });
+
+  document.getElementById('inventory-search')?.addEventListener('input', () => renderInventory());
 
   document.getElementById('detail-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('detail-overlay')) closeDetail();
