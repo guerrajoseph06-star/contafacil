@@ -818,6 +818,9 @@ function renderReports() {
   document.getElementById('print-generated').textContent = 'Generado el ' + fmtDate(today());
   document.getElementById('print-footer-company').textContent = s.companyName;
 
+  // ── Balance General (auto-refrescar si el panel estaba abierto) ──────────────
+  if (balanceSheetOpen) renderBalanceSheet();
+
   // ── Presupuesto ───────────────────────────────────────────
   renderBudgetStatus();
 
@@ -911,6 +914,127 @@ function _renderPnL(pnl) {
       <div style="font-size:32px; margin-bottom:8px;">📊</div>
       Registra ingresos y gastos para ver el Estado de Resultados
     </div>` : ''}
+  `;
+}
+
+// ── Balance General (Estado de Situación Financiera NIIF PYMES) ──────────────
+let balanceSheetOpen = false;
+
+function toggleBalanceSheet() {
+  balanceSheetOpen = !balanceSheetOpen;
+  document.getElementById('balance-sheet-view').style.display = balanceSheetOpen ? 'block' : 'none';
+  document.getElementById('balance-toggle-icon').textContent  = balanceSheetOpen ? '▲' : '▼';
+  if (balanceSheetOpen) renderBalanceSheet();
+}
+
+function renderBalanceSheet() {
+  const el = document.getElementById('balance-sheet-content');
+  if (!el) return;
+  const bs = DB.getBalanceSheet();
+
+  const todayStr = new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' });
+
+  // ── helpers de render ──────────────────────────────────
+  const sectionTitle = (label, color) => `
+    <div style="font-size:11px; font-weight:800; text-transform:uppercase;
+      letter-spacing:.6px; padding:12px 0 6px; color:${color};
+      border-bottom:1.5px solid var(--gray-100); margin-bottom:2px;">
+      ${label}
+    </div>`;
+
+  const row = (label, value, valColor = 'var(--gray-700)', indent = true) => {
+    const colorCss = valColor;
+    return `
+    <div style="display:flex; justify-content:space-between; align-items:center;
+      padding:${indent ? '5px 0 5px 14px' : '7px 0'}; font-size:${indent ? '13' : '14'}px;
+      border-bottom:1px solid var(--gray-50);">
+      <span style="color:var(--gray-600);">${label}</span>
+      <span style="font-weight:700; color:${colorCss};">${fmt(value)}</span>
+    </div>`;
+  };
+
+  const subtotal = (label, value, valColor = 'var(--primary)') => `
+    <div style="display:flex; justify-content:space-between; align-items:center;
+      padding:9px 0; font-size:14px; font-weight:800; color:${valColor};
+      border-top:2px solid var(--gray-200); margin-top:4px;">
+      <span>${label}</span>
+      <span>${fmt(value)}</span>
+    </div>`;
+
+  // ── Activos ────────────────────────────────────────────
+  let activosHTML = sectionTitle('💚 ACTIVOS CORRIENTES', '#16a34a');
+
+  if (bs.totalCash !== 0) {
+    activosHTML += `<div style="font-size:11px; color:var(--gray-400); padding:5px 14px 2px; font-weight:600; letter-spacing:.3px;">Efectivo y Equivalentes de Efectivo</div>`;
+    activosHTML += bs.cashAccounts.map(a =>
+      row(a.emoji + ' ' + a.name, a.balance, a.balance >= 0 ? '#16a34a' : 'var(--danger)')
+    ).join('');
+  }
+
+  if (bs.totalCxC > 0) {
+    activosHTML += row('🧾 Cuentas por Cobrar (Cartera)', bs.totalCxC, '#0891b2');
+  }
+
+  if (bs.totalInventory > 0) {
+    activosHTML += row('📦 Inventarios (al costo)', bs.totalInventory, '#7c3aed');
+  }
+
+  if (bs.totalAssets === 0) {
+    activosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">Sin activos registrados aún</div>`;
+  }
+  activosHTML += subtotal('TOTAL ACTIVOS', bs.totalAssets, '#16a34a');
+
+  // ── Pasivos ────────────────────────────────────────────
+  let pasivosHTML = sectionTitle('🔴 PASIVOS CORRIENTES', 'var(--danger)');
+
+  if (bs.pendingLiabs.length > 0) {
+    pasivosHTML += bs.pendingLiabs.map(t => {
+      const cat     = DB.getCategoryById(t.category);
+      const creditor = t.creditor || (cat ? cat.name : 'Deuda');
+      return row(`${creditor} <span style="font-size:10px; color:var(--gray-400);">(${fmtDate(t.date)})</span>`, t.amount, 'var(--danger)');
+    }).join('');
+  } else {
+    pasivosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">✅ Sin deudas pendientes</div>`;
+  }
+  pasivosHTML += subtotal('TOTAL PASIVOS', bs.totalLiabilities, bs.totalLiabilities > 0 ? 'var(--danger)' : 'var(--gray-400)');
+
+  // ── Patrimonio ─────────────────────────────────────────
+  const eqColor  = bs.equity >= 0 ? '#16a34a' : 'var(--danger)';
+  const eqBg     = bs.equity >= 0
+    ? 'linear-gradient(135deg,#f0fdf4,#dcfce7); border:1.5px solid #bbf7d0;'
+    : 'linear-gradient(135deg,#fff1f2,#fee2e2); border:1.5px solid #fecaca;';
+
+  let patrimonioHTML = sectionTitle('🏦 PATRIMONIO', 'var(--primary)');
+  patrimonioHTML += row('Utilidades Acumuladas', bs.equity, eqColor);
+  patrimonioHTML += subtotal('TOTAL PATRIMONIO', bs.equity, eqColor);
+
+  // ── Ecuación contable ──────────────────────────────────
+  const checkTotal = bs.totalLiabilities + bs.equity;
+  const ecuHTML = `
+    <div style="background:${eqBg} border-radius:10px; padding:12px 16px;
+      margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:12px; font-weight:800; color:var(--gray-700);">📐 Ecuación Contable</div>
+        <div style="font-size:11px; color:var(--gray-500); margin-top:2px;">Activos = Pasivos + Patrimonio</div>
+        <div style="font-size:11px; color:var(--gray-400); margin-top:1px;">${fmt(bs.totalAssets)} = ${fmt(bs.totalLiabilities)} + ${fmt(bs.equity)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:20px; font-weight:800; color:${eqColor};">${fmt(checkTotal)}</div>
+        <div style="font-size:10px; color:var(--gray-400);">✓ Cuadra</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:var(--gray-400); margin-top:10px; line-height:1.5; padding:0 2px;">
+      💡 <strong>Patrimonio</strong> = lo que posees (activos) − lo que debes (pasivos). Refleja el valor real de tu negocio.
+    </div>`;
+
+  el.innerHTML = `
+    <div style="font-size:11px; color:var(--gray-400); text-align:center; margin-bottom:10px;">
+      📅 Al ${todayStr} · Acumulado total (independiente del mes seleccionado)
+    </div>
+    ${activosHTML}
+    ${pasivosHTML}
+    ${patrimonioHTML}
+    ${ecuHTML}
   `;
 }
 

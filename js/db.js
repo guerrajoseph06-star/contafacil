@@ -644,6 +644,49 @@ const DB = (() => {
     return bal; // { accountId: saldo }
   }
 
+  // ── Balance General (Estado de Situación Financiera) ─────────────────────────
+  // NIIF PYMES Ecuador — snapshot del momento actual (no por período mensual)
+  // Ecuación contable fundamental: Activos = Pasivos + Patrimonio
+  function getBalanceSheet() {
+    // ── Activos Corrientes ──────────────────────────────
+    const accBalances = getAccountBalances();
+    const accounts    = getAccounts();
+
+    // Efectivo y equivalentes (cuentas con saldo ≠ 0)
+    const cashAccounts = accounts
+      .map(a => ({ ...a, balance: accBalances[a.id] || 0 }))
+      .filter(a => (accBalances[a.id] || 0) !== 0);
+    const totalCash = cashAccounts.reduce((s, a) => s + a.balance, 0);
+
+    // Cuentas por Cobrar — cartera pendiente de cobro (crédito no cobrado aún)
+    const recStats   = getReceivableStats();
+    const totalCxC   = recStats.totalPendiente;
+
+    // Inventario — valorado al costo unitario × cantidad en stock
+    const inventory      = getInventory();
+    const totalInventory = inventory.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
+
+    const totalCurrentAssets = totalCash + totalCxC + totalInventory;
+    const totalAssets        = totalCurrentAssets; // Activos fijos: próxima versión
+
+    // ── Pasivos Corrientes ──────────────────────────────
+    const pendingLiabs     = getPendingLiabilities();
+    const totalLiabilities = pendingLiabs.reduce((s, t) => s + t.amount, 0);
+
+    // ── Patrimonio ──────────────────────────────────────
+    // Patrimonio = Activos − Pasivos (ecuación contable)
+    const equity = totalAssets - totalLiabilities;
+
+    return {
+      cashAccounts, totalCash,
+      totalCxC,
+      inventory, totalInventory,
+      totalCurrentAssets, totalAssets,
+      pendingLiabs, totalLiabilities,
+      equity,
+    };
+  }
+
   // ── Onboarding ─────────────────────────────────────────────
   function isOnboarded() { return !!localStorage.getItem(KEYS.onboarded); }
   function markOnboarded() { localStorage.setItem(KEYS.onboarded, '1'); }
@@ -683,6 +726,7 @@ const DB = (() => {
     getLast6MonthsStats,
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
     getAccountBalances,
+    getBalanceSheet,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,

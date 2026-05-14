@@ -534,6 +534,20 @@
       <div id="pnl-section"></div>
     </div>
 
+    <!-- ══ BALANCE GENERAL (Estado de Situación Financiera) ══ -->
+    <div class="card no-print" style="margin-bottom:12px;">
+      <div class="card-header" style="cursor:pointer;" onclick="toggleBalanceSheet()">
+        <div>
+          <div class="card-title">🏦 Balance General</div>
+          <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">Estado de Situación Financiera · NIIF PYMES</div>
+        </div>
+        <span id="balance-toggle-icon" style="font-size:16px; color:var(--primary);">▼</span>
+      </div>
+      <div id="balance-sheet-view" style="display:none; margin-top:8px;">
+        <div id="balance-sheet-content"></div>
+      </div>
+    </div>
+
     <!-- Deudas del mes -->
     <div id="report-liabilities-section" style="display:none; margin-bottom:12px;">
       <div class="card" style="background:#fef3c7; border:none;">
