@@ -26,6 +26,7 @@ let editingTxId      = null;
 let formType         = 'expense';
 let journalFilter    = 'all';
 let journalCatFilter = '';      // filtro de categoría en el diario
+let journalUserFilter = '';     // filtro de usuario en el diario
 let journalSearch    = '';
 let reportYear       = new Date().getFullYear();
 let reportMonth      = new Date().getMonth() + 1;
@@ -273,6 +274,23 @@ function renderJournal() {
     );
   }
 
+  // ── Selector de usuario (solo si hay múltiples usuarios) ─
+  const userNames  = DB.getUserNames();
+  const userWrap   = document.getElementById('journal-user-wrap');
+  const userSelect = document.getElementById('journal-user-filter');
+  const showUsers  = userNames.length > 1;
+  if (userWrap) userWrap.style.display = showUsers ? 'block' : 'none';
+  if (showUsers && userSelect) {
+    const prevUser = userSelect.value;
+    userSelect.innerHTML =
+      '<option value="">👥 Todos los usuarios</option>' +
+      userNames.map(n => `<option value="${n}" ${(prevUser === n || journalUserFilter === n) ? 'selected' : ''}>👤 ${n}</option>`).join('');
+    if (journalUserFilter) userSelect.value = journalUserFilter;
+  }
+
+  // ── Filtro por usuario ──────────────────────────────────
+  if (journalUserFilter) txs = txs.filter(t => t.userName === journalUserFilter);
+
   // ── Selector de categoría (dinámico según el tipo) ────────
   const catWrap   = document.getElementById('journal-cat-wrap');
   const catSelect = document.getElementById('journal-cat-filter');
@@ -376,9 +394,16 @@ function setJournalCatFilter(catId) {
   renderJournal();
 }
 
+function setJournalUserFilter(name) {
+  journalUserFilter = name;
+  renderJournal();
+}
+
 // ── Ítem de transacción (display correcto por tipo) ───────────────────────────
 function txItemHTML(tx) {
-  const cat = DB.getCategoryById(tx.category);
+  const cat       = DB.getCategoryById(tx.category);
+  const multiUser = DB.getUserNames().length > 1;
+  const userTag   = (multiUser && tx.userName) ? ` · <span style="font-size:10px;background:var(--primary-light);color:var(--primary);border-radius:4px;padding:1px 5px;vertical-align:middle;">👤 ${tx.userName}</span>` : '';
   let emoji, amountText, amountClass, metaText, extraStyle = '';
 
   // CMV auto-generado: estilo diferente, no interactivo si se prefiere
@@ -425,7 +450,7 @@ function txItemHTML(tx) {
       <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
       <div class="tx-info">
         <div class="tx-desc">${tx.description}${tx.isCogs ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
-        <div class="tx-meta">${metaText}</div>
+        <div class="tx-meta">${metaText}${userTag}</div>
       </div>
       <div class="tx-amount ${amountClass}">${amountText}</div>
     </li>
@@ -2916,11 +2941,153 @@ function openFacturacionPlaceholder() {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
+// ── Multi-usuario / Sincronización ────────────────────────────────────────────
+function openUserSyncSheet(mode) {
+  const s        = DB.getSettings();
+  const userName = s.userName || 'Principal';
+  const users    = DB.getUserNames();
+  let content    = '';
+
+  if (mode === 'name') {
+    content = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">👤 Mi Nombre de Usuario</h3>
+      <div style="font-size:13px; color:var(--gray-600); margin-bottom:16px; line-height:1.6;">
+        Este nombre identifica tus registros cuando combines datos con otro dispositivo o vendedor.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre (ej: Ana, Vendedor 1, Sucursal Norte)</label>
+        <input type="text" class="form-control" id="user-name-input"
+          value="${userName}" placeholder="Principal" maxlength="30"
+          style="font-size:16px; font-weight:600;">
+      </div>
+      <div style="font-size:11px; color:var(--gray-400); margin-bottom:16px; line-height:1.5;">
+        💡 Los registros que ya tienes quedan con el nombre actual. El nuevo nombre aplica a futuros registros.
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveUserName()">✅ Guardar nombre</button>
+      <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+    `;
+  } else if (mode === 'export') {
+    content = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">📤 Exportar Mi Registro</h3>
+      <div style="background:var(--primary-light); border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px; color:var(--primary); line-height:1.7;">
+        <strong>¿Cómo sincronizar con otro dispositivo?</strong><br><br>
+        1️⃣ Toca <strong>"Exportar"</strong> → se descarga un archivo <code>.json</code><br>
+        2️⃣ Envía ese archivo por <strong>WhatsApp, email, USB o Drive</strong><br>
+        3️⃣ En el otro dispositivo: Ajustes → Equipo → <strong>Importar registro de compañero</strong><br>
+        4️⃣ Los datos se unen automáticamente sin duplicar ✅
+      </div>
+      <div style="background:var(--gray-50); border-radius:10px; padding:12px; margin-bottom:14px; font-size:13px;">
+        <div style="font-weight:700; margin-bottom:6px; color:var(--gray-700);">📦 El archivo incluye:</div>
+        <div style="color:var(--gray-600); line-height:1.8;">
+          ✅ Todas tus transacciones (ingresos, gastos, deudas, traslados)<br>
+          ✅ Cartera de clientes (cuentas por cobrar)<br>
+          ❌ Inventario (se gestiona por dispositivo)<br>
+          ❌ Configuración (se mantiene en cada dispositivo)
+        </div>
+      </div>
+      <div style="font-size:13px; color:var(--gray-600); margin-bottom:16px; padding:10px 12px; background:var(--gray-50); border-radius:8px;">
+        Exportando como: <strong style="color:var(--primary); font-size:15px;">👤 ${userName}</strong>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doExportForSync()">
+        📤 Exportar registro de ${userName}
+      </button>
+      <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+    `;
+  } else if (mode === 'import') {
+    const usersInfo = users.length > 1
+      ? `<div style="background:var(--gray-50); border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:13px; color:var(--gray-600);">
+           👥 Usuarios en esta app: ${users.map(u => `<strong>${u}</strong>`).join(', ')}
+         </div>`
+      : '';
+    content = `
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">📥 Importar Registro de Compañero</h3>
+      <div style="background:var(--primary-light); border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px; color:var(--primary); line-height:1.7;">
+        <strong>Pasos:</strong><br><br>
+        1️⃣ Tu compañero exporta su registro (Ajustes → Equipo → <strong>Exportar</strong>)<br>
+        2️⃣ Te envía el archivo <code>.json</code><br>
+        3️⃣ Toca <strong>"Seleccionar archivo"</strong> aquí<br>
+        4️⃣ Los datos se combinan, verás ambos en el Diario ✅
+      </div>
+      <div style="background:#f0fdf4; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:13px; color:#166534; line-height:1.6;">
+        🛡️ <strong>Protección anti-duplicados</strong> — Si ya importaste antes el mismo archivo, no se vuelve a duplicar nada. Puedes importar el mismo archivo varias veces con total seguridad.
+      </div>
+      ${usersInfo}
+      <button class="btn btn-primary btn-block" onclick="doImportFromUser()">
+        📂 Seleccionar archivo de compañero (.json)
+      </button>
+      ${users.length > 1 ? `
+        <button class="btn btn-outline btn-block mt-8" onclick="closeSettingsSheet(); setJournalUserFilter(''); navigate('journal');">
+          📒 Ver Diario filtrado por usuario →
+        </button>` : ''}
+      <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+    `;
+  }
+
+  document.getElementById('settings-sheet-content').innerHTML = content;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function saveUserName() {
+  const name = document.getElementById('user-name-input')?.value.trim();
+  if (!name) { showToast('⚠️ Ingresa un nombre'); return; }
+  DB.updateSettings({ userName: name });
+  closeSettingsSheet();
+  renderSettings();
+  showToast('✅ Nombre guardado: ' + name);
+}
+
+function doExportForSync() {
+  const s    = DB.getSettings();
+  const json = DB.exportForSync();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().split('T')[0];
+  const safe = (s.userName || 'Principal').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]/g, '-');
+  a.href     = url;
+  a.download = `contafacil-${safe}-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  closeSettingsSheet();
+  showToast('📤 Archivo exportado — envíalo a tu compañero', 3500);
+}
+
+function doImportFromUser() {
+  const input  = document.createElement('input');
+  input.type   = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const result = DB.importFromUser(ev.target.result);
+        closeSettingsSheet();
+        const msg = result.addedTxs === 0
+          ? `✅ Sin cambios — los datos de ${result.sourceUser} ya estaban importados`
+          : `✅ ${result.addedTxs} registro${result.addedTxs !== 1 ? 's' : ''} de ${result.sourceUser} importados`;
+        showToast(msg, 4000);
+        renderDashboard();
+      } catch {
+        showToast('❌ Archivo inválido o corrupto. Usa el archivo .json de ContaFácil.', 3500);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
 // ── Settings ───────────────────────────────────────────────────────────────────
 function renderSettings() {
   const s = DB.getSettings();
   document.getElementById('settings-company-val').textContent  = s.companyName;
   document.getElementById('settings-currency-val').textContent = s.currency;
+  const unEl = document.getElementById('settings-username-val');
+  if (unEl) unEl.textContent = s.userName || 'Principal';
 
   // Sincronizar toggle modo oscuro
   const isDark = document.body.classList.contains('dark-mode');

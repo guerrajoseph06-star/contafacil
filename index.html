@@ -244,6 +244,13 @@
       <button class="filter-chip"        data-filter="liability" onclick="setJournalFilter('liability')">🔴 Deudas</button>
     </div>
 
+    <!-- Filtro por usuario (solo visible si hay múltiples usuarios en los datos) -->
+    <div id="journal-user-wrap" style="display:none; margin-bottom:8px;">
+      <select id="journal-user-filter" class="form-control" style="background:var(--white);"
+        onchange="setJournalUserFilter(this.value)">
+      </select>
+    </div>
+
     <!-- Filtro por categoría (se muestra cuando hay un tipo específico seleccionado) -->
     <div id="journal-cat-wrap" style="display:none; margin-bottom:8px;">
       <select id="journal-cat-filter" class="form-control" style="background:var(--white);"
@@ -721,6 +728,34 @@
           <div class="settings-item-desc" style="color:#0891b2;">Próximamente · Factura PDF / SRI</div>
         </div>
         <div class="settings-item-arrow" style="color:#0891b2;">🔜</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">👥 Equipo / Múltiples Usuarios</div>
+      <button class="settings-item" onclick="openUserSyncSheet('name')">
+        <div class="settings-item-icon">👤</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Mi nombre de usuario</div>
+          <div class="settings-item-desc" id="settings-username-val">Principal</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+      <button class="settings-item" onclick="openUserSyncSheet('export')">
+        <div class="settings-item-icon">📤</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Exportar mi registro</div>
+          <div class="settings-item-desc">Comparte tus ventas con otro dispositivo</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+      <button class="settings-item" onclick="openUserSyncSheet('import')">
+        <div class="settings-item-icon">📥</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Importar registro de compañero</div>
+          <div class="settings-item-desc">Une los datos de otro vendedor sin duplicar</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
       </button>
     </div>
 

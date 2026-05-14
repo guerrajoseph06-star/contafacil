@@ -71,6 +71,7 @@ const DB = (() => {
   const DEFAULT_SETTINGS = {
     companyName: 'Mi Negocio', ownerName: '',
     currency: 'COP', currencySymbol: '$',
+    userName: 'Principal',   // nombre del usuario en este dispositivo
   };
 
   // ── Init / Migración ───────────────────────────────────────
@@ -81,6 +82,23 @@ const DB = (() => {
     if (!load(KEYS.transactions)) save(KEYS.transactions, []);
     if (!load(KEYS.inventory))    save(KEYS.inventory,    []);
     _migrateCategorias();
+    _migrateUserNames();
+  }
+
+  // Estampa userName en transacciones y CxC que no lo tengan (migración al activar multi-usuario)
+  function _migrateUserNames() {
+    const s           = getSettings();
+    const defaultName = s.userName || 'Principal';
+
+    let txs     = load(KEYS.transactions) || [];
+    let changed = false;
+    txs = txs.map(t => { if (!t.userName) { changed = true; return { ...t, userName: defaultName }; } return t; });
+    if (changed) save(KEYS.transactions, txs);
+
+    let recs        = load(KEYS.receivables) || [];
+    let changedRecs = false;
+    recs = recs.map(r => { if (!r.userName) { changedRecs = true; return { ...r, userName: defaultName }; } return r; });
+    if (changedRecs) save(KEYS.receivables, recs);
   }
 
   function _migrateCategorias() {
@@ -135,7 +153,8 @@ const DB = (() => {
   function addTransaction(data) {
     const txs = load(KEYS.transactions) || [];
     const amount = parseFloat(data.amount);
-    const tx = { id: uuid(), createdAt: new Date().toISOString(), ...data, amount };
+    const s  = getSettings();
+    const tx = { id: uuid(), createdAt: new Date().toISOString(), userName: s.userName || 'Principal', ...data, amount };
 
     // Auto-COGS: cuando es una venta con inventario
     if (_needsCogs(tx)) {
@@ -644,6 +663,70 @@ const DB = (() => {
     return bal; // { accountId: saldo }
   }
 
+  // ── Multi-usuario / Sincronización entre dispositivos ────────────────────────
+  // Lógica: cada dispositivo tiene su userName. Exporta sus transacciones (con
+  // userName estampado), el otro dispositivo las importa y la app une sin duplicar.
+
+  // Retorna los nombres de usuario únicos que existen en las transacciones
+  function getUserNames() {
+    const txs   = load(KEYS.transactions) || [];
+    const names = new Set();
+    txs.forEach(t => { if (t.userName) names.add(t.userName); });
+    return [...names].sort();
+  }
+
+  // Exporta solo transacciones + CxC con userName (sin inventario ni settings)
+  function exportForSync() {
+    const s = getSettings();
+    return JSON.stringify({
+      syncVersion: 1,
+      exportedBy:  s.userName || 'Principal',
+      companyName: s.companyName,
+      exported:    new Date().toISOString(),
+      transactions: load(KEYS.transactions) || [],
+      receivables:  load(KEYS.receivables)  || [],
+    }, null, 2);
+  }
+
+  // Importa el archivo de otro usuario: une transacciones y CxC sin duplicar por ID
+  function importFromUser(jsonStr) {
+    const d = JSON.parse(jsonStr);
+    if (!d.transactions && !d.syncVersion) throw new Error('Formato no reconocido');
+
+    const sourceUser = d.exportedBy || d.settings?.companyName || 'Importado';
+    const sourceTxs  = d.transactions || [];
+    const sourceRecs = d.receivables  || [];
+
+    // Merge transacciones (skip by UUID)
+    let txs = load(KEYS.transactions) || [];
+    const existIds  = new Set(txs.map(t => t.id));
+    let addedTxs = 0;
+    sourceTxs.forEach(t => {
+      if (!existIds.has(t.id)) {
+        if (!t.userName) t.userName = sourceUser;
+        txs.push(t);
+        addedTxs++;
+      }
+    });
+    txs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    save(KEYS.transactions, txs);
+
+    // Merge CxC (skip by UUID)
+    let recs = load(KEYS.receivables) || [];
+    const existRecIds = new Set(recs.map(r => r.id));
+    let addedRecs = 0;
+    sourceRecs.forEach(r => {
+      if (!existRecIds.has(r.id)) {
+        if (!r.userName) r.userName = sourceUser;
+        recs.push(r);
+        addedRecs++;
+      }
+    });
+    save(KEYS.receivables, recs);
+
+    return { addedTxs, addedRecs, sourceUser };
+  }
+
   // ── Balance General (Estado de Situación Financiera) ─────────────────────────
   // NIIF PYMES Ecuador — snapshot del momento actual (no por período mensual)
   // Ecuación contable fundamental: Activos = Pasivos + Patrimonio
@@ -727,6 +810,7 @@ const DB = (() => {
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
     getAccountBalances,
     getBalanceSheet,
+    getUserNames, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,
