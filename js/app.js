@@ -33,7 +33,7 @@ let reportMonth   = new Date().getMonth() + 1;
 function fmt(amount) {
   const s = DB.getSettings();
   return s.currencySymbol + ' ' + Number(amount).toLocaleString('es-CO', {
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
+    minimumFractionDigits: 0, maximumFractionDigits: 2,
   });
 }
 function fmtDate(str) {
@@ -327,6 +327,23 @@ function renderForm(editId = null) {
   document.getElementById('form-title').textContent = isEdit ? 'Editar Transacción' : 'Nueva Transacción';
   document.getElementById('btn-delete-tx').style.display = isEdit ? 'flex' : 'none';
 
+  // Poblar campos estáticos desde la transacción (editar) o limpiarlos (nuevo)
+  const amountEl = document.getElementById('f-amount');
+  const descEl   = document.getElementById('f-desc');
+  const dateEl   = document.getElementById('f-date');
+  const notesEl  = document.getElementById('f-notes');
+  if (tx) {
+    if (amountEl) amountEl.value = tx.amount;
+    if (descEl)   descEl.value   = tx.description;
+    if (dateEl)   dateEl.value   = tx.date;
+    if (notesEl)  notesEl.value  = tx.notes || '';
+  } else {
+    if (amountEl) amountEl.value = '';
+    if (descEl)   descEl.value   = '';
+    if (dateEl)   dateEl.value   = today();
+    if (notesEl)  notesEl.value  = '';
+  }
+
   updateTypeTabs();
   renderFormFields(tx);
 }
@@ -507,7 +524,8 @@ function submitForm() {
     showToast('✅ Transacción guardada');
   }
 
-  navigate('journal');
+  // Ir al dashboard para mostrar el saldo actualizado inmediatamente
+  navigate('dashboard');
 }
 
 function deleteCurrentTx() {

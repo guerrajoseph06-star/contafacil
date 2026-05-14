@@ -50,6 +50,7 @@ const DB = (() => {
     { id:'c-impuestos', name:'Impuestos',            type:'expense',   emoji:'🏛️', color:'#9f1239' },
     { id:'c-equipos',   name:'Equipos / Herramientas',type:'expense',  emoji:'🔧', color:'#78350f' },
     { id:'c-comida',    name:'Alimentación',         type:'expense',   emoji:'🍽️', color:'#65a30d' },
+    { id:'c-tarjeta-cr', name:'Tarjeta de crédito',   type:'expense',   emoji:'💳', color:'#0284c7' },
     { id:'c-otros-e',   name:'Otros gastos',         type:'expense',   emoji:'📝', color:'#6b7280' },
     // PASIVOS / DEUDAS
     { id:'c-deuda-prov',name:'Deuda proveedor',      type:'liability', emoji:'🏭', color:'#b45309' },
