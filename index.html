@@ -178,6 +178,9 @@
       </div>
     </div>
 
+    <!-- Saldo por cuenta bancaria -->
+    <div id="dash-accounts" style="display:none;"></div>
+
     <!-- Accesos rápidos -->
     <div class="stat-chips">
       <button class="stat-chip" onclick="setFormType('income'); navigate('form')">
@@ -240,6 +243,16 @@
       <button class="filter-chip"        data-filter="transfer"  onclick="setJournalFilter('transfer')">↔️ Traslados</button>
       <button class="filter-chip"        data-filter="liability" onclick="setJournalFilter('liability')">🔴 Deudas</button>
     </div>
+
+    <!-- Filtro por categoría (se muestra cuando hay un tipo específico seleccionado) -->
+    <div id="journal-cat-wrap" style="display:none; margin-bottom:8px;">
+      <select id="journal-cat-filter" class="form-control" style="background:var(--white);"
+        onchange="setJournalCatFilter(this.value)">
+      </select>
+    </div>
+
+    <!-- Barra de resumen del filtro actual -->
+    <div id="journal-summary" style="display:none;"></div>
 
     <div id="journal-list"></div>
   </div>

@@ -22,12 +22,13 @@ function toggleDarkMode() {
   localStorage.setItem('cf_dark_mode', isDark ? '0' : '1');
   applyTheme(!isDark);
 }
-let editingTxId   = null;
-let formType      = 'expense';
-let journalFilter = 'all';
-let journalSearch = '';
-let reportYear    = new Date().getFullYear();
-let reportMonth   = new Date().getMonth() + 1;
+let editingTxId      = null;
+let formType         = 'expense';
+let journalFilter    = 'all';
+let journalCatFilter = '';      // filtro de categoría en el diario
+let journalSearch    = '';
+let reportYear       = new Date().getFullYear();
+let reportMonth      = new Date().getMonth() + 1;
 
 // ── Formatos ──────────────────────────────────────────────────────────────────
 function fmt(amount) {
@@ -184,6 +185,9 @@ function renderDashboard() {
     ? `<ul class="tx-list">${txs.map(txItemHTML).join('')}</ul>`
     : emptyHTML('📭', 'Sin movimientos', 'Toca + para agregar tu primera transacción');
 
+  // Saldo por cuenta bancaria
+  renderAccountBalances();
+
   // Alertas de presupuesto excedido
   renderBudgetAlerts();
 
@@ -203,14 +207,119 @@ function renderDashboard() {
   renderUpcomingRecurrings();
 }
 
+// ── Saldo por cuenta bancaria ─────────────────────────────────────────────────
+function renderAccountBalances() {
+  const el   = document.getElementById('dash-accounts');
+  if (!el) return;
+
+  const balances = DB.getAccountBalances();
+  const accounts = DB.getAccounts();
+
+  // Solo cuentas que tienen movimientos (saldo ≠ 0)
+  const used = accounts.filter(a => balances[a.id] !== 0);
+  if (!used.length) { el.style.display = 'none'; return; }
+
+  const totalCash = used.reduce((s, a) => s + (balances[a.id] || 0), 0);
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header" style="margin-bottom:4px;">
+        <div class="card-title">💳 Saldo por Cuenta</div>
+        <div style="font-size:13px; color:var(--gray-500); font-weight:600;">
+          Total: <span style="color:${totalCash >= 0 ? 'var(--success)' : 'var(--danger)'};">${fmt(totalCash)}</span>
+        </div>
+      </div>
+      <div style="font-size:11px; color:var(--gray-400); margin-bottom:10px;">
+        Basado en ingresos, gastos y traslados registrados
+      </div>
+      ${used.map(a => {
+        const bal = balances[a.id] || 0;
+        const pct = totalCash !== 0 ? Math.abs(Math.round((bal / Math.abs(totalCash)) * 100)) : 0;
+        return `
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--gray-100);">
+            <div style="font-size:26px; width:36px; text-align:center;">${a.emoji}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:14px; font-weight:700;">${a.name}</div>
+              <div style="background:var(--gray-100); border-radius:4px; height:5px; margin-top:5px; overflow:hidden;">
+                <div style="height:100%; width:${pct}%; background:${bal >= 0 ? 'var(--success)' : 'var(--danger)'}; border-radius:4px;"></div>
+              </div>
+            </div>
+            <div style="text-align:right; flex-shrink:0;">
+              <div style="font-size:17px; font-weight:800; color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                ${bal >= 0 ? '' : '−'}${fmt(Math.abs(bal))}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 // ── Diario ────────────────────────────────────────────────────────────────────
 function renderJournal() {
   let txs = DB.getTransactions();
 
+  // ── Filtro por tipo ───────────────────────────────────────
   if (journalFilter !== 'all') txs = txs.filter(t => t.type === journalFilter);
+
+  // ── Filtro por texto (descripción + notas) ────────────────
   if (journalSearch.trim()) {
     const q = journalSearch.toLowerCase();
-    txs = txs.filter(t => t.description.toLowerCase().includes(q) || (t.notes || '').toLowerCase().includes(q));
+    txs = txs.filter(t =>
+      t.description.toLowerCase().includes(q) ||
+      (t.notes || '').toLowerCase().includes(q)
+    );
+  }
+
+  // ── Selector de categoría (dinámico según el tipo) ────────
+  const catWrap   = document.getElementById('journal-cat-wrap');
+  const catSelect = document.getElementById('journal-cat-filter');
+  const showCats  = ['income','expense','liability'].includes(journalFilter);
+
+  if (catWrap) catWrap.style.display = showCats ? 'block' : 'none';
+  if (showCats && catSelect) {
+    const catType = journalFilter === 'liability' ? 'liability' : journalFilter;
+    const cats    = DB.getCategoriesByType(catType);
+    const prev    = catSelect.value;
+    catSelect.innerHTML =
+      '<option value="">— Todas las categorías —</option>' +
+      cats.map(c => `<option value="${c.id}" ${prev === c.id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('');
+    if (journalCatFilter) catSelect.value = journalCatFilter;
+  }
+
+  // ── Filtro por categoría ──────────────────────────────────
+  if (journalCatFilter) {
+    txs = txs.filter(t => t.category === journalCatFilter);
+  }
+
+  // ── Barra de resumen ──────────────────────────────────────
+  const summaryEl = document.getElementById('journal-summary');
+  if (summaryEl) {
+    const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter;
+    if (hasFilter && txs.length > 0) {
+      const totalInc = txs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
+      const totalExp = txs.filter(t => t.type === 'expense' && !t.isCogs).reduce((s,t) => s+t.amount, 0);
+      const totalLib = txs.filter(t => t.type === 'liability').reduce((s,t) => s+t.amount, 0);
+      const catName  = journalCatFilter ? DB.getCategoryById(journalCatFilter)?.name : null;
+
+      let parts = [`<strong>${txs.length}</strong> registro${txs.length !== 1 ? 's' : ''}`];
+      if (totalInc > 0) parts.push(`💰 Ingresos: <strong style="color:var(--success);">+${fmt(totalInc)}</strong>`);
+      if (totalExp > 0) parts.push(`💸 Gastos: <strong style="color:var(--danger);">−${fmt(totalExp)}</strong>`);
+      if (totalLib > 0) parts.push(`🔴 Deudas: <strong style="color:var(--warning);">${fmt(totalLib)}</strong>`);
+
+      summaryEl.style.display = 'block';
+      summaryEl.innerHTML = `
+        <div style="background:var(--primary-light); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px; color:var(--primary); line-height:1.8;">
+          ${catName ? `<div style="font-weight:700; margin-bottom:4px;">📂 ${catName}</div>` : ''}
+          ${parts.join(' &nbsp;·&nbsp; ')}
+          ${journalCatFilter ? `<button onclick="openCategoryReport('${journalCatFilter}')" style="float:right;font-size:12px;font-weight:700;background:none;color:var(--primary);">Ver reporte →</button>` : ''}
+        </div>
+      `;
+    } else {
+      summaryEl.style.display = 'none';
+    }
   }
 
   const groups = {};
@@ -254,10 +363,16 @@ function renderJournal() {
 }
 
 function setJournalFilter(f) {
-  journalFilter = f;
+  journalFilter    = f;
+  journalCatFilter = ''; // reset categoría al cambiar tipo
   document.querySelectorAll('.filter-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.filter === f)
   );
+  renderJournal();
+}
+
+function setJournalCatFilter(catId) {
+  journalCatFilter = catId;
   renderJournal();
 }
 
@@ -633,12 +748,15 @@ function renderReports() {
         const cat = DB.getCategoryById(catId);
         const pct = Math.round((total / maxVal) * 100);
         return `
-          <div class="category-breakdown-item">
+          <div class="category-breakdown-item" onclick="openCategoryReport('${catId}')"
+               style="cursor:pointer; border-radius:10px; padding:4px 6px; margin:-4px -6px; transition:background .15s;"
+               onmouseenter="this.style.background='var(--gray-50)'" onmouseleave="this.style.background=''">
             <div style="font-size:22px;">${cat ? cat.emoji : '📝'}</div>
             <div class="cat-bar-wrap">
               <div class="cat-bar-label">
                 <span style="font-weight:600;">${cat ? cat.name : 'Otros'}</span>
                 <span style="color:var(--danger); font-weight:700;">-${fmt(total)}</span>
+                <span style="font-size:11px; color:var(--gray-400); margin-left:4px;">→</span>
               </div>
               <div class="cat-bar-track">
                 <div class="cat-bar-fill" style="width:${pct}%; background:${cat ? cat.color : '#6b7280'};"></div>
@@ -794,6 +912,84 @@ function _renderPnL(pnl) {
       Registra ingresos y gastos para ver el Estado de Resultados
     </div>` : ''}
   `;
+}
+
+// ── Reporte detallado por categoría ───────────────────────────────────────────
+// Abre una sheet con TODAS las transacciones de una categoría (cualquier período)
+function openCategoryReport(catId) {
+  const cat  = DB.getCategoryById(catId);
+  if (!cat) return;
+
+  const allTxs = DB.getTransactions()
+    .filter(t => t.category === catId && !t.isCogs)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const total    = allTxs.reduce((s, t) => s + t.amount, 0);
+  const isIncome = cat.type === 'income';
+  const sign     = isIncome ? '+' : '−';
+  const color    = isIncome ? 'var(--success)' : cat.type === 'liability' ? 'var(--warning)' : 'var(--danger)';
+
+  // Agrupar por mes
+  const groups = {};
+  allTxs.forEach(t => {
+    const d = new Date(t.date + 'T12:00:00');
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(t);
+  });
+
+  const listHTML = Object.keys(groups).sort((a,b) => b.localeCompare(a)).map(key => {
+    const [y, m]   = key.split('-').map(Number);
+    const label    = new Date(y, m-1, 1).toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+    const items    = groups[key];
+    const monthTotal = items.reduce((s,t) => s+t.amount, 0);
+    return `
+      <div style="padding:8px 0 4px; font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase; display:flex; justify-content:space-between;">
+        <span>${label}</span>
+        <span style="color:${color};">${sign}${fmt(monthTotal)}</span>
+      </div>
+      ${items.map(t => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--gray-100);">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.description}</div>
+            <div style="font-size:11px; color:var(--gray-400);">${fmtDate(t.date)}${t.notes ? ' · ' + t.notes : ''}</div>
+          </div>
+          <div style="font-size:15px; font-weight:700; color:${color}; flex-shrink:0;">${sign}${fmt(t.amount)}</div>
+        </div>
+      `).join('')}
+    `;
+  }).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <!-- Encabezado -->
+    <div style="text-align:center; padding:8px 0 16px;">
+      <div style="font-size:48px; margin-bottom:8px;">${cat.emoji}</div>
+      <div style="font-size:18px; font-weight:800;">${cat.name}</div>
+      <div style="font-size:13px; color:var(--gray-500); margin-top:2px;">Historial completo · ${allTxs.length} registro${allTxs.length !== 1 ? 's' : ''}</div>
+    </div>
+
+    <!-- Total acumulado -->
+    <div style="background:var(--gray-50); border-radius:12px; padding:14px; text-align:center; margin-bottom:16px;">
+      <div style="font-size:11px; color:var(--gray-500); font-weight:700; letter-spacing:.5px; margin-bottom:4px;">TOTAL ACUMULADO</div>
+      <div style="font-size:32px; font-weight:800; color:${color};">${sign}${fmt(total)}</div>
+    </div>
+
+    <!-- Botón ir al diario filtrado -->
+    <button class="btn btn-outline btn-block mb-12" onclick="closeSettingsSheet(); setJournalFilter('${cat.type}'); setJournalCatFilter('${catId}'); navigate('journal');">
+      📒 Ver en el Diario con este filtro
+    </button>
+
+    <!-- Lista por mes -->
+    <div style="font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">Desglose por fecha</div>
+    ${allTxs.length
+      ? `<div style="max-height:55vh; overflow-y:auto;">${listHTML}</div>`
+      : `<p style="color:var(--gray-400); text-align:center; padding:20px 0;">Sin registros en esta categoría</p>`}
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 function prevMonth() {

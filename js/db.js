@@ -619,6 +619,31 @@ const DB = (() => {
     return result;
   }
 
+  // ── Saldo por cuenta bancaria ─────────────────────────────
+  // Calcula el saldo real de cada cuenta sumando ingresos, restando gastos
+  // y aplicando traslados entre cuentas.
+  function getAccountBalances() {
+    const txs  = getTransactions();
+    const accs = getAccounts();
+    const bal  = {};
+    accs.forEach(a => { bal[a.id] = 0; });
+
+    txs.forEach(t => {
+      if (t.isCogs) return;
+      if (t.type === 'income' && t.account) {
+        bal[t.account] = (bal[t.account] || 0) + t.amount;
+      }
+      if (t.type === 'expense' && t.account) {
+        bal[t.account] = (bal[t.account] || 0) - t.amount;
+      }
+      if (t.type === 'transfer') {
+        if (t.fromAccount) bal[t.fromAccount] = (bal[t.fromAccount] || 0) - t.amount;
+        if (t.toAccount)   bal[t.toAccount]   = (bal[t.toAccount]   || 0) + t.amount;
+      }
+    });
+    return bal; // { accountId: saldo }
+  }
+
   // ── Onboarding ─────────────────────────────────────────────
   function isOnboarded() { return !!localStorage.getItem(KEYS.onboarded); }
   function markOnboarded() { localStorage.setItem(KEYS.onboarded, '1'); }
@@ -657,6 +682,7 @@ const DB = (() => {
     getRecurringById, getNextExecution, processRecurringExpenses,
     getLast6MonthsStats,
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
+    getAccountBalances,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,
