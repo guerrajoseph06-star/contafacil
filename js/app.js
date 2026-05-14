@@ -140,6 +140,8 @@ function renderDashboard() {
 
   document.getElementById('dash-company').textContent  = s.companyName;
   document.getElementById('dash-balance').textContent  = fmt(all.netProfit);
+  const userBtn = document.getElementById('dash-user-name');
+  if (userBtn) userBtn.textContent = s.userName || 'Principal';
   document.getElementById('dash-income').textContent   = fmt(stats.income);
   document.getElementById('dash-expense').textContent  = fmt(stats.opExpenses);
   document.getElementById('dash-month').textContent    =
@@ -681,6 +683,8 @@ function openTxDetail(id) {
   const tx  = DB.getTransactionById(id);
   if (!tx) return;
   const cat = DB.getCategoryById(tx.category);
+  // Guardar descripción en global para acceder desde onclick sin problemas de escape
+  window._txDescForReport = tx.description;
 
   const LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda / Pasivo' };
   const BADGE  = { income:'badge-income', expense:'badge-expense', transfer:'badge-transfer', liability:'badge-liability' };
@@ -730,6 +734,11 @@ function openTxDetail(id) {
       <button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>
       <button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>
     </div>
+    ${!tx.isCogs ? `
+    <button class="btn btn-outline btn-block mt-8"
+      onclick="closeDetail(); openDescriptionReport(window._txDescForReport)">
+      🔍 Ver todos con: "${tx.description.length > 35 ? tx.description.substring(0,35)+'…' : tx.description}"
+    </button>` : ''}
   `;
   document.getElementById('detail-overlay').classList.add('open');
 }
@@ -2937,6 +2946,176 @@ function openFacturacionPlaceholder() {
       </div>
     </div>
     <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">Entendido</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+// ── Cambio rápido de usuario (misma app, mismo dispositivo) ─────────────────
+function openQuickUserSwitch() {
+  const s           = DB.getSettings();
+  const currentUser = s.userName || 'Principal';
+  const users       = DB.getUsers();
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">👥 Cambiar Usuario</h3>
+    <div style="font-size:13px; color:var(--gray-600); margin-bottom:16px; line-height:1.5;">
+      Usuario activo: <strong style="color:var(--primary);">${currentUser}</strong><br>
+      <span style="font-size:11px; color:var(--gray-400);">Los nuevos registros quedan a nombre del usuario activo.</span>
+    </div>
+
+    <!-- Lista de usuarios conocidos -->
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+      ${users.map(u => `
+        <button onclick="switchToUser('${u.replace(/'/g, '&#39;')}')"
+          style="display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:12px;
+            border:2px solid ${u === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
+            background:${u === currentUser ? 'var(--primary-light)' : 'var(--white)'};
+            cursor:pointer; text-align:left; width:100%;">
+          <div style="font-size:24px; width:42px; height:42px; display:flex; align-items:center;
+            justify-content:center; background:${u === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
+            border-radius:50%; flex-shrink:0;">
+            ${u === currentUser ? '✅' : '👤'}
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:15px; font-weight:700;
+              color:${u === currentUser ? 'var(--primary)' : 'var(--gray-800)'};">${u}</div>
+            <div style="font-size:11px; color:var(--gray-400);">
+              ${u === currentUser ? '✓ Usuario activo ahora' : 'Toca para cambiar'}
+            </div>
+          </div>
+        </button>
+      `).join('')}
+    </div>
+
+    <!-- Agregar nuevo usuario -->
+    <div style="border-top:1px solid var(--gray-100); padding-top:16px;">
+      <div style="font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
+        letter-spacing:.5px; margin-bottom:10px;">➕ Agregar usuario nuevo</div>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="new-user-input" class="form-control"
+          placeholder="Nombre (ej: Ana, Vendedor 2)" maxlength="30" style="flex:1;"
+          onkeydown="if(event.key==='Enter') addAndSwitchUser()">
+        <button class="btn btn-primary" onclick="addAndSwitchUser()" style="flex-shrink:0; padding:0 16px;">
+          Agregar
+        </button>
+      </div>
+    </div>
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function switchToUser(name) {
+  DB.switchUser(name);
+  closeSettingsSheet();
+  document.getElementById('dash-user-name').textContent = name;
+  showToast('👤 Usuario activo: ' + name, 2000);
+  renderSettings();
+}
+
+function addAndSwitchUser() {
+  const name = document.getElementById('new-user-input')?.value.trim();
+  if (!name) { showToast('⚠️ Escribe un nombre'); return; }
+  DB.switchUser(name);
+  closeSettingsSheet();
+  document.getElementById('dash-user-name').textContent = name;
+  showToast('✅ Usuario creado y activo: ' + name, 2500);
+  renderSettings();
+}
+
+// ── Reporte por descripción ───────────────────────────────────────────────────
+// Muestra todos los registros que tienen exactamente la misma descripción
+function openDescriptionReport(desc) {
+  const allTxs = DB.getTransactions()
+    .filter(t => t.description.toLowerCase() === desc.toLowerCase() && !t.isCogs)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (!allTxs.length) { showToast('Sin registros con esa descripción'); return; }
+
+  const totalInc = allTxs.filter(t => t.type === 'income')   .reduce((s,t) => s+t.amount, 0);
+  const totalExp = allTxs.filter(t => t.type === 'expense')  .reduce((s,t) => s+t.amount, 0);
+  const totalLib = allTxs.filter(t => t.type === 'liability').reduce((s,t) => s+t.amount, 0);
+
+  // Agrupar por mes
+  const groups = {};
+  allTxs.forEach(t => {
+    const d = new Date(t.date + 'T12:00:00');
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(t);
+  });
+
+  const listHTML = Object.keys(groups).sort((a,b) => b.localeCompare(a)).map(key => {
+    const [y,m] = key.split('-').map(Number);
+    const label = new Date(y, m-1, 1).toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+    const items = groups[key];
+    const mInc  = items.filter(t=>t.type==='income') .reduce((s,t)=>s+t.amount, 0);
+    const mExp  = items.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount, 0);
+    const typeColors = { income:'var(--success)', expense:'var(--danger)', transfer:'var(--primary)', liability:'var(--warning)' };
+    return `
+      <div style="padding:8px 0 4px; font-size:11px; font-weight:700; color:var(--gray-500);
+        text-transform:uppercase; display:flex; justify-content:space-between;">
+        <span>${label}</span>
+        <span>
+          ${mInc > 0 ? `<span style="color:var(--success);">+${fmt(mInc)}</span>` : ''}
+          ${mInc > 0 && mExp > 0 ? ' · ' : ''}
+          ${mExp > 0 ? `<span style="color:var(--danger);">-${fmt(mExp)}</span>` : ''}
+        </span>
+      </div>
+      ${items.map(t => {
+        const cat  = DB.getCategoryById(t.category);
+        const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '-' : '';
+        const multiUser = DB.getUserNames().length > 1;
+        return `
+          <div style="display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--gray-100);">
+            <div style="font-size:20px; flex-shrink:0;">${cat ? cat.emoji : (t.type==='income'?'💰':t.type==='expense'?'💸':t.type==='transfer'?'↔️':'🔴')}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:12px; color:var(--gray-500);">${fmtDate(t.date)}${cat ? ' · '+cat.name : ''}${t.notes ? ' · '+t.notes : ''}</div>
+              ${(multiUser && t.userName) ? `<div style="font-size:10px; color:var(--primary); margin-top:1px;">👤 ${t.userName}</div>` : ''}
+            </div>
+            <div style="font-size:15px; font-weight:700; color:${typeColors[t.type]||'var(--gray-700)'}; flex-shrink:0;">${sign}${fmt(t.amount)}</div>
+          </div>`;
+      }).join('')}
+    `;
+  }).join('');
+
+  // Botón "Ver en diario" con búsqueda pre-cargada
+  const safeDesc = desc.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <div style="padding:4px 0 16px;">
+      <div style="font-size:11px; color:var(--gray-400); font-weight:600; text-transform:uppercase;
+        letter-spacing:.5px; margin-bottom:6px;">🔍 Descripción</div>
+      <div style="font-size:18px; font-weight:800; color:var(--gray-900); word-break:break-word;">"${desc}"</div>
+      <div style="font-size:13px; color:var(--gray-400); margin-top:4px;">
+        ${allTxs.length} registro${allTxs.length!==1?'s':''} · todos los períodos
+      </div>
+    </div>
+
+    <!-- Totales -->
+    <div style="display:grid; grid-template-columns:${[totalInc,totalExp,totalLib].filter(v=>v>0).length>1?'1fr 1fr':'1fr'}; gap:8px; margin-bottom:14px;">
+      ${totalInc>0?`<div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10px;color:var(--gray-400);font-weight:700;letter-spacing:.3px;">INGRESOS</div><div style="font-size:20px;font-weight:800;color:var(--success);">+${fmt(totalInc)}</div></div>`:''}
+      ${totalExp>0?`<div style="background:#fff1f2;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10px;color:var(--gray-400);font-weight:700;letter-spacing:.3px;">GASTOS</div><div style="font-size:20px;font-weight:800;color:var(--danger);">-${fmt(totalExp)}</div></div>`:''}
+      ${totalLib>0?`<div style="background:#fef3c7;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10px;color:var(--gray-400);font-weight:700;letter-spacing:.3px;">DEUDAS</div><div style="font-size:20px;font-weight:800;color:var(--warning);">${fmt(totalLib)}</div></div>`:''}
+    </div>
+
+    <button class="btn btn-outline btn-block mb-12" onclick="
+      closeSettingsSheet();
+      journalSearch = '${safeDesc}';
+      const el = document.getElementById('journal-search');
+      if(el) el.value = '${safeDesc}';
+      navigate('journal');
+    ">📒 Ver en el Diario con este filtro →</button>
+
+    <div style="font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
+      letter-spacing:.5px; margin-bottom:8px;">Desglose por fecha</div>
+    <div style="max-height:50vh; overflow-y:auto;">${listHTML}</div>
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
   `;
   document.getElementById('settings-sheet').classList.add('open');
 }

@@ -71,7 +71,8 @@ const DB = (() => {
   const DEFAULT_SETTINGS = {
     companyName: 'Mi Negocio', ownerName: '',
     currency: 'COP', currencySymbol: '$',
-    userName: 'Principal',   // nombre del usuario en este dispositivo
+    userName: 'Principal',   // nombre del usuario activo en este dispositivo
+    users:    ['Principal'], // lista de todos los usuarios conocidos
   };
 
   // ── Init / Migración ───────────────────────────────────────
@@ -667,6 +668,24 @@ const DB = (() => {
   // Lógica: cada dispositivo tiene su userName. Exporta sus transacciones (con
   // userName estampado), el otro dispositivo las importa y la app une sin duplicar.
 
+  // Lista completa de usuarios: los almacenados + los encontrados en transacciones
+  function getUsers() {
+    const s       = getSettings();
+    const stored  = Array.isArray(s.users) ? s.users : [];
+    const current = s.userName || 'Principal';
+    const txUsers = getUserNames();
+    const all     = new Set([current, ...stored, ...txUsers]);
+    return [...all].sort();
+  }
+
+  // Cambia el usuario activo y lo guarda en la lista de usuarios conocidos
+  function switchUser(name) {
+    const current = getSettings().userName || 'Principal';
+    const stored  = Array.isArray(getSettings().users) ? getSettings().users : [current];
+    const all     = new Set([name, current, ...stored, ...getUserNames()]);
+    updateSettings({ userName: name, users: [...all].sort() });
+  }
+
   // Retorna los nombres de usuario únicos que existen en las transacciones
   function getUserNames() {
     const txs   = load(KEYS.transactions) || [];
@@ -810,7 +829,7 @@ const DB = (() => {
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
     getAccountBalances,
     getBalanceSheet,
-    getUserNames, exportForSync, importFromUser,
+    getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,
