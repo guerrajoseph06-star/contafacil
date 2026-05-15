@@ -350,6 +350,7 @@ async function _processPinEntry() {
         if (nameEl) nameEl.textContent = _pinTargetUser;
         renderSettings();
       }
+      DB.logAudit('login', `✅ Acceso: ${_pinTargetUser}`);
       hideLockScreen();
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
       else showToast('✅ Bienvenido, ' + _pinTargetUser, 1500);
@@ -1951,6 +1952,7 @@ function nextMonth() {
 }
 function printReport() {
   requireOwnerPin(() => {
+    DB.logAudit('export_pdf', '📄 PDF exportado');
     showToast('📄 Preparando PDF...');
     setTimeout(() => window.print(), 400);
   });
@@ -2862,7 +2864,79 @@ function _doExportToExcel() {
 
   const filename = `ContaFacil_${s.companyName.replace(/\s+/g,'-')}_${reportYear}-${String(reportMonth).padStart(2,'0')}.xlsx`;
   XLSX.writeFile(wb, filename);
+  DB.logAudit('export_excel', `📊 Excel: ${filename}`);
   showToast('📥 Excel descargado: ' + filename, 3500);
+}
+
+// ── Log de auditoría ─────────────────────────────────────────────────────────
+function openAuditLog() {
+  const log    = DB.getAuditLog(150);
+  const isOwner = isCurrentUserOwner();
+
+  const ACTION_LABELS = {
+    login:             { icon:'🔓', label:'Inicio de sesión',  color:'#2563eb' },
+    create_tx:         { icon:'➕', label:'Registro creado',    color:'#16a34a' },
+    edit_tx:           { icon:'✏️', label:'Registro editado',   color:'#d97706' },
+    delete_tx:         { icon:'🗑️', label:'Registro eliminado', color:'#dc2626' },
+    create_product:    { icon:'📦', label:'Producto creado',    color:'#16a34a' },
+    delete_product:    { icon:'🗑️', label:'Producto eliminado', color:'#dc2626' },
+    create_receivable: { icon:'💳', label:'CxC creada',         color:'#16a34a' },
+    delete_receivable: { icon:'🗑️', label:'CxC eliminada',      color:'#dc2626' },
+    export_pdf:        { icon:'📄', label:'PDF exportado',      color:'#7c3aed' },
+    export_excel:      { icon:'📊', label:'Excel exportado',    color:'#7c3aed' },
+    export_encrypted:  { icon:'🔐', label:'Export cifrado',     color:'#7c3aed' },
+    import:            { icon:'📥', label:'Datos importados',   color:'#0891b2' },
+  };
+
+  const fmtTs = ts => {
+    const d = new Date(ts);
+    return d.toLocaleDateString('es-CO', { day:'2-digit', month:'short' }) + ' · ' +
+           d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' });
+  };
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <h3 class="sheet-title" style="margin:0;">🕵️ Log de Auditoría</h3>
+      ${isOwner ? `<button class="btn btn-outline" style="font-size:11px; padding:5px 10px; color:var(--danger); border-color:var(--danger);"
+        onclick="requirePin(()=>{ DB.clearAuditLog(); closeSettingsSheet(); showToast('🗑️ Log limpiado'); })">
+        Limpiar
+      </button>` : ''}
+    </div>
+
+    ${log.length === 0 ? `
+      <div style="text-align:center; padding:40px 0; color:var(--gray-400);">
+        <div style="font-size:40px; margin-bottom:12px;">📋</div>
+        <div>Sin actividad registrada aún</div>
+      </div>
+    ` : `
+      <div style="font-size:11px; color:var(--gray-400); margin-bottom:12px;">
+        Últimas ${log.length} actividades · Máx. 150
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${log.map(e => {
+          const info = ACTION_LABELS[e.action] || { icon:'📌', label: e.action, color:'#6b7280' };
+          return `
+            <div style="display:flex; gap:10px; align-items:flex-start; padding:10px 12px;
+              background:var(--gray-50); border-radius:10px; border-left:3px solid ${info.color};">
+              <div style="font-size:18px; flex-shrink:0; margin-top:1px;">${info.icon}</div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:2px;">
+                  <div style="font-size:12px; font-weight:700; color:${info.color};">${info.label}</div>
+                  <div style="font-size:10px; color:var(--gray-400); white-space:nowrap;">${fmtTs(e.ts)}</div>
+                </div>
+                <div style="font-size:12px; color:var(--gray-600); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.detail}</div>
+                <div style="font-size:10px; color:var(--gray-400); margin-top:2px;">👤 ${e.user}</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `}
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 // ── Presupuesto por categoría ─────────────────────────────────────────────────
@@ -4148,6 +4222,12 @@ function renderSettings() {
     expPinDescEl.textContent = sec.requirePinForExport
       ? '🔒 Se pide PIN antes de exportar'
       : 'Exportar sin confirmación de PIN';
+  }
+
+  const auditDescEl = document.getElementById('settings-audit-desc');
+  if (auditDescEl) {
+    const count = DB.getAuditLog(1).length;
+    auditDescEl.textContent = count > 0 ? 'Ver historial de actividad' : 'Sin actividad aún';
   }
 }
 

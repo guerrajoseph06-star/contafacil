@@ -24,11 +24,30 @@ const DB = (() => {
     receivables:  'cf_receivables',
     fixedAssets:  'cf_fixed_assets',
     onboarded:    'cf_onboarded',
+    auditLog:     'cf_audit_log',
   };
 
   const load = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
   const save = (key, val) => localStorage.setItem(key, JSON.stringify(val));
   function uuid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  // ── Log de auditoría ─────────────────────────────────────────────────────────
+  // Registra quién hizo qué y cuándo. Máx. 500 entradas (FIFO).
+  function _logAudit(action, detail) {
+    const s   = getSettings();
+    const log = load(KEYS.auditLog) || [];
+    log.unshift({ id: uuid(), ts: new Date().toISOString(), user: s.userName || 'Principal', action, detail });
+    if (log.length > 500) log.length = 500;
+    save(KEYS.auditLog, log);
+  }
+
+  function logAudit(action, detail) { _logAudit(action, detail); } // público (para app.js)
+
+  function getAuditLog(limit = 100) {
+    return (load(KEYS.auditLog) || []).slice(0, limit);
+  }
+
+  function clearAuditLog() { save(KEYS.auditLog, []); }
 
   // ── Categorías ────────────────────────────────────────────
   // c-cmv es de sistema: no aparece en selects del usuario, solo en entradas auto-COGS
@@ -171,6 +190,7 @@ const DB = (() => {
     txs.push(tx);
     save(KEYS.transactions, txs);
     _applyInventory(tx, 'add');
+    _logAudit('create_tx', `${tx.type === 'income' ? '📈' : tx.type === 'expense' ? '📉' : '📋'} ${tx.description} · $${tx.amount}`);
     return tx;
   }
 
@@ -209,6 +229,7 @@ const DB = (() => {
 
     save(KEYS.transactions, txs);
     _applyInventory(updated, 'add');
+    _logAudit('edit_tx', `✏️ ${updated.description} · $${updated.amount}`);
     return updated;
   }
 
@@ -236,6 +257,7 @@ const DB = (() => {
       });
     }
 
+    _logAudit('delete_tx', `🗑️ ${tx.description} · $${tx.amount}`);
     save(KEYS.transactions, txs.filter(t => !toDelete.has(t.id)));
   }
 
@@ -348,6 +370,7 @@ const DB = (() => {
     const p = { id: uuid(), quantity: 0, unitCost: 0, unit: 'unidades', ...data };
     inv.push(p);
     save(KEYS.inventory, inv);
+    _logAudit('create_product', `📦 ${p.name || 'Producto nuevo'}`);
     return p;
   }
 
@@ -360,7 +383,11 @@ const DB = (() => {
     return inv[idx];
   }
 
-  function deleteProduct(id) { save(KEYS.inventory, getInventory().filter(p => p.id !== id)); }
+  function deleteProduct(id) {
+    const p = getInventory().find(x => x.id === id);
+    _logAudit('delete_product', `🗑️ ${p ? p.name : id}`);
+    save(KEYS.inventory, getInventory().filter(p => p.id !== id));
+  }
   function getProductById(id) { return getInventory().find(p => p.id === id) || null; }
 
   // ── Gastos Recurrentes ─────────────────────────────────────
@@ -554,6 +581,7 @@ const DB = (() => {
     rec.status = _calcReceivableStatus(rec);
     list.push(rec);
     save(KEYS.receivables, list);
+    _logAudit('create_receivable', `💳 CxC ${rec.clientName} · $${rec.totalAmount}`);
     return rec;
   }
 
@@ -568,6 +596,8 @@ const DB = (() => {
   }
 
   function deleteReceivable(id) {
+    const rec = getReceivables().find(r => r.id === id);
+    _logAudit('delete_receivable', `🗑️ CxC ${rec ? rec.clientName : id}`);
     save(KEYS.receivables, getReceivables().filter(r => r.id !== id));
   }
 
@@ -1075,6 +1105,7 @@ const DB = (() => {
     removeUserPin, addUserToList, removeUserFromList,
     setUserReadOnly, isUserReadOnly,
     generateRecoveryCode, setUserRecoveryCode, verifyRecoveryCode, userHasRecoveryCode,
+    logAudit, getAuditLog, clearAuditLog,
     exportForSyncEncrypted, importFromUserDecrypted,
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
