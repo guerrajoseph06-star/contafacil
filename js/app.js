@@ -3092,6 +3092,100 @@ function openAuditLog() {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
+// ── Transferir configuración ─────────────────────────────────────────────────
+function openSettingsTransferSheet() {
+  const isOwner = isCurrentUserOwner();
+  const s       = DB.getSettings();
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🔄 Transferir Configuración</h3>
+
+    <div style="background:var(--gray-50); border-radius:12px; padding:14px 16px; margin-bottom:18px;
+      border:1px solid var(--gray-200); font-size:12px; color:var(--gray-600); line-height:1.6;">
+      <strong style="color:var(--gray-800);">¿Qué incluye el archivo?</strong><br>
+      ✅ Empresa, moneda, usuarios y PINs (cifrados)<br>
+      ✅ Permisos y restricciones por usuario<br>
+      ✅ Cuentas, categorías, presupuestos y recurrentes<br>
+      ⛔ <em>No incluye</em>: transacciones, inventario, CxC
+    </div>
+
+    ${isOwner ? `
+    <div style="margin-bottom:16px;">
+      <p style="font-size:13px; color:var(--gray-700); margin-bottom:10px;">
+        <strong>📥 Descargar configuración</strong><br>
+        <span style="font-size:12px; color:var(--gray-500);">Genera un archivo .json para importar en otro dispositivo.</span>
+      </p>
+      <button class="btn btn-primary btn-block" onclick="_doExportConfig()">
+        ⬇️ Descargar configuración
+      </button>
+    </div>
+    ` : `
+    <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:10px; padding:12px 14px;
+      font-size:12px; color:#92400e; margin-bottom:16px;">
+      ⚠️ Solo el propietario puede descargar la configuración.
+    </div>
+    `}
+
+    <div style="margin-bottom:16px;">
+      <p style="font-size:13px; color:var(--gray-700); margin-bottom:10px;">
+        <strong>📤 Importar configuración</strong><br>
+        <span style="font-size:12px; color:var(--gray-500);">Carga un archivo .json exportado desde otro dispositivo.<br>
+        <strong style="color:var(--danger);">⚠️ Reemplaza la configuración actual.</strong></span>
+      </p>
+      <label class="btn btn-outline btn-block" style="cursor:pointer; display:block; text-align:center;">
+        📂 Seleccionar archivo .json
+        <input type="file" accept=".json,application/json" style="display:none"
+          onchange="_doImportConfig(this)">
+      </label>
+    </div>
+
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function _doExportConfig() {
+  requireOwnerPin(() => {
+    try {
+      const json = DB.exportSettings();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const s    = DB.getSettings();
+      const date = new Date().toISOString().slice(0, 10);
+      a.href     = url;
+      a.download = `contafacil-config-${(s.companyName || 'empresa').toLowerCase().replace(/\s+/g,'-')}-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      DB.logAudit('export_config', 'Configuración exportada como JSON');
+      showToast('✅ Configuración descargada');
+    } catch(e) {
+      showToast('❌ Error al exportar: ' + e.message);
+    }
+  });
+}
+
+function _doImportConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const result = DB.importSettings(e.target.result);
+      DB.logAudit('import_config', `Config importada de ${result.exportedBy} (${result.userCount} usuarios)`);
+      closeSettingsSheet();
+      showToast('✅ Configuración importada. Recargando…');
+      setTimeout(() => location.reload(), 1200);
+    } catch(err) {
+      showToast('❌ Archivo inválido: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ── Presupuesto por categoría ─────────────────────────────────────────────────
 function openBudgetManager() {
   const cats    = DB.getCategoriesByType('expense');

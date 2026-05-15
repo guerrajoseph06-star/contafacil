@@ -1110,6 +1110,50 @@ const DB = (() => {
     if (d.settings)     save(KEYS.settings,      d.settings);
   }
 
+  // ── Exportar / Importar configuración completa ───────────────────────────────
+  // Incluye: empresa, usuarios+permisos+PINs(hash), moneda, cuentas,
+  // categorías, presupuestos, recurrentes y ajustes de seguridad.
+  // NO incluye: transacciones ni inventario (esos van por exportForSync).
+  function exportSettings() {
+    const s = getSettings();
+    return JSON.stringify({
+      cfConfigVersion: 1,
+      exportedAt:      new Date().toISOString(),
+      exportedBy:      s.userName || 'Principal',
+      // Ajustes generales (empresa, moneda, usuario activo, lista de usuarios con PINs)
+      settings:  load(KEYS.settings),
+      // Seguridad global (requirePinForExport, etc.)
+      security:  load(SEC_KEY),
+      // Cuentas bancarias/efectivo
+      accounts:  load(KEYS.accounts),
+      // Categorías (por si el usuario agregó personalizadas)
+      categories: load(KEYS.categories),
+      // Presupuestos por categoría
+      budgets:   load(KEYS.budgets),
+      // Gastos recurrentes (plantillas, no transacciones generadas)
+      recurring: load(KEYS.recurring),
+    }, null, 2);
+  }
+
+  function importSettings(jsonStr) {
+    const d = JSON.parse(jsonStr);
+    if (!d.cfConfigVersion) throw new Error('Archivo de configuración no reconocido');
+
+    // Restaurar todo
+    if (d.settings)    save(KEYS.settings,    d.settings);
+    if (d.security)    save(SEC_KEY,           d.security);
+    if (d.accounts)    save(KEYS.accounts,     d.accounts);
+    if (d.categories)  save(KEYS.categories,   d.categories);
+    if (d.budgets)     save(KEYS.budgets,      d.budgets);
+    if (d.recurring)   save(KEYS.recurring,    d.recurring);
+
+    return {
+      exportedBy: d.exportedBy || '—',
+      exportedAt: d.exportedAt || '',
+      userCount:  Array.isArray(d.settings?.users) ? d.settings.users.length : 1,
+    };
+  }
+
   return {
     init,
     getTransactions, getTransactionsByMonth, getTransactionById,
@@ -1138,5 +1182,6 @@ const DB = (() => {
     deleteReceivable, addReceivablePayment, getReceivableStats,
     isOnboarded, markOnboarded,
     exportData, importData,
+    exportSettings, importSettings,
   };
 })();
