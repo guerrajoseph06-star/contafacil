@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15d';
+const APP_VERSION = '2026.05.15e';
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
@@ -3337,138 +3337,381 @@ function printAnnualReport() {
   });
 }
 
-function exportAnnualExcel() {
-  if (typeof XLSX === 'undefined') { showToast('⚠️ Necesitas internet para cargar el módulo Excel', 4000); return; }
+// ── Generador de Excel 100% OFFLINE (SpreadsheetML 2003) ──────────────────────
+// No depende de ninguna librería externa ni de internet: genera un archivo .xls
+// XML nativo que abre en Excel, Google Sheets y WPS, con fórmulas reales
+// (SUM, restas, promedios, porcentajes) que el usuario puede auditar.
+function _xmlEsc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
 
-  const s = DB.getSettings();
+// Convierte una celda (string | number | {v,f,s,t,merge}) a XML SpreadsheetML
+function _xlsCellXML(c) {
+  if (c === null || c === undefined || c === '') return '<Cell/>';
+  const cell  = (typeof c === 'object') ? c : { v: c };
+  const attrs = [];
+  if (cell.s)     attrs.push('ss:StyleID="' + cell.s + '"');
+  if (cell.merge) attrs.push('ss:MergeAcross="' + cell.merge + '"');
+  if (cell.f)     attrs.push('ss:Formula="' + _xmlEsc(cell.f) + '"');
+  const a = attrs.length ? ' ' + attrs.join(' ') : '';
+  const hasVal = cell.v !== undefined && cell.v !== null && cell.v !== '';
+  if (!cell.f && !hasVal) return '<Cell' + a + '/>';   // celda con estilo, sin valor
+  let type, val;
+  if (cell.f) {
+    type = cell.t || 'Number';
+    val  = hasVal ? cell.v : 0;
+    if (type === 'String') val = _xmlEsc(String(val));
+  } else if (typeof cell.v === 'number') {
+    type = 'Number'; val = cell.v;
+  } else if (cell.t === 'DateTime') {
+    type = 'DateTime'; val = cell.v;
+  } else {
+    type = 'String'; val = _xmlEsc(String(cell.v));
+  }
+  return '<Cell' + a + '><Data ss:Type="' + type + '">' + val + '</Data></Cell>';
+}
+
+function _xlsRowXML(cells) {
+  let out = '<Row>';
+  cells.forEach(c => { out += _xlsCellXML(c); });
+  return out + '</Row>';
+}
+
+// Celda de fecha: si es YYYY-MM-DD válida, la pasa como fecha real de Excel
+function _xlsDate(d) {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    return { v: d + 'T00:00:00.000', t: 'DateTime', s: 'date' };
+  }
+  return d ? String(d) : '';
+}
+
+function _xlsStatusLabel(st) {
+  return ({ paid: 'Pagada', partial: 'Abono parcial', pending: 'Pendiente', overdue: 'Vencida' })[st]
+    || (st || '—');
+}
+
+// Construye el libro Excel completo a partir de un arreglo de hojas
+function _genExcelXML(sheets, sym) {
+  const mf = '&quot;' + (sym || '$') + '&quot;#,##0.00';
+  const styles =
+    '<Styles>' +
+    '<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/>' +
+      '<Font ss:FontName="Calibri" ss:Size="11"/></Style>' +
+    '<Style ss:ID="title"><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#1E3A8A"/></Style>' +
+    '<Style ss:ID="subtitle"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#64748B"/></Style>' +
+    '<Style ss:ID="header"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
+      '<Interior ss:Color="#2563EB" ss:Pattern="Solid"/>' +
+      '<Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>' +
+      '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A8A"/></Borders></Style>' +
+    '<Style ss:ID="label"><Font ss:Bold="1"/></Style>' +
+    '<Style ss:ID="money"><NumberFormat ss:Format="' + mf + '"/></Style>' +
+    '<Style ss:ID="moneyBold"><Font ss:Bold="1"/><NumberFormat ss:Format="' + mf + '"/></Style>' +
+    '<Style ss:ID="date"><Alignment ss:Horizontal="Center"/><NumberFormat ss:Format="Short Date"/></Style>' +
+    '<Style ss:ID="percent"><Font ss:Bold="1"/><NumberFormat ss:Format="0.0%"/></Style>' +
+    '<Style ss:ID="sectionHead"><Font ss:Bold="1" ss:Color="#1E3A8A"/>' +
+      '<Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="totalLabel"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
+      '<Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="totalRow"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
+      '<Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/><NumberFormat ss:Format="' + mf + '"/></Style>' +
+    '</Styles>';
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n<?mso-application progid="Excel.Sheet"?>\r\n' +
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
+    'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+    'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
+    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' + styles;
+  sheets.forEach(sh => {
+    xml += '<Worksheet ss:Name="' + _xmlEsc(sh.name) + '"><Table>';
+    (sh.cols || []).forEach(w => { xml += '<Column ss:Width="' + w + '"/>'; });
+    sh.rows.forEach(r => { xml += _xlsRowXML(r); });
+    xml += '</Table></Worksheet>';
+  });
+  return xml + '</Workbook>';
+}
+
+function _downloadXls(xml, filename) {
+  const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+
+// ── Exportar resumen anual a Excel ────────────────────────────────────────────
+function exportAnnualExcel() {
+  const s     = DB.getSettings();
+  const sym   = s.currencySymbol || '$';
+  const first = 5, last = 16; // los 12 meses ocupan las filas 5..16
+
+  let tInc = 0, tOp = 0, tCmv = 0, tTotExp = 0, tNet = 0;
+  const dataRows = MONTH_NAMES.map((mn, i) => {
+    const st       = DB.getMonthStats(annualYear, i + 1);
+    const gastoTot = st.opExpenses + st.cogs;
+    tInc += st.income; tOp += st.opExpenses; tCmv += st.cogs;
+    tTotExp += gastoTot; tNet += st.netProfit;
+    return [
+      { v: mn, s: 'label' },
+      { v: st.income,     s: 'money' },
+      { v: st.opExpenses, s: 'money' },
+      { v: st.cogs,       s: 'money' },
+      { f: '=RC[-2]+RC[-1]', v: gastoTot,     s: 'moneyBold' }, // Gastos Op + CMV
+      { f: '=RC[-4]-RC[-1]', v: st.netProfit, s: 'moneyBold' }, // Ingresos - Gastos Totales
+    ];
+  });
+
   const rows = [
-    [s.companyName + ' — Resumen Anual ' + annualYear],
+    [{ v: s.companyName, s: 'title', merge: 5 }],
+    [{ v: 'Resumen Anual ' + annualYear, s: 'subtitle', merge: 5 }],
     [],
-    ['Mes', 'Ingresos', 'Gastos Operativos', 'CMV', 'Gastos Total', 'Utilidad Neta'],
+    ['Mes', 'Ingresos', 'Gastos Operativos', 'CMV', 'Gastos Totales', 'Utilidad Neta']
+      .map(h => ({ v: h, s: 'header' })),
+    ...dataRows,
+    [
+      { v: 'TOTAL ' + annualYear, s: 'totalLabel' },
+      { f: '=SUM(R' + first + 'C2:R' + last + 'C2)', v: tInc,    s: 'totalRow' },
+      { f: '=SUM(R' + first + 'C3:R' + last + 'C3)', v: tOp,     s: 'totalRow' },
+      { f: '=SUM(R' + first + 'C4:R' + last + 'C4)', v: tCmv,    s: 'totalRow' },
+      { f: '=SUM(R' + first + 'C5:R' + last + 'C5)', v: tTotExp, s: 'totalRow' },
+      { f: '=SUM(R' + first + 'C6:R' + last + 'C6)', v: tNet,    s: 'totalRow' },
+    ],
+    [],
+    [
+      { v: 'Promedio mensual', s: 'label' },
+      { f: '=AVERAGE(R' + first + 'C2:R' + last + 'C2)', v: tInc / 12,    s: 'moneyBold' },
+      { f: '=AVERAGE(R' + first + 'C3:R' + last + 'C3)', v: tOp / 12,     s: 'moneyBold' },
+      { f: '=AVERAGE(R' + first + 'C4:R' + last + 'C4)', v: tCmv / 12,    s: 'moneyBold' },
+      { f: '=AVERAGE(R' + first + 'C5:R' + last + 'C5)', v: tTotExp / 12, s: 'moneyBold' },
+      { f: '=AVERAGE(R' + first + 'C6:R' + last + 'C6)', v: tNet / 12,    s: 'moneyBold' },
+    ],
   ];
 
-  let totIncome = 0, totExp = 0, totNet = 0;
-  Array.from({ length: 12 }, (_, i) => {
-    const stats = DB.getMonthStats(annualYear, i + 1);
-    const exp   = stats.opExpenses + stats.cogs;
-    totIncome += stats.income; totExp += exp; totNet += stats.netProfit;
-    rows.push([MONTH_NAMES[i], stats.income, stats.opExpenses, stats.cogs, exp, stats.netProfit]);
-  });
-  rows.push([]);
-  rows.push(['TOTAL', totIncome, '', '', totExp, totNet]);
-
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 10 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Resumen Anual ' + annualYear);
-  XLSX.writeFile(wb, `ContaFacil_Anual_${annualYear}_${s.companyName.replace(/\s+/g, '-')}.xlsx`);
+  const xml = _genExcelXML([{
+    name: 'Anual ' + annualYear,
+    cols: [95, 125, 145, 105, 140, 135],
+    rows,
+  }], sym);
+  const filename = 'ContaFacil_Anual_' + annualYear + '_' +
+    s.companyName.replace(/\s+/g, '-') + '.xls';
+  _downloadXls(xml, filename);
+  DB.logAudit('export_excel', '📊 Excel anual: ' + filename);
   showToast('📥 Resumen anual ' + annualYear + ' descargado', 3000);
 }
 
-// ── Exportar a Excel ──────────────────────────────────────────────────────────
+// ── Exportar a Excel mensual (100% offline, con fórmulas auditables) ──────────
 function exportToExcel() {
   requireOwnerPin(_doExportToExcel);
 }
 function _doExportToExcel() {
-  if (typeof XLSX === 'undefined') {
-    showToast('⚠️ Necesitas internet una vez para cargar el módulo Excel', 4000);
-    return;
-  }
-
-  const s         = DB.getSettings();
-  const txs       = DB.getTransactionsByMonth(reportYear, reportMonth);
-  const pnl       = DB.getProfitStatement(reportYear, reportMonth);
+  const s   = DB.getSettings();
+  const sym = s.currencySymbol || '$';
+  const txs = DB.getTransactionsByMonth(reportYear, reportMonth)
+    .slice()
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const pnl = DB.getProfitStatement(reportYear, reportMonth);
   const monthLabel = new Date(reportYear, reportMonth - 1, 1)
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
-
   const TYPE_LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda' };
+  const deudaTot = txs.filter(t => t.type === 'liability').reduce((a, t) => a + t.amount, 0);
 
-  // ── Hoja 1: Transacciones detalladas ─────────────────────
-  const txRows = [
-    ['Fecha', 'Descripción', 'Tipo', 'Categoría', 'Cuenta', 'Monto', 'Debe (+)', 'Haber (−)', 'Notas'],
-  ];
-
+  // ═══ HOJA «Transacciones» — datos crudos + fila TOTALES con fórmula SUM ═══
+  const txData = [];
   txs.forEach(t => {
-    const cat     = DB.getCategoryById(t.category);
-    const acc     = DB.getAccountById(t.account);
-    const fromAcc = DB.getAccountById(t.fromAccount);
-    const toAcc   = DB.getAccountById(t.toAccount);
-    let debit = '', credit = '', catLabel = '', accLabel = '';
-
+    const cat  = DB.getCategoryById(t.category);
+    const acc  = DB.getAccountById(t.account);
+    const fAcc = DB.getAccountById(t.fromAccount);
+    const tAcc = DB.getAccountById(t.toAccount);
+    let ingreso = '', gastoOp = '', cmv = '', deuda = '', catLabel = '', accLabel = '';
     if (t.isCogs) {
-      credit = t.amount; catLabel = 'Costo de Ventas (CMV)';
+      cmv = t.amount; catLabel = 'Costo de Ventas (CMV)';
     } else if (t.type === 'income') {
-      debit  = t.amount;
-      catLabel = cat ? cat.name : 'Ingresos';
-      accLabel = acc ? acc.name : '';
+      ingreso = t.amount; catLabel = cat ? cat.name : 'Ingresos'; accLabel = acc ? acc.name : '';
     } else if (t.type === 'expense') {
-      credit = t.amount;
-      catLabel = cat ? cat.name : 'Gastos';
-      accLabel = acc ? acc.name : '';
+      gastoOp = t.amount; catLabel = cat ? cat.name : 'Gastos'; accLabel = acc ? acc.name : '';
     } else if (t.type === 'transfer') {
-      debit = t.amount; credit = t.amount;
-      catLabel = (fromAcc?.name || '—') + ' → ' + (toAcc?.name || '—');
+      catLabel = (fAcc ? fAcc.name : '—') + ' → ' + (tAcc ? tAcc.name : '—');
     } else if (t.type === 'liability') {
-      credit = t.amount;
-      catLabel = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
+      deuda = t.amount; catLabel = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
     }
-
-    txRows.push([
-      t.date,
+    txData.push([
+      _xlsDate(t.date),
       t.description + (t.isCogs ? ' (auto-CMV)' : ''),
       t.isCogs ? 'CMV' : (TYPE_LABELS[t.type] || t.type),
-      catLabel,
-      accLabel,
-      t.amount,
-      debit,
-      credit,
+      catLabel, accLabel,
+      ingreso === '' ? '' : { v: ingreso, s: 'money' },
+      gastoOp === '' ? '' : { v: gastoOp, s: 'money' },
+      cmv     === '' ? '' : { v: cmv,     s: 'money' },
+      deuda   === '' ? '' : { v: deuda,   s: 'money' },
       t.notes || '',
     ]);
   });
-
-  // ── Hoja 2: Estado de Resultados ─────────────────────────
-  const pnlRows = [
-    ['ContaFácil Pro — ' + s.companyName],
-    ['Estado de Resultados · ' + monthLabel],
-    [],
-    ['INGRESOS', ''],
-  ];
-  if (pnl.salesRevenue > 0)  pnlRows.push(['  Ventas de productos',  pnl.salesRevenue]);
-  if (pnl.serviceIncome > 0) pnlRows.push(['  Servicios / otros',     pnl.serviceIncome]);
-  pnlRows.push(['TOTAL INGRESOS', pnl.totalRevenue]);
-  if (pnl.hasCogs) {
-    pnlRows.push([]);
-    pnlRows.push(['COSTO MERCADERÍA VENDIDA (CMV)', -pnl.cogs]);
+  if (txData.length === 0) {
+    txData.push(['—', 'Sin movimientos registrados este mes', '—', '', '', '', '', '', '', '']);
   }
-  pnlRows.push([]);
-  pnlRows.push(['UTILIDAD BRUTA', pnl.grossProfit]);
-  pnlRows.push([]);
-  pnlRows.push(['GASTOS OPERATIVOS', '']);
-  Object.entries(pnl.expByCat).forEach(([catId, val]) => {
-    const cat = DB.getCategoryById(catId);
-    pnlRows.push(['  ' + (cat ? cat.name : 'Otros'), -val]);
-  });
-  pnlRows.push(['TOTAL GASTOS', -pnl.opExpenses]);
-  pnlRows.push([]);
-  pnlRows.push(['UTILIDAD NETA', pnl.netProfit]);
+  const txFirst = 5;                          // primera fila de datos
+  const txLast  = txFirst + txData.length - 1; // última fila de datos
+  const txTotal = txLast + 1;                  // fila TOTALES
+  const txSheet = {
+    name: 'Transacciones',
+    cols: [80, 240, 70, 175, 135, 95, 95, 85, 95, 200],
+    rows: [
+      [{ v: s.companyName, s: 'title', merge: 9 }],
+      [{ v: 'Transacciones — ' + monthLabel, s: 'subtitle', merge: 9 }],
+      [],
+      ['Fecha','Descripción','Tipo','Categoría','Cuenta','Ingreso','Gasto Op.','CMV','Deuda','Notas']
+        .map(h => ({ v: h, s: 'header' })),
+      ...txData,
+      [
+        { v: 'TOTALES', s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+        { s: 'totalLabel' }, { s: 'totalLabel' },
+        { f: '=SUM(R' + txFirst + 'C6:R' + txLast + 'C6)', v: pnl.totalRevenue, s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C7:R' + txLast + 'C7)', v: pnl.opExpenses,   s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C8:R' + txLast + 'C8)', v: pnl.cogs,         s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C9:R' + txLast + 'C9)', v: deudaTot,         s: 'totalRow' },
+        { s: 'totalRow' },
+      ],
+    ],
+  };
 
-  // ── Crear libro Excel ─────────────────────────────────────
-  const wb = XLSX.utils.book_new();
+  // ═══ HOJA «Estado de Resultados» — P&L con fórmulas encadenadas ═══
+  const pr = [];
+  pr.push([{ v: s.companyName, s: 'title', merge: 1 }]);
+  pr.push([{ v: 'Estado de Resultados — ' + monthLabel, s: 'subtitle', merge: 1 }]);
+  pr.push([]);
+  pr.push([{ v: 'INGRESOS', s: 'sectionHead', merge: 1 }]);
+  const incStart = pr.length + 1;
+  if (pnl.salesRevenue > 0)  pr.push([{ v: '   Ventas de productos' },        { v: pnl.salesRevenue,  s: 'money' }]);
+  if (pnl.serviceIncome > 0) pr.push([{ v: '   Servicios / otros ingresos' }, { v: pnl.serviceIncome, s: 'money' }]);
+  if (pnl.salesRevenue === 0 && pnl.serviceIncome === 0)
+    pr.push([{ v: '   (sin ingresos este mes)' }, { v: 0, s: 'money' }]);
+  const incEnd = pr.length;
+  pr.push([{ v: 'TOTAL INGRESOS', s: 'label' },
+           { f: '=SUM(R' + incStart + 'C2:R' + incEnd + 'C2)', v: pnl.totalRevenue, s: 'moneyBold' }]);
+  const rTotInc = pr.length;
+  pr.push([]);
+  pr.push([{ v: '(menos) Costo de Mercadería Vendida', s: 'label' }, { v: pnl.cogs, s: 'money' }]);
+  const rCogs = pr.length;
+  pr.push([{ v: '= UTILIDAD BRUTA', s: 'label' },
+           { f: '=R' + rTotInc + 'C2-R' + rCogs + 'C2', v: pnl.grossProfit, s: 'moneyBold' }]);
+  const rGross = pr.length;
+  pr.push([]);
+  pr.push([{ v: 'GASTOS OPERATIVOS', s: 'sectionHead', merge: 1 }]);
+  const expStart = pr.length + 1;
+  const expEnt = Object.entries(pnl.expByCat);
+  if (expEnt.length === 0) {
+    pr.push([{ v: '   (sin gastos operativos)' }, { v: 0, s: 'money' }]);
+  } else {
+    expEnt.forEach(([catId, val]) => {
+      const c = DB.getCategoryById(catId);
+      pr.push([{ v: '   ' + (c ? c.name : 'Otros gastos') }, { v: val, s: 'money' }]);
+    });
+  }
+  const expEnd = pr.length;
+  pr.push([{ v: 'TOTAL GASTOS OPERATIVOS', s: 'label' },
+           { f: '=SUM(R' + expStart + 'C2:R' + expEnd + 'C2)', v: pnl.opExpenses, s: 'moneyBold' }]);
+  const rTotExp = pr.length;
+  pr.push([]);
+  pr.push([{ v: 'UTILIDAD NETA DEL MES', s: 'totalLabel' },
+           { f: '=R' + rGross + 'C2-R' + rTotExp + 'C2', v: pnl.netProfit, s: 'totalRow' }]);
+  const rNet = pr.length;
+  pr.push([]);
+  pr.push([{ v: 'Margen bruto (Utilidad bruta / Ingresos)', s: 'label' },
+           { f: '=IF(R' + rTotInc + 'C2=0,0,R' + rGross + 'C2/R' + rTotInc + 'C2)',
+             v: pnl.grossMargin / 100, s: 'percent' }]);
+  pr.push([{ v: 'Margen neto (Utilidad neta / Ingresos)', s: 'label' },
+           { f: '=IF(R' + rTotInc + 'C2=0,0,R' + rNet + 'C2/R' + rTotInc + 'C2)',
+             v: pnl.netMargin / 100, s: 'percent' }]);
+  const pnlSheet = { name: 'Estado de Resultados', cols: [310, 150], rows: pr };
 
-  const ws1 = XLSX.utils.aoa_to_sheet(txRows);
-  ws1['!cols'] = [
-    { wch: 12 }, { wch: 32 }, { wch: 10 }, { wch: 22 },
-    { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 28 },
-  ];
-  XLSX.utils.book_append_sheet(wb, ws1, 'Transacciones');
+  // ═══ HOJA «Resumen» — tablero que referencia las otras hojas con fórmulas ═══
+  const ES = "'Estado de Resultados'";
+  const resumenSheet = {
+    name: 'Resumen',
+    cols: [255, 140, 300],
+    rows: [
+      [{ v: s.companyName, s: 'title', merge: 2 }],
+      [{ v: 'Resumen del mes — ' + monthLabel, s: 'subtitle', merge: 2 }],
+      [],
+      ['Concepto', 'Monto', 'Cómo se calcula'].map(h => ({ v: h, s: 'header' })),
+      [{ v: 'Ingresos totales', s: 'label' },
+       { f: '=' + ES + '!R' + rTotInc + 'C2', v: pnl.totalRevenue, s: 'moneyBold' },
+       'Ventas de productos + servicios'],
+      [{ v: 'Costo de mercadería (CMV)', s: 'label' },
+       { f: '=' + ES + '!R' + rCogs + 'C2', v: pnl.cogs, s: 'moneyBold' },
+       'Costo de los productos vendidos'],
+      [{ v: 'Utilidad bruta', s: 'label' },
+       { f: '=' + ES + '!R' + rGross + 'C2', v: pnl.grossProfit, s: 'moneyBold' },
+       'Ingresos menos CMV'],
+      [{ v: 'Gastos operativos', s: 'label' },
+       { f: '=' + ES + '!R' + rTotExp + 'C2', v: pnl.opExpenses, s: 'moneyBold' },
+       'Suma de gastos del negocio'],
+      [{ v: 'UTILIDAD NETA', s: 'totalLabel' },
+       { f: '=' + ES + '!R' + rNet + 'C2', v: pnl.netProfit, s: 'totalRow' },
+       { v: 'Utilidad bruta menos Gastos operativos', s: 'totalLabel' }],
+      [],
+      [{ v: 'Deudas registradas en el mes', s: 'label' },
+       { f: '=Transacciones!R' + txTotal + 'C9', v: deudaTot, s: 'moneyBold' },
+       'Suma de la columna Deuda'],
+      [{ v: 'Transacciones del mes', s: 'label' },
+       { v: txs.length },
+       'Cantidad de movimientos registrados'],
+    ],
+  };
 
-  const ws2 = XLSX.utils.aoa_to_sheet(pnlRows);
-  ws2['!cols'] = [{ wch: 34 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, ws2, 'Estado de Resultados');
+  const sheets = [resumenSheet, txSheet, pnlSheet];
 
-  const filename = `ContaFacil_${s.companyName.replace(/\s+/g,'-')}_${reportYear}-${String(reportMonth).padStart(2,'0')}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  DB.logAudit('export_excel', `📊 Excel: ${filename}`);
+  // ═══ HOJA «Cartera (CxC)» — cuentas por cobrar, si existen ═══
+  const recs = DB.getReceivables();
+  if (recs && recs.length > 0) {
+    const cFirst = 5;
+    let cT = 0, cC = 0, cP = 0;
+    const cData = recs.map(rec => {
+      const cobrado  = (rec.payments || []).reduce((a, p) => a + p.amount, 0);
+      const total    = rec.totalAmount || 0;
+      const pendiente = Math.max(total - cobrado, 0);
+      cT += total; cC += cobrado; cP += pendiente;
+      return [
+        rec.clientName || '—',
+        rec.description || '',
+        _xlsDate(rec.issueDate),
+        _xlsDate(rec.dueDate),
+        { v: total,   s: 'money' },
+        { v: cobrado, s: 'money' },
+        { f: '=RC[-2]-RC[-1]', v: pendiente, s: 'moneyBold' }, // Pendiente = Total - Cobrado
+        _xlsStatusLabel(rec.status),
+      ];
+    });
+    const cLast = cFirst + cData.length - 1;
+    sheets.push({
+      name: 'Cartera (CxC)',
+      cols: [150, 200, 95, 95, 110, 110, 110, 115],
+      rows: [
+        [{ v: s.companyName, s: 'title', merge: 7 }],
+        [{ v: 'Cuentas por Cobrar', s: 'subtitle', merge: 7 }],
+        [],
+        ['Cliente','Descripción','Emisión','Vencimiento','Total','Cobrado','Pendiente','Estado']
+          .map(h => ({ v: h, s: 'header' })),
+        ...cData,
+        [
+          { v: 'TOTALES', s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+          { f: '=SUM(R' + cFirst + 'C5:R' + cLast + 'C5)', v: cT, s: 'totalRow' },
+          { f: '=SUM(R' + cFirst + 'C6:R' + cLast + 'C6)', v: cC, s: 'totalRow' },
+          { f: '=SUM(R' + cFirst + 'C7:R' + cLast + 'C7)', v: cP, s: 'totalRow' },
+          { s: 'totalRow' },
+        ],
+      ],
+    });
+  }
+
+  const xml = _genExcelXML(sheets, sym);
+  const filename = 'ContaFacil_' + s.companyName.replace(/\s+/g, '-') +
+    '_' + reportYear + '-' + String(reportMonth).padStart(2, '0') + '.xls';
+  _downloadXls(xml, filename);
+  DB.logAudit('export_excel', '📊 Excel: ' + filename);
   showToast('📥 Excel descargado: ' + filename, 3500);
 }
 
