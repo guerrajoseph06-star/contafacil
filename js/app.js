@@ -4547,10 +4547,30 @@ function openQuickUserSwitch() {
   const s           = DB.getSettings();
   const currentUser = s.userName || 'Principal';
   const users       = DB.getUserList();
+  const isOwner     = isCurrentUserOwner();
+  const owner       = users.find(u => u.isOwner);
+
+  // Banner de recuperación cuando el usuario activo NO es el propietario
+  const recoveryBanner = (!isOwner && owner) ? `
+    <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:10px;
+      padding:12px 14px; margin-bottom:14px; display:flex; gap:10px; align-items:flex-start;">
+      <div style="font-size:20px; flex-shrink:0;">⚠️</div>
+      <div>
+        <div style="font-size:13px; font-weight:700; color:#92400e; margin-bottom:4px;">
+          No estás como propietario
+        </div>
+        <div style="font-size:12px; color:#78350f; line-height:1.5;">
+          Algunos botones están bloqueados porque el usuario activo
+          (<strong>${currentUser}</strong>) no es el propietario.<br>
+          Toca <strong>${owner.name}</strong> abajo para recuperar acceso completo.
+        </div>
+      </div>
+    </div>` : '';
 
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
     <h3 class="sheet-title">👥 Cambiar Usuario</h3>
+    ${recoveryBanner}
     <div style="font-size:13px; color:var(--gray-600); margin-bottom:16px; line-height:1.5;">
       Usuario activo: <strong style="color:var(--primary);">${currentUser}</strong><br>
       <span style="font-size:11px; color:var(--gray-400);">
@@ -4618,6 +4638,10 @@ function switchToUser(name) {
     // El usuario objetivo tiene PIN: pedírselo
     setTimeout(() => {
       showLockScreen('unlock', () => {
+        // ── CRÍTICO: persistir el cambio en settings.userName ─────────────────
+        // Sin esta línea el DOM se actualiza pero el estado interno queda en el
+        // usuario anterior; isCurrentUserOwner() y permisos fallan silenciosamente.
+        DB.switchUser(name);
         document.getElementById('dash-user-name').textContent = name;
         showToast('👤 Bienvenido, ' + name, 2000);
         renderSettings();
@@ -4636,18 +4660,24 @@ function addAndSwitchUser() {
   const name = document.getElementById('new-user-input')?.value.trim();
   if (!name) { showToast('⚠️ Escribe un nombre'); return; }
   if (DB.getUserEntry(name)) { showToast('⚠️ Ese nombre ya existe'); return; }
+
   DB.addUserToList(name);
   closeSettingsSheet();
-  // Pedir PIN para el nuevo usuario antes de activarlo
+
+  // ── CRÍTICO: NO cambiar al nuevo usuario después de crear su PIN ──────────
+  // Antes el código hacía DB.switchUser(name) dentro del callback, lo cual
+  // activaba el nuevo usuario (no-propietario) y bloqueaba todas las acciones
+  // del propietario. Ahora: se crea el usuario y su PIN, pero el propietario
+  // sigue activo. El nuevo usuario puede iniciar sesión desde el selector.
   setTimeout(() => {
-    showToast(`👤 Nuevo usuario: ${name}. Ahora elige su PIN de 4 dígitos.`, 3000);
+    showToast(`👤 Nuevo usuario "${name}" creado. Asignando PIN…`, 2500);
     showLockScreen('set', () => {
-      DB.switchUser(name);
-      document.getElementById('dash-user-name').textContent = name;
-      showToast('✅ Usuario creado con PIN: ' + name, 2500);
+      // Volver a abrir gestión de seguridad como confirmación, SIN cambiar usuario
       renderSettings();
+      openSecuritySettings();
+      showToast(`✅ PIN de "${name}" configurado. El propietario sigue activo.`, 3000);
     }, name);
-  }, 200);
+  }, 300);
 }
 
 // ── Reporte por descripción ───────────────────────────────────────────────────
@@ -4837,7 +4867,22 @@ function openUserSyncSheet(mode) {
 function saveUserName() {
   const name = document.getElementById('user-name-input')?.value.trim();
   if (!name) { showToast('⚠️ Ingresa un nombre'); return; }
-  DB.updateSettings({ userName: name });
+
+  const oldName = DB.getSettings().userName || 'Principal';
+  if (name === oldName) { closeSettingsSheet(); return; }
+
+  // ── CRÍTICO: actualizar el nombre en el array users[] conservando isOwner ──
+  // Si solo se actualiza settings.userName sin tocar users[], isCurrentUserOwner()
+  // deja de encontrar coincidencia y el propietario pierde todos sus permisos.
+  const users = DB.getUserList();
+  const idx   = users.findIndex(u => u.name === oldName);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], name }; // renombrar preservando isOwner, pinHash, etc.
+    DB.updateSettings({ userName: name, users });
+  } else {
+    DB.updateSettings({ userName: name });
+  }
+
   closeSettingsSheet();
   renderSettings();
   showToast('✅ Nombre guardado: ' + name);

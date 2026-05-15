@@ -142,6 +142,34 @@ const DB = (() => {
     if (!load(KEYS.inventory))    save(KEYS.inventory,    []);
     _migrateCategorias();
     _migrateUserNames();
+    _repairOwnerState();
+  }
+
+  // ── Reparación automática de estado de propietario ───────────────────────────
+  // Detecta y corrige situaciones donde settings.userName no coincide con ningún
+  // usuario en users[]. Ocurre si: (a) el usuario fue renombrado sin actualizar
+  // users[], (b) el sistema cambió al nuevo usuario tras asignar PIN (bug antiguo).
+  //
+  // SEGURO: solo actúa cuando el nombre actual no existe en ninguna entrada de
+  // users[]. Si el usuario es un no-propietario válido (existe en la lista), no
+  // lo toca. No modifica datos de transacciones ni categorías.
+  function _repairOwnerState() {
+    const raw = load(KEYS.settings);
+    if (!raw) return; // empresa nueva, nada que reparar
+
+    const users = Array.isArray(raw.users) ? raw.users : [];
+    if (users.length === 0) return; // aún no hay estructura de usuarios
+
+    const currentName = raw.userName || 'Principal';
+    const existsInList = users.some(u => u.name === currentName);
+
+    if (!existsInList) {
+      // El nombre activo no existe en users[] → auto-volver al propietario
+      const owner = users.find(u => u.isOwner) || users[0];
+      if (owner) {
+        save(KEYS.settings, { ...raw, userName: owner.name });
+      }
+    }
   }
 
   // Estampa userName en transacciones y CxC que no lo tengan (migración al activar multi-usuario)
