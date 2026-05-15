@@ -770,6 +770,19 @@ const DB = (() => {
     updateSettings({ users: filtered });
   }
 
+  // Marca un usuario como solo-lectura (empleado sin acceso a Reportes/Ajustes)
+  function setUserReadOnly(userName, val) {
+    const list = getUserList().map(u =>
+      u.name === userName ? { ...u, isReadOnly: !!val } : u
+    );
+    updateSettings({ users: list });
+  }
+
+  function isUserReadOnly(userName) {
+    const e = getUserEntry(userName);
+    return !!(e && !e.isOwner && e.isReadOnly);
+  }
+
   // ── Funciones de seguridad (delegadas al usuario actual) ─────────────────────
   function isPinSet() {
     const s = getSettings();
@@ -1028,6 +1041,7 @@ const DB = (() => {
     getSecuritySettings, isPinSet, setPinHash, verifyPin, removePin, setExportPin,
     getUserList, getUserEntry, userHasPin, setUserPin, verifyUserPin,
     removeUserPin, addUserToList, removeUserFromList,
+    setUserReadOnly, isUserReadOnly,
     exportForSyncEncrypted, importFromUserDecrypted,
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,

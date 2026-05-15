@@ -66,14 +66,25 @@ function showToast(msg, ms = 2500) {
 
 // ── Navegación ────────────────────────────────────────────────────────────────
 function navigate(screen, params = {}) {
+  // Modo solo-lectura: bloquear secciones restringidas
+  if (isCurrentUserReadOnly() && READONLY_BLOCKED_SCREENS.includes(screen)) {
+    showToast('🔒 Tu usuario no tiene acceso a esta sección', 2500);
+    return;
+  }
+
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('screen-' + screen);
   if (el) el.classList.add('active');
   currentScreen = screen;
 
-  document.querySelectorAll('.nav-item').forEach(ni =>
-    ni.classList.toggle('active', ni.dataset.screen === screen)
-  );
+  // Marcar visualmente tabs bloqueadas para solo-lectura
+  const readOnly = isCurrentUserReadOnly();
+  document.querySelectorAll('.nav-item').forEach(ni => {
+    ni.classList.toggle('active', ni.dataset.screen === screen);
+    const blocked = readOnly && READONLY_BLOCKED_SCREENS.includes(ni.dataset.screen);
+    ni.style.opacity = blocked ? '0.35' : '';
+    ni.title = blocked ? '🔒 Sin acceso' : '';
+  });
 
   // FAB: contexto dinámico según pantalla
   const fab = document.getElementById('fab');
@@ -490,6 +501,14 @@ function isCurrentUserOwner() {
   return users.some(u => u.isOwner && u.name === current);
 }
 
+function isCurrentUserReadOnly() {
+  const current = DB.getSettings().userName || 'Principal';
+  return DB.isUserReadOnly(current);
+}
+
+// Pantallas bloqueadas para usuarios de solo-lectura
+const READONLY_BLOCKED_SCREENS = ['reports', 'settings'];
+
 // ── Auto-bloqueo por inactividad ──────────────────────────────────────────────
 function _getInactivityMs() {
   const mins = DB.getSettings().inactivityMinutes || 5;
@@ -568,24 +587,43 @@ function openSecuritySettings() {
     `}
 
     ${users.length > 1 && isOwner ? `
-    <!-- Gestión de PINs de otros usuarios (solo propietario) -->
+    <!-- Gestión de usuarios (solo propietario) -->
     <div style="border-top:1px solid var(--gray-100); padding-top:14px; margin-bottom:14px;">
       <div style="font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
-        letter-spacing:.5px; margin-bottom:10px;">🏢 PINs de otros usuarios</div>
+        letter-spacing:.5px; margin-bottom:10px;">🏢 Permisos de usuarios</div>
       ${users.filter(u => !u.isOwner).map(u => `
-        <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:8px;
-          background:var(--white); border:1.5px solid var(--gray-100); border-radius:10px;">
-          <div style="font-size:20px;">👤</div>
-          <div style="flex:1;">
-            <div style="font-size:13px; font-weight:700;">${u.name}</div>
-            <div style="font-size:11px; color:var(--gray-400);">${u.pinHash ? '🔒 Tiene PIN' : '🔓 Sin PIN'}</div>
+        <div style="background:var(--white); border:1.5px solid var(--gray-100); border-radius:12px;
+          padding:12px 14px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            <div style="font-size:20px;">👤</div>
+            <div style="flex:1;">
+              <div style="font-size:13px; font-weight:700;">${u.name}</div>
+              <div style="font-size:11px; color:var(--gray-400);">${u.pinHash ? '🔒 Tiene PIN' : '🔓 Sin PIN'}</div>
+            </div>
+            ${u.pinHash ? `
+              <button class="btn btn-outline" style="font-size:11px; padding:5px 10px;"
+                onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removeUserPin('${u.name}'); showToast('🔓 PIN de ${u.name} eliminado'); openSecuritySettings(); }),200)">
+                Quitar PIN
+              </button>
+            ` : ''}
           </div>
-          ${u.pinHash ? `
-            <button class="btn btn-outline" style="font-size:11px; padding:5px 10px;"
-              onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removeUserPin('${u.name}'); showToast('🔓 PIN de ${u.name} eliminado'); openSecuritySettings(); }),200)">
-              Eliminar PIN
-            </button>
-          ` : ''}
+          <!-- Toggle solo-lectura -->
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+            background:var(--gray-50); border-radius:8px; padding:8px 12px;">
+            <div>
+              <div style="font-size:12px; font-weight:700; color:var(--gray-700);">🔒 Modo solo-lectura</div>
+              <div style="font-size:10px; color:var(--gray-400);">
+                ${u.isReadOnly ? 'Activo: solo puede registrar transacciones' : 'Inactivo: acceso normal'}
+              </div>
+            </div>
+            <div onclick="DB.setUserReadOnly('${u.name}', ${!u.isReadOnly}); openSecuritySettings();"
+              style="width:40px; height:22px; border-radius:11px; cursor:pointer; flex-shrink:0;
+                background:${u.isReadOnly ? '#f59e0b' : 'var(--gray-200)'}; position:relative; transition:background .2s;">
+              <div style="position:absolute; top:2px; width:18px; height:18px; border-radius:50%;
+                background:white; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:left .2s;
+                left:${u.isReadOnly ? '20px' : '2px'};"></div>
+            </div>
+          </div>
         </div>
       `).join('')}
     </div>
@@ -786,6 +824,10 @@ function renderDashboard() {
       cogsPanel.style.display = 'none';
     }
   }
+
+  // Banner modo solo-lectura
+  const roEl = document.getElementById('dash-readonly-banner');
+  if (roEl) roEl.style.display = isCurrentUserReadOnly() ? 'flex' : 'none';
 
   // Alerta deudas pendientes
   const alertEl = document.getElementById('dash-liabilities-alert');
@@ -1353,7 +1395,11 @@ function openTxDetail(id) {
       ${tx.notes ? `<div><div style="color:var(--gray-500); font-size:14px; margin-bottom:4px;">Notas</div><div style="font-size:14px; color:var(--gray-700); background:var(--gray-50); border-radius:8px; padding:10px;">${tx.notes}</div></div>` : ''}
     </div>
     <div style="display:flex; gap:10px; margin-top:24px;">
-      <button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>
+      ${!isCurrentUserReadOnly()
+        ? `<button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>`
+        : `<button class="btn btn-secondary btn-block" style="opacity:.4; cursor:not-allowed;"
+            onclick="showToast('🔒 Modo solo-lectura: no puedes editar', 2000)">✏️ Editar</button>`
+      }
       ${isCurrentUserOwner()
         ? `<button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>`
         : `<button class="btn btn-danger btn-block" style="opacity:.45; cursor:not-allowed;"
