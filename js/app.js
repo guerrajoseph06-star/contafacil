@@ -1042,13 +1042,15 @@ function renderAccountBalances() {
         </div>
       </div>
       <div style="font-size:11px; color:var(--gray-400); margin-bottom:10px;">
-        Basado en ingresos, gastos y traslados registrados
+        Toca una cuenta para ver su desglose
       </div>
       ${used.map(a => {
         const bal = balances[a.id] || 0;
         const pct = totalCash !== 0 ? Math.abs(Math.round((bal / Math.abs(totalCash)) * 100)) : 0;
         return `
-          <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--gray-100);">
+          <div onclick="openAccountDetail('${a.id}')"
+            style="display:flex; align-items:center; gap:12px; padding:10px 0;
+              border-bottom:1px solid var(--gray-100); cursor:pointer; -webkit-tap-highlight-color:transparent;">
             <div style="font-size:26px; width:36px; text-align:center;">${a.emoji}</div>
             <div style="flex:1; min-width:0;">
               <div style="font-size:14px; font-weight:700;">${a.name}</div>
@@ -1056,16 +1058,141 @@ function renderAccountBalances() {
                 <div style="height:100%; width:${pct}%; background:${bal >= 0 ? 'var(--success)' : 'var(--danger)'}; border-radius:4px;"></div>
               </div>
             </div>
-            <div style="text-align:right; flex-shrink:0;">
-              <div style="font-size:17px; font-weight:800; color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                ${bal >= 0 ? '' : '−'}${fmt(Math.abs(bal))}
+            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+              <div style="text-align:right;">
+                <div style="font-size:17px; font-weight:800; color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                  ${bal >= 0 ? '' : '−'}${fmt(Math.abs(bal))}
+                </div>
               </div>
+              <div style="font-size:16px; color:var(--gray-300);">›</div>
             </div>
           </div>
         `;
       }).join('')}
     </div>
   `;
+}
+
+// ── Desglose de transacciones por cuenta ─────────────────────────────────────
+function openAccountDetail(accountId) {
+  const accounts = DB.getAccounts();
+  const account  = accounts.find(a => a.id === accountId);
+  if (!account) return;
+
+  const allTxs = DB.getTransactions().filter(t => !t.isCogs);
+
+  // Transacciones que afectan esta cuenta
+  const txs = allTxs.filter(t => {
+    if (t.type === 'transfer') {
+      return t.accountId === accountId || t.toAccountId === accountId;
+    }
+    return t.accountId === accountId;
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const balances = DB.getAccountBalances();
+  const bal      = balances[accountId] || 0;
+
+  const COLORS = { income:'var(--success)', expense:'var(--danger)', transfer:'var(--primary)', liability:'var(--warning)' };
+  const TYPE_LABEL = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda' };
+
+  // Agrupar por mes
+  const byMonth = {};
+  txs.forEach(t => {
+    const key = t.date.slice(0, 7); // YYYY-MM
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(t);
+  });
+
+  const monthLabel = key => {
+    const [y, m] = key.split('-');
+    return new Date(+y, +m - 1, 1).toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+  };
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <!-- Encabezado de cuenta -->
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+      <div style="font-size:40px;">${account.emoji}</div>
+      <div style="flex:1;">
+        <div style="font-size:18px; font-weight:900;">${account.name}</div>
+        <div style="font-size:14px; font-weight:700; color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'}; margin-top:2px;">
+          Saldo actual: ${bal >= 0 ? '' : '−'}${fmt(Math.abs(bal))}
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen rápido -->
+    ${(() => {
+      const ingresos  = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const gastos    = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const traslados = txs.filter(t => t.type === 'transfer').length;
+      return `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:18px;">
+          <div style="background:#f0fdf4; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:var(--success); text-transform:uppercase; letter-spacing:.5px;">Ingresos</div>
+            <div style="font-size:16px; font-weight:800; color:var(--success); margin-top:2px;">${fmt(ingresos)}</div>
+          </div>
+          <div style="background:#fef2f2; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:var(--danger); text-transform:uppercase; letter-spacing:.5px;">Gastos</div>
+            <div style="font-size:16px; font-weight:800; color:var(--danger); margin-top:2px;">${fmt(gastos)}</div>
+          </div>
+        </div>
+        ${traslados > 0 ? `<div style="font-size:11px; color:var(--gray-400); margin-bottom:14px; text-align:center;">+ ${traslados} traslado(s) entre cuentas</div>` : ''}
+      `;
+    })()}
+
+    <!-- Listado agrupado por mes -->
+    ${txs.length === 0
+      ? `<div style="text-align:center; padding:30px 0; color:var(--gray-400);">
+           <div style="font-size:36px; margin-bottom:8px;">📭</div>
+           Sin movimientos en esta cuenta
+         </div>`
+      : Object.entries(byMonth).map(([key, mTxs]) => {
+          const mInc = mTxs.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
+          const mExp = mTxs.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
+          return `
+            <div style="margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;
+                font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
+                letter-spacing:.5px; margin-bottom:8px; padding-bottom:6px;
+                border-bottom:2px solid var(--gray-100);">
+                <span>${monthLabel(key)}</span>
+                <span style="color:${(mInc-mExp) >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                  ${(mInc-mExp) >= 0 ? '+' : ''}${fmt(mInc - mExp)}
+                </span>
+              </div>
+              ${mTxs.map(t => {
+                const isOut = t.type === 'expense' || (t.type === 'transfer' && t.accountId === accountId);
+                const isIn  = t.type === 'income'  || (t.type === 'transfer' && t.toAccountId === accountId);
+                const sign  = isOut ? '−' : '+';
+                const color = isOut ? 'var(--danger)' : 'var(--success)';
+                return `
+                  <div onclick="closeSettingsSheet(); setTimeout(()=>openTxDetail('${t.id}'),200);"
+                    style="display:flex; align-items:center; gap:10px; padding:9px 0;
+                      border-bottom:1px solid var(--gray-50); cursor:pointer; -webkit-tap-highlight-color:transparent;">
+                    <div style="width:8px; height:8px; border-radius:50%; background:${COLORS[t.type] || 'var(--gray-300)'}; flex-shrink:0;"></div>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.description}</div>
+                      <div style="font-size:11px; color:var(--gray-400);">${fmtDate(t.date)} · ${TYPE_LABEL[t.type] || t.type}</div>
+                    </div>
+                    <div style="font-size:14px; font-weight:800; color:${color}; flex-shrink:0;">
+                      ${sign}${fmt(t.amount)}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }).join('')
+    }
+
+    <div style="font-size:11px; color:var(--gray-400); text-align:center; margin-top:8px;">
+      ${txs.length} movimiento(s) en total
+    </div>
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 // ── Diario ────────────────────────────────────────────────────────────────────
