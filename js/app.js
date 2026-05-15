@@ -66,8 +66,9 @@ function showToast(msg, ms = 2500) {
 
 // ── Navegación ────────────────────────────────────────────────────────────────
 function navigate(screen, params = {}) {
-  // Modo solo-lectura: bloquear secciones restringidas
-  if (isCurrentUserReadOnly() && READONLY_BLOCKED_SCREENS.includes(screen)) {
+  // Verificar si el usuario tiene acceso a esta sección
+  const currentUser = DB.getSettings().userName || 'Principal';
+  if (!DB.isScreenAllowed(currentUser, screen)) {
     showToast('🔒 Tu usuario no tiene acceso a esta sección', 2500);
     return;
   }
@@ -77,11 +78,11 @@ function navigate(screen, params = {}) {
   if (el) el.classList.add('active');
   currentScreen = screen;
 
-  // Marcar visualmente tabs bloqueadas para solo-lectura
-  const readOnly = isCurrentUserReadOnly();
+  // Marcar visualmente tabs bloqueadas según permisos del usuario actual
+  const allowed = DB.getUserAllowedScreens(currentUser);
   document.querySelectorAll('.nav-item').forEach(ni => {
     ni.classList.toggle('active', ni.dataset.screen === screen);
-    const blocked = readOnly && READONLY_BLOCKED_SCREENS.includes(ni.dataset.screen);
+    const blocked = !allowed.includes(ni.dataset.screen);
     ni.style.opacity = blocked ? '0.35' : '';
     ni.title = blocked ? '🔒 Sin acceso' : '';
   });
@@ -624,7 +625,19 @@ function isCurrentUserReadOnly() {
   return DB.isUserReadOnly(current);
 }
 
-// Pantallas bloqueadas para usuarios de solo-lectura
+function toggleUserScreen(userName, screen) {
+  const allowed  = DB.getUserAllowedScreens(userName);
+  const isOn     = allowed.includes(screen);
+  const updated  = isOn
+    ? allowed.filter(s => s !== screen && s !== 'dashboard') // dashboard siempre queda
+    : [...allowed, screen];
+  // Asegurar dashboard siempre incluido
+  if (!updated.includes('dashboard')) updated.unshift('dashboard');
+  DB.setUserAllowedScreens(userName, updated);
+  openSecuritySettings(); // refrescar UI
+}
+
+// Pantallas bloqueadas para usuarios de solo-lectura (legacy, ahora usa allowedScreens)
 const READONLY_BLOCKED_SCREENS = ['reports', 'settings'];
 
 // ── Auto-bloqueo por inactividad ──────────────────────────────────────────────
@@ -725,21 +738,34 @@ function openSecuritySettings() {
               </button>
             ` : ''}
           </div>
-          <!-- Toggle solo-lectura -->
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
-            background:var(--gray-50); border-radius:8px; padding:8px 12px;">
-            <div>
-              <div style="font-size:12px; font-weight:700; color:var(--gray-700);">🔒 Modo solo-lectura</div>
-              <div style="font-size:10px; color:var(--gray-400);">
-                ${u.isReadOnly ? 'Activo: solo puede registrar transacciones' : 'Inactivo: acceso normal'}
-              </div>
+          <!-- Permisos de secciones (granular) -->
+          <div style="background:var(--gray-50); border-radius:8px; padding:10px 12px;">
+            <div style="font-size:11px; font-weight:700; color:var(--gray-600); margin-bottom:8px;">
+              📋 Secciones permitidas
             </div>
-            <div onclick="DB.setUserReadOnly('${u.name}', ${!u.isReadOnly}); openSecuritySettings();"
-              style="width:40px; height:22px; border-radius:11px; cursor:pointer; flex-shrink:0;
-                background:${u.isReadOnly ? '#f59e0b' : 'var(--gray-200)'}; position:relative; transition:background .2s;">
-              <div style="position:absolute; top:2px; width:18px; height:18px; border-radius:50%;
-                background:white; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:left .2s;
-                left:${u.isReadOnly ? '20px' : '2px'};"></div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              ${[
+                { key:'dashboard', icon:'🏠', label:'Inicio'    },
+                { key:'journal',   icon:'📒', label:'Diario'    },
+                { key:'inventory', icon:'📦', label:'Inventario'},
+                { key:'cartera',   icon:'💳', label:'Cartera'   },
+                { key:'reports',   icon:'📊', label:'Reportes'  },
+                { key:'settings',  icon:'⚙️', label:'Ajustes'   },
+              ].map(sc => {
+                const allowed   = DB.getUserAllowedScreens(u.name);
+                const isAllowed = allowed.includes(sc.key);
+                // dashboard siempre permitido
+                const fixed = sc.key === 'dashboard';
+                return `
+                  <button ${fixed ? 'disabled' : `onclick="toggleUserScreen('${u.name}','${sc.key}')"`}
+                    style="padding:5px 10px; border-radius:20px; font-size:11px; font-weight:700;
+                      border:1.5px solid ${isAllowed ? 'var(--primary)' : 'var(--gray-200)'};
+                      background:${isAllowed ? 'var(--primary-light)' : 'var(--white)'};
+                      color:${isAllowed ? 'var(--primary)' : 'var(--gray-400)'};
+                      cursor:${fixed ? 'default' : 'pointer'}; opacity:${fixed ? '.6' : '1'};">
+                    ${sc.icon} ${sc.label}
+                  </button>`;
+              }).join('')}
             </div>
           </div>
         </div>

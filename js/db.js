@@ -845,6 +845,31 @@ const DB = (() => {
     return !!(e && !e.isOwner && e.isReadOnly);
   }
 
+  // Secciones permitidas por usuario (granular).
+  // allowedScreens: array de screens ['dashboard','journal','inventory','cartera','reports','settings']
+  // null = sin restricción (acceso completo)
+  const ALL_SCREENS = ['dashboard','journal','inventory','cartera','reports','settings'];
+
+  function setUserAllowedScreens(userName, screens) {
+    const list = getUserList().map(u =>
+      u.name === userName ? { ...u, allowedScreens: screens } : u
+    );
+    updateSettings({ users: list });
+  }
+
+  function getUserAllowedScreens(userName) {
+    const e = getUserEntry(userName);
+    if (!e || e.isOwner) return ALL_SCREENS; // propietario: todo
+    if (e.allowedScreens) return e.allowedScreens;
+    // Retrocompatibilidad: si es readOnly, restringir reports y settings
+    if (e.isReadOnly) return ['dashboard','journal','inventory','cartera'];
+    return ALL_SCREENS;
+  }
+
+  function isScreenAllowed(userName, screen) {
+    return getUserAllowedScreens(userName).includes(screen);
+  }
+
   // ── Funciones de seguridad (delegadas al usuario actual) ─────────────────────
   function isPinSet() {
     const s = getSettings();
@@ -1104,6 +1129,7 @@ const DB = (() => {
     getUserList, getUserEntry, userHasPin, setUserPin, verifyUserPin,
     removeUserPin, addUserToList, removeUserFromList,
     setUserReadOnly, isUserReadOnly,
+    setUserAllowedScreens, getUserAllowedScreens, isScreenAllowed,
     generateRecoveryCode, setUserRecoveryCode, verifyRecoveryCode, userHasRecoveryCode,
     logAudit, getAuditLog, clearAuditLog,
     exportForSyncEncrypted, importFromUserDecrypted,
