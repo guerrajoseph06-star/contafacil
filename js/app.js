@@ -6,6 +6,10 @@
 // ── Estado global ─────────────────────────────────────────────────────────────
 let currentScreen = 'dashboard';
 
+// Versión del código. Si la app muestra una versión distinta a esta tras recargar,
+// el navegador está usando archivos viejos en caché.
+const APP_VERSION = '2026.05.15c';
+
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
   // Usar clase en body — más compatible con Chrome Android que data-theme en html
@@ -66,9 +70,19 @@ function showToast(msg, ms = 2500) {
 
 // ── Navegación ────────────────────────────────────────────────────────────────
 function navigate(screen, params = {}) {
-  // Verificar si el usuario tiene acceso a esta sección
+  // Verificar acceso — BLINDADO: el propietario NUNCA se bloquea.
+  // Capas de seguridad para que un fallo de datos jamás encierre al usuario:
+  //   1. Si el usuario activo es el propietario → acceso total siempre.
+  //   2. Si no hay un propietario definido → acceso total (fail-open).
+  //   3. Si solo existe 1 usuario → acceso total (no tiene sentido restringir).
+  //   4. Solo se bloquea a un NO-propietario, entre varios usuarios, con
+  //      restricción explícita de pantalla.
   const currentUser = DB.getSettings().userName || 'Principal';
-  if (!DB.isScreenAllowed(currentUser, screen)) {
+  const userList    = DB.getUserList();
+  const ownerEntry  = userList.find(u => u.isOwner);
+  const isOwner     = !ownerEntry || ownerEntry.name === currentUser;
+
+  if (!isOwner && userList.length > 1 && !DB.isScreenAllowed(currentUser, screen)) {
     showToast('🔒 Tu usuario no tiene acceso a esta sección', 2500);
     return;
   }
@@ -5110,6 +5124,10 @@ function renderSettings() {
   }
   const unEl = document.getElementById('settings-username-val');
   if (unEl) unEl.textContent = s.userName || 'Principal';
+
+  // Etiqueta de versión (confirma que el navegador cargó código fresco)
+  const verEl = document.getElementById('settings-version-tag');
+  if (verEl) verEl.textContent = 'ContaFácil Pro · v' + APP_VERSION;
 
   // Sincronizar toggle modo oscuro
   const isDark = document.body.classList.contains('dark-mode');

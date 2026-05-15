@@ -6,9 +6,13 @@
   <meta name="theme-color" content="#2563eb">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ContaFácil">
+  <!-- Evitar que el navegador sirva versiones viejas del HTML cacheadas -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20260515c">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -1030,6 +1034,10 @@
         <div class="settings-item-arrow">›</div>
       </button>
     </div>
+
+    <!-- Versión cargada — sirve para confirmar que el navegador tomó código fresco -->
+    <div style="text-align:center; font-size:11px; color:var(--gray-400); padding:14px 0 4px;"
+         id="settings-version-tag">ContaFácil Pro</div>
   </div>
 </div>
 
@@ -1081,7 +1089,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js"></script>
-<script src="js/app.js"></script>
+<script src="js/db.js?v=20260515c"></script>
+<script src="js/app.js?v=20260515c"></script>
 </body>
 </html>
