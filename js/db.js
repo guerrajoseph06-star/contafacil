@@ -146,13 +146,14 @@ const DB = (() => {
   }
 
   // ── Reparación automática de estado de propietario ───────────────────────────
-  // Detecta y corrige situaciones donde settings.userName no coincide con ningún
-  // usuario en users[]. Ocurre si: (a) el usuario fue renombrado sin actualizar
-  // users[], (b) el sistema cambió al nuevo usuario tras asignar PIN (bug antiguo).
+  // Detecta y corrige situaciones donde:
+  //   (A) settings.userName no existe en users[]  → renombrado sin actualizar array
+  //   (B) usuario activo es no-propietario con allowedScreens restringido que
+  //       bloquea pantallas básicas (journal, inventory) Y el propietario no tiene PIN
+  //       → el sistema cambió al nuevo usuario tras asignar PIN (bug antiguo)
   //
-  // SEGURO: solo actúa cuando el nombre actual no existe en ninguna entrada de
-  // users[]. Si el usuario es un no-propietario válido (existe en la lista), no
-  // lo toca. No modifica datos de transacciones ni categorías.
+  // SEGURO: en caso B solo actúa si el propietario no tiene PIN (sin verificación
+  // extra). Si el propietario tiene PIN, la reparación manual se hace desde Settings.
   function _repairOwnerState() {
     const raw = load(KEYS.settings);
     if (!raw) return; // empresa nueva, nada que reparar
@@ -160,14 +161,29 @@ const DB = (() => {
     const users = Array.isArray(raw.users) ? raw.users : [];
     if (users.length === 0) return; // aún no hay estructura de usuarios
 
-    const currentName = raw.userName || 'Principal';
-    const existsInList = users.some(u => u.name === currentName);
+    const currentName  = raw.userName || 'Principal';
+    const currentEntry = users.find(u => u.name === currentName);
 
-    if (!existsInList) {
-      // El nombre activo no existe en users[] → auto-volver al propietario
+    // ── Caso A: nombre activo no existe en users[] ───────────────────────────
+    if (!currentEntry) {
       const owner = users.find(u => u.isOwner) || users[0];
-      if (owner) {
-        save(KEYS.settings, { ...raw, userName: owner.name });
+      if (owner) save(KEYS.settings, { ...raw, userName: owner.name });
+      return;
+    }
+
+    // ── Caso B: usuario activo es no-propietario con acceso restringido ──────
+    // Señal: tiene allowedScreens explícito que NO incluye 'journal' (pantalla básica)
+    if (!currentEntry.isOwner && Array.isArray(currentEntry.allowedScreens)) {
+      const blocksBasic = !currentEntry.allowedScreens.includes('journal') ||
+                          !currentEntry.allowedScreens.includes('inventory');
+      if (blocksBasic) {
+        const owner = users.find(u => u.isOwner);
+        // Auto-reparar solo si el propietario no tiene PIN (sin pedir confirmación)
+        if (owner && !owner.pinHash) {
+          save(KEYS.settings, { ...raw, userName: owner.name });
+        }
+        // Si el propietario tiene PIN → el banner de recuperación en Settings
+        // guiará al usuario a usar requireOwnerAccess()
       }
     }
   }

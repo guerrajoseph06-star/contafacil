@@ -785,6 +785,26 @@
 <div id="screen-settings" class="screen">
   <div class="topbar"><div class="topbar-title">⚙️ Configuración</div></div>
   <div class="content">
+
+    <!-- Banner de recuperación de acceso — solo visible cuando el usuario activo NO es propietario -->
+    <div id="settings-recovery-banner" style="display:none; background:#dc2626; border-radius:16px;
+      padding:16px; margin-bottom:16px; color:#fff;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <div style="font-size:28px;">🔒</div>
+        <div>
+          <div style="font-size:15px; font-weight:800;">Acceso restringido</div>
+          <div style="font-size:12px; opacity:.85; line-height:1.4;" id="recovery-banner-msg">
+            Tu usuario activo no es el propietario. Por eso algunas secciones están bloqueadas.
+          </div>
+        </div>
+      </div>
+      <button onclick="recoverOwnerAccess()"
+        style="width:100%; padding:13px; background:#fff; color:#dc2626; border:none;
+          border-radius:10px; font-size:15px; font-weight:800; cursor:pointer; letter-spacing:.3px;">
+        👑 Recuperar acceso completo
+      </button>
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">Empresa</div>
       <button class="settings-item" onclick="openCompanySwitcher()" style="border:2px solid var(--primary); border-radius:14px; margin-bottom:4px;">

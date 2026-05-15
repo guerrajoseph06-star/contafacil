@@ -4941,10 +4941,60 @@ function doImportFromUser() {
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
+// ── Recuperación de acceso del propietario ────────────────────────────────────
+// Llamado desde el banner rojo en Settings cuando el usuario activo NO es owner.
+// Si el propietario no tiene PIN → cambia directamente.
+// Si tiene PIN → pide el PIN del propietario antes de cambiar.
+function recoverOwnerAccess() {
+  const users = DB.getUserList();
+  const owner = users.find(u => u.isOwner);
+  if (!owner) {
+    // No hay propietario definido: marcar al primer usuario como propietario
+    const firstUser = users[0];
+    if (firstUser) {
+      DB.switchUser(firstUser.name);
+      showToast('✅ Acceso restaurado como propietario', 3000);
+      setTimeout(() => location.reload(), 800);
+    }
+    return;
+  }
+
+  if (!owner.pinHash) {
+    // Propietario sin PIN → cambiar directo
+    DB.switchUser(owner.name);
+    showToast('✅ Bienvenido de nuevo, ' + owner.name, 2500);
+    setTimeout(() => location.reload(), 800);
+  } else {
+    // Propietario con PIN → pedir verificación
+    showLockScreen('unlock', () => {
+      DB.switchUser(owner.name);
+      showToast('✅ Acceso restaurado: ' + owner.name, 2500);
+      setTimeout(() => location.reload(), 800);
+    }, owner.name);
+  }
+}
+
 function renderSettings() {
   const s = DB.getSettings();
   document.getElementById('settings-company-val').textContent  = s.companyName;
   document.getElementById('settings-currency-val').textContent = s.currency;
+
+  // ── Banner de recuperación de acceso ──────────────────────────────────────
+  const recoveryBanner = document.getElementById('settings-recovery-banner');
+  if (recoveryBanner) {
+    const isOwner = isCurrentUserOwner();
+    recoveryBanner.style.display = isOwner ? 'none' : 'block';
+    if (!isOwner) {
+      const users    = DB.getUserList();
+      const owner    = users.find(u => u.isOwner);
+      const msgEl    = document.getElementById('recovery-banner-msg');
+      const current  = s.userName || 'Principal';
+      if (msgEl && owner) {
+        msgEl.textContent = `Usuario activo: "${current}" (no es propietario). ` +
+          `Toca el botón para recuperar el acceso como "${owner.name}".`;
+      }
+    }
+  }
 
   // Indicador IVA
   const ivaDescEl = document.getElementById('settings-iva-desc');
