@@ -1082,11 +1082,12 @@ function openAccountDetail(accountId) {
   const allTxs = DB.getTransactions().filter(t => !t.isCogs);
 
   // Transacciones que afectan esta cuenta
+  // Los campos reales son: t.account (income/expense), t.fromAccount / t.toAccount (transfer)
   const txs = allTxs.filter(t => {
     if (t.type === 'transfer') {
-      return t.accountId === accountId || t.toAccountId === accountId;
+      return t.fromAccount === accountId || t.toAccount === accountId;
     }
-    return t.accountId === accountId;
+    return t.account === accountId;
   }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const balances = DB.getAccountBalances();
@@ -1163,8 +1164,8 @@ function openAccountDetail(accountId) {
                 </span>
               </div>
               ${mTxs.map(t => {
-                const isOut = t.type === 'expense' || (t.type === 'transfer' && t.accountId === accountId);
-                const isIn  = t.type === 'income'  || (t.type === 'transfer' && t.toAccountId === accountId);
+                const isOut = t.type === 'expense' || (t.type === 'transfer' && t.fromAccount === accountId);
+                const isIn  = t.type === 'income'  || (t.type === 'transfer' && t.toAccount === accountId);
                 const sign  = isOut ? '−' : '+';
                 const color = isOut ? 'var(--danger)' : 'var(--success)';
                 return `
