@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15c';
+const APP_VERSION = '2026.05.15d';
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
@@ -651,6 +651,13 @@ function toggleUserScreen(userName, screen) {
   openSecuritySettings(); // refrescar UI
 }
 
+// Restaura acceso completo a un usuario (elimina restricciones)
+function resetUserPermissions(userName) {
+  DB.setUserAllowedScreens(userName, null); // null = sin restricciones = acceso total
+  showToast('✅ Acceso completo restaurado a ' + userName, 2000);
+  openSecuritySettings();
+}
+
 // Pantallas bloqueadas para usuarios de solo-lectura (legacy, ahora usa allowedScreens)
 const READONLY_BLOCKED_SCREENS = ['reports', 'settings'];
 
@@ -754,8 +761,19 @@ function openSecuritySettings() {
           </div>
           <!-- Permisos de secciones (granular) -->
           <div style="background:var(--gray-50); border-radius:8px; padding:10px 12px;">
-            <div style="font-size:11px; font-weight:700; color:var(--gray-600); margin-bottom:8px;">
-              📋 Secciones permitidas
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div style="font-size:11px; font-weight:700; color:var(--gray-600);">📋 Secciones permitidas</div>
+              ${(() => {
+                const uAllowed = DB.getUserAllowedScreens(u.name);
+                const hasRestriction = u.allowedScreens && Array.isArray(u.allowedScreens);
+                return hasRestriction
+                  ? `<button onclick="resetUserPermissions('${u.name}')"
+                      style="font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px;
+                        background:#dcfce7; color:#166534; border:1.5px solid #86efac; cursor:pointer;">
+                      ✅ Restablecer todo
+                    </button>`
+                  : '';
+              })()}
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
               ${[

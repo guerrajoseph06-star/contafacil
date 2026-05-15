@@ -171,21 +171,10 @@ const DB = (() => {
       return;
     }
 
-    // ── Caso B: usuario activo es no-propietario con acceso restringido ──────
-    // Señal: tiene allowedScreens explícito que NO incluye 'journal' (pantalla básica)
-    if (!currentEntry.isOwner && Array.isArray(currentEntry.allowedScreens)) {
-      const blocksBasic = !currentEntry.allowedScreens.includes('journal') ||
-                          !currentEntry.allowedScreens.includes('inventory');
-      if (blocksBasic) {
-        const owner = users.find(u => u.isOwner);
-        // Auto-reparar solo si el propietario no tiene PIN (sin pedir confirmación)
-        if (owner && !owner.pinHash) {
-          save(KEYS.settings, { ...raw, userName: owner.name });
-        }
-        // Si el propietario tiene PIN → el banner de recuperación en Settings
-        // guiará al usuario a usar requireOwnerAccess()
-      }
-    }
+    // Caso B eliminado: los bugs 1-3 que causaban estados corruptos ya están
+    // corregidos. Mantener Caso B interfería con la gestión legítima de permisos:
+    // si el dueño restringía journal o inventory, _repairOwnerState los expulsaba
+    // al propietario en cada carga, haciendo imposible mantener restricciones.
   }
 
   // Estampa userName en transacciones y CxC que no lo tengan (migración al activar multi-usuario)
