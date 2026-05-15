@@ -1114,6 +1114,58 @@ const DB = (() => {
   // Incluye: empresa, usuarios+permisos+PINs(hash), moneda, cuentas,
   // categorías, presupuestos, recurrentes y ajustes de seguridad.
   // NO incluye: transacciones ni inventario (esos van por exportForSync).
+  // ── Alertas de vencimiento unificadas ────────────────────────────────────────
+  // Combina recurrentes activos + CxC pendientes en los próximos N días
+  // También incluye CxC ya vencidas (daysUntil negativo).
+  function getUpcomingAlerts(days = 7) {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const cutoff     = new Date(todayStart); cutoff.setDate(cutoff.getDate() + days);
+    const alerts     = [];
+
+    // Recurrentes activos → próxima fecha de ejecución
+    getRecurrings().filter(r => r.isActive).forEach(r => {
+      const next = getNextExecution(r);
+      if (next >= todayStart && next <= cutoff) {
+        alerts.push({
+          id:        r.id,
+          tipo:      'pago',
+          titulo:    r.name || r.description || 'Recurrente',
+          monto:     r.amount,
+          fecha:     next.toISOString().slice(0, 10),
+          daysUntil: Math.floor((next - todayStart) / 86400000),
+          fuente:    'recurring',
+          emoji:     '💸',
+        });
+      }
+    });
+
+    // CxC pendientes → fecha de vencimiento (incluye vencidas como daysUntil negativo)
+    getReceivables().filter(r => r.status !== 'paid' && r.dueDate).forEach(r => {
+      const d       = new Date(r.dueDate + 'T12:00:00');
+      const pagado  = (r.payments || []).reduce((s, p) => s + p.amount, 0);
+      const pendiente = r.totalAmount - pagado;
+      if (pendiente <= 0) return;
+
+      const daysUntil = Math.floor((d - todayStart) / 86400000);
+      if (daysUntil > days) return; // demasiado lejos
+
+      alerts.push({
+        id:        r.id,
+        tipo:      'cobro',
+        titulo:    r.clientName + (r.description ? ' · ' + r.description : ''),
+        monto:     pendiente,
+        fecha:     r.dueDate,
+        daysUntil,
+        fuente:    'receivable',
+        emoji:     daysUntil < 0 ? '⚠️' : '💳',
+        vencido:   daysUntil < 0,
+      });
+    });
+
+    alerts.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    return alerts;
+  }
+
   function exportSettings() {
     const s = getSettings();
     return JSON.stringify({
@@ -1183,5 +1235,6 @@ const DB = (() => {
     isOnboarded, markOnboarded,
     exportData, importData,
     exportSettings, importSettings,
+    getUpcomingAlerts,
   };
 })();

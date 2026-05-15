@@ -1014,8 +1014,8 @@ function renderDashboard() {
     chipVal.textContent = 'Cobrar';
   }
 
-  // Próximos gastos recurrentes
-  renderUpcomingRecurrings();
+  // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
+  renderUpcomingAlerts();
 }
 
 // ── Saldo por cuenta bancaria ─────────────────────────────────────────────────
@@ -2714,50 +2714,142 @@ function confirmDeleteRecurring(id) {
 }
 
 // Renderiza el bloque de "Próximos pagos" del dashboard
-function renderUpcomingRecurrings() {
+// ── Panel unificado de vencimientos (pagos + cobros) ─────────────────────────
+function renderUpcomingAlerts() {
   const el = document.getElementById('dash-upcoming');
   if (!el) return;
-  const actives = DB.getRecurrings().filter(r => r.isActive);
-  if (!actives.length) { el.style.display = 'none'; return; }
 
-  // Ordenar por próxima ejecución
-  const sorted = actives
-    .map(r => ({ r, next: DB.getNextExecution(r) }))
-    .sort((a, b) => a.next - b.next)
-    .slice(0, 4);
+  const alerts   = DB.getUpcomingAlerts(7);
+  const vencidos = alerts.filter(a => a.vencido);
+  const proximos = alerts.filter(a => !a.vencido);
+  const urgentes = alerts.filter(a => a.daysUntil <= 0).length; // hoy + vencidos
 
-  const now   = new Date();
-  const items = sorted.map(({ r, next }) => {
-    const cat    = DB.getCategoryById(r.category);
-    const daysTo = Math.ceil((next - now) / 86400000);
-    const label  = daysTo <= 0 ? '<span style="color:var(--danger);font-weight:700;">Hoy</span>'
-                 : daysTo === 1 ? '<span style="color:var(--warning);font-weight:600;">Mañana</span>'
-                 : `<span style="color:var(--gray-500);">en ${daysTo} días</span>`;
+  if (!alerts.length) { el.style.display = 'none'; return; }
+
+  const dayLabel = a => {
+    if (a.vencido)      return `<span style="color:var(--danger);font-weight:700;">Venció hace ${Math.abs(a.daysUntil)} día${Math.abs(a.daysUntil) > 1 ? 's' : ''}</span>`;
+    if (a.daysUntil === 0) return `<span style="color:var(--danger);font-weight:800;">HOY</span>`;
+    if (a.daysUntil === 1) return `<span style="color:#d97706;font-weight:700;">Mañana</span>`;
+    return `<span style="color:var(--gray-400);">En ${a.daysUntil} días · ${fmtDate(a.fecha)}</span>`;
+  };
+
+  const itemHTML = a => {
+    const isPago   = a.tipo === 'pago';
+    const bg       = a.vencido   ? '#fef2f2'
+                   : a.daysUntil === 0 ? (isPago ? '#fff7ed' : '#f0fdf4')
+                   : 'var(--gray-50)';
+    const border   = a.vencido || a.daysUntil === 0
+                   ? `border-left:3px solid ${a.vencido ? 'var(--danger)' : isPago ? '#f59e0b' : 'var(--success)'};` : '';
+    const amtColor = a.vencido ? 'var(--danger)' : isPago ? 'var(--warning)' : 'var(--success)';
+    const sign     = isPago ? '−' : '+';
+    const badge    = isPago
+      ? `<span style="font-size:9px;background:#fff7ed;color:#d97706;border:1px solid #f59e0b;border-radius:6px;padding:1px 5px;font-weight:700;margin-left:4px;">PAGO</span>`
+      : `<span style="font-size:9px;background:#f0fdf4;color:var(--success);border:1px solid var(--success);border-radius:6px;padding:1px 5px;font-weight:700;margin-left:4px;">COBRO</span>`;
     return `
-      <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--gray-100);">
-        <div style="font-size:20px;">${cat ? cat.emoji : '💸'}</div>
-        <div style="flex:1;">
-          <div style="font-size:14px; font-weight:600;">${r.name}</div>
-          <div style="font-size:12px;">${label} · día ${r.dayOfMonth}</div>
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:6px;
+        background:${bg}; border-radius:10px; ${border}">
+        <div style="font-size:20px; flex-shrink:0;">${a.emoji}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            ${a.titulo}${badge}
+          </div>
+          <div style="font-size:11px; margin-top:2px;">${dayLabel(a)}</div>
         </div>
-        <div style="font-size:14px; font-weight:700; color:var(--danger);">${fmt(r.amount)}</div>
+        <div style="font-size:14px; font-weight:800; color:${amtColor}; flex-shrink:0; white-space:nowrap;">
+          ${sign}${fmt(a.monto)}
+        </div>
       </div>
     `;
-  }).join('');
+  };
 
-  const totalMensual = actives.reduce((s, r) => s + r.amount, 0);
+  const notifBtn = ('Notification' in window) && Notification.permission !== 'granted' && Notification.permission !== 'denied'
+    ? `<button onclick="_requestNotifPermission()" style="width:100%; padding:9px; margin-top:4px;
+        background:none; border:1.5px dashed var(--gray-300); border-radius:10px;
+        font-size:12px; color:var(--gray-500); cursor:pointer; font-weight:600;">
+        🔔 Activar recordatorios automáticos
+      </button>`
+    : '';
 
   el.style.display = 'block';
   el.innerHTML = `
     <div class="card" style="margin-bottom:12px;">
-      <div class="card-header" style="margin-bottom:4px;">
-        <div class="card-title">🔄 Gastos Automáticos</div>
-        <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="openRecurringManager(); document.getElementById('settings-sheet').classList.add('open');">Gestionar →</button>
+      <div class="card-header" style="margin-bottom:12px;">
+        <div class="card-title">
+          🔔 Próximos Vencimientos
+          ${urgentes > 0 ? `<span style="background:var(--danger);color:white;border-radius:10px;
+            font-size:10px;padding:2px 7px;margin-left:6px;font-weight:800;">${urgentes}</span>` : ''}
+        </div>
+        <span style="font-size:11px; color:var(--gray-400);">Próximos 7 días</span>
       </div>
-      <div style="font-size:12px; color:var(--gray-400); margin-bottom:10px;">Total fijo: ${fmt(totalMensual)}/mes</div>
-      ${items}
+      ${vencidos.length ? `
+        <div style="font-size:10px; font-weight:800; color:var(--danger); text-transform:uppercase;
+          letter-spacing:.5px; margin-bottom:6px;">⚠️ Vencidos</div>
+        ${vencidos.map(itemHTML).join('')}
+        ${proximos.length ? `<div style="height:1px; background:var(--gray-100); margin:10px 0;"></div>` : ''}
+      ` : ''}
+      ${proximos.map(itemHTML).join('')}
+      ${notifBtn}
     </div>
   `;
+}
+
+// Alias para compatibilidad con llamadas existentes
+function renderUpcomingRecurrings() { renderUpcomingAlerts(); }
+
+// ── Notificaciones nativas del navegador ─────────────────────────────────────
+async function _requestNotifPermission() {
+  if (!('Notification' in window)) {
+    showToast('❌ Tu navegador no admite notificaciones'); return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    showToast('✅ Notificaciones activadas');
+    _fireNotifications(true); // forzar aunque ya se envió hoy
+    renderUpcomingAlerts();
+  } else {
+    showToast('⚠️ Notificaciones bloqueadas en el navegador');
+  }
+}
+
+function _fireNotifications(force = false) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  // Una vez por día (salvo que se llame con force=true)
+  const today = new Date().toISOString().slice(0, 10);
+  if (!force) {
+    if (localStorage.getItem('cf_notif_lastCheck') === today) return;
+  }
+  localStorage.setItem('cf_notif_lastCheck', today);
+
+  const s      = DB.getSettings();
+  const alerts = DB.getUpcomingAlerts(7);
+  const hoy    = alerts.filter(a => a.daysUntil === 0 && !a.vencido);
+  const manana = alerts.filter(a => a.daysUntil === 1);
+  const venc   = alerts.filter(a => a.vencido);
+
+  hoy.forEach(a => {
+    new Notification(a.tipo === 'cobro' ? '💳 Cobro HOY' : '💸 Pago HOY', {
+      body: `${a.titulo}\n${fmt(a.monto)}`,
+      icon: '/contafacil/icons/icon-192.png',
+      tag:  `cf-${a.id}-${today}`,
+    });
+  });
+
+  manana.forEach(a => {
+    new Notification(a.tipo === 'cobro' ? '💳 Cobro mañana' : '💸 Pago mañana', {
+      body: `${a.titulo}\n${fmt(a.monto)}`,
+      icon: '/contafacil/icons/icon-192.png',
+      tag:  `cf-${a.id}-${today}`,
+    });
+  });
+
+  if (venc.length > 0) {
+    new Notification(`⚠️ ${venc.length} cobro${venc.length > 1 ? 's' : ''} vencido${venc.length > 1 ? 's' : ''}`, {
+      body: venc.slice(0, 3).map(a => `${a.titulo} · ${fmt(a.monto)}`).join('\n'),
+      icon: '/contafacil/icons/icon-192.png',
+      tag:  `cf-overdue-${today}`,
+    });
+  }
 }
 
 // ── Resumen Anual ─────────────────────────────────────────────────────────────
@@ -4477,6 +4569,26 @@ function renderSettings() {
     const count = DB.getAuditLog(1).length;
     auditDescEl.textContent = count > 0 ? 'Ver historial de actividad' : 'Sin actividad aún';
   }
+
+  // Estado del botón de notificaciones
+  const notifDesc  = document.getElementById('settings-notif-desc');
+  const notifArrow = document.getElementById('settings-notif-arrow');
+  const notifBtn   = document.getElementById('settings-notif-btn');
+  if (notifDesc && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      notifDesc.textContent = '🟢 Notificaciones activas';
+      if (notifArrow) notifArrow.textContent = '✓';
+      if (notifBtn)   notifBtn.style.opacity = '0.7';
+    } else if (Notification.permission === 'denied') {
+      notifDesc.textContent = '🔴 Bloqueadas en el navegador';
+      if (notifArrow) notifArrow.textContent = '✗';
+    } else {
+      notifDesc.textContent = 'Toca para activar recordatorios';
+      if (notifArrow) notifArrow.textContent = '›';
+    }
+  } else if (notifDesc) {
+    notifDesc.textContent = 'No compatible con este navegador';
+  }
 }
 
 function openSettingsSheet(type) {
@@ -4582,6 +4694,9 @@ document.addEventListener('DOMContentLoaded', () => {
   DB.init();
   initSecurity();
 
+  // Disparar notificaciones nativas al abrir la app (una vez por día)
+  _fireNotifications();
+
   // Auto-bloqueo por inactividad: reiniciar temporizador en cualquier interacción
   ['click', 'touchstart', 'keydown', 'scroll'].forEach(ev =>
     document.addEventListener(ev, resetInactivityTimer, { passive: true })
@@ -4597,6 +4712,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       privEl.style.display = 'none'; // mostrar al volver
       resetInactivityTimer();        // reiniciar timer al regresar
+      _fireNotifications();          // disparar alertas al volver a la app
     }
   });
 
