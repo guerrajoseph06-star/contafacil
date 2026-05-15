@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15h';
+const APP_VERSION = '2026.05.15i';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1504,7 +1504,7 @@ function txItemHTML(tx) {
     <li class="tx-item" data-tx-id="${tx.id}" style="${extraStyle}">
       <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.isIva ? 'liability' : tx.type}"><span>${emoji}</span></div>
       <div class="tx-info">
-        <div class="tx-desc">${tx.description}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
+        <div class="tx-desc">${tx.description}${tx.hasReceipt ? ' 📎' : ''}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
         <div class="tx-meta">${metaText}${userTag}</div>
       </div>
       <div class="tx-amount ${amountClass}">${amountText}</div>
@@ -1689,6 +1689,115 @@ function _updateIvaBreakdown() {
     : `<span style="color:var(--gray-500)">Incluye: base ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)}</span>`;
 }
 
+// ── Foto de comprobante / factura (opcional en ingreso, gasto y deuda) ────────
+let _formPhoto = null; // dataURL de la foto adjunta en el formulario actual
+
+// Comprime una imagen: la redimensiona y la convierte a JPEG liviano
+function _compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim)  { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h > maxDim)      { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas  = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('imagen inválida'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('lectura fallida'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// El usuario tomó una foto o eligió una de la galería
+function onReceiptPhotoSelected(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = ''; // permitir volver a elegir el mismo archivo
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToast('⚠️ Selecciona una imagen'); return;
+  }
+  showToast('🖼️ Procesando foto…', 1200);
+  _compressImage(file, 1280, 0.7)
+    .then(dataUrl => {
+      _formPhoto = dataUrl;
+      _renderReceiptArea();
+      showToast('✅ Comprobante adjuntado', 1500);
+    })
+    .catch(() => showToast('❌ No se pudo procesar la imagen', 2500));
+}
+
+// HTML estático de la sección de foto (input oculto + contenedor)
+function _receiptSectionHTML() {
+  return `
+    <div class="form-group">
+      <label class="form-label">📷 Foto de factura / comprobante (opcional)</label>
+      <input type="file" id="f-receipt-input" accept="image/*"
+        onchange="onReceiptPhotoSelected(event)" style="display:none;">
+      <div id="receipt-area"></div>
+    </div>`;
+}
+
+// Dibuja el área de foto según haya o no una foto adjunta
+function _renderReceiptArea() {
+  const area = document.getElementById('receipt-area');
+  if (!area) return;
+  if (_formPhoto) {
+    area.innerHTML = `
+      <div style="display:flex; gap:10px; align-items:center; background:#f0fdf4;
+        border:1.5px solid #86efac; border-radius:10px; padding:10px;">
+        <img src="${_formPhoto}" onclick="_openPhotoViewer(_formPhoto)"
+          style="width:58px; height:58px; object-fit:cover; border-radius:8px;
+            cursor:pointer; flex-shrink:0;">
+        <div style="flex:1; font-size:12px; color:#166534; font-weight:700; line-height:1.4;">
+          ✅ Comprobante adjuntado
+          <div style="font-weight:400; color:var(--gray-500); font-size:11px;">Toca la imagen para ampliarla</div>
+        </div>
+        <button type="button" onclick="_removeFormPhoto()"
+          style="background:none; border:none; color:var(--danger); font-size:13px;
+            font-weight:700; cursor:pointer; white-space:nowrap;">Quitar</button>
+      </div>`;
+  } else {
+    area.innerHTML = `
+      <button type="button" onclick="document.getElementById('f-receipt-input').click()"
+        style="width:100%; padding:14px; border:1.5px dashed var(--gray-300);
+          border-radius:10px; background:var(--gray-50); color:var(--gray-500);
+          font-size:13px; font-weight:600; cursor:pointer;">
+        📷 Tomar foto o elegir de la galería
+      </button>`;
+  }
+}
+
+function _removeFormPhoto() {
+  _formPhoto = null;
+  _renderReceiptArea();
+}
+
+// Visor de imagen a pantalla completa
+function _openPhotoViewer(dataUrl) {
+  if (!dataUrl) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,.93);' +
+    'display:flex; align-items:center; justify-content:center; padding:14px;';
+  ov.innerHTML = `
+    <img src="${dataUrl}" style="max-width:100%; max-height:100%; border-radius:8px;">
+    <div style="position:absolute; top:16px; right:16px; width:44px; height:44px;
+      border-radius:50%; background:rgba(255,255,255,.22); color:#fff; display:flex;
+      align-items:center; justify-content:center; font-size:24px;">×</div>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
+
 function renderForm(editId = null) {
   editingTxId = editId || null;
   const isEdit = !!editId;
@@ -1712,12 +1821,18 @@ function renderForm(editId = null) {
     if (dateEl)   dateEl.value   = tx.date;
     if (notesEl)  notesEl.value  = tx.notes || '';
     _formIvaType = tx.ivaType || 'IVA_INCLUIDO'; // cargar IVA guardado
+    // Cargar la foto del comprobante (si tiene) desde IndexedDB — asíncrono
+    _formPhoto = null;
+    if (tx.hasReceipt) {
+      DB.getPhoto(tx.id).then(p => { _formPhoto = p; _renderReceiptArea(); });
+    }
   } else {
     if (amountEl) amountEl.value = '';
     if (descEl)   descEl.value   = '';
     if (dateEl)   dateEl.value   = today();
     if (notesEl)  notesEl.value  = '';
     _formIvaType = 'IVA_INCLUIDO'; // default para transacción nueva
+    _formPhoto   = null;
   }
   _hideSuggestions(); // cerrar sugerencias al abrir el formulario
 
@@ -1870,7 +1985,11 @@ function renderFormFields(tx) {
     }
   }
 
+  // Foto de comprobante / factura — disponible en ingreso, gasto y deuda
+  if (!isTransfer) html += _receiptSectionHTML();
+
   container.innerHTML = html;
+  _renderReceiptArea(); // pinta el estado actual de la foto
 }
 
 function toggleInventorySection() {
@@ -1920,11 +2039,18 @@ function submitForm() {
     }
   }
 
+  // Foto de comprobante (no aplica a traslados)
+  const attachPhoto = formType !== 'transfer' && !!_formPhoto;
+  data.hasReceipt   = attachPhoto;
+
   if (editingTxId) {
     DB.updateTransaction(editingTxId, data);
+    if (attachPhoto) DB.savePhoto(editingTxId, _formPhoto);
+    else             DB.deletePhoto(editingTxId); // se quitó la foto
     showToast('✅ Transacción actualizada');
   } else {
-    DB.addTransaction(data);
+    const newTx = DB.addTransaction(data);
+    if (attachPhoto && newTx) DB.savePhoto(newTx.id, _formPhoto);
     showToast('✅ Transacción guardada');
   }
 
@@ -2015,6 +2141,7 @@ function openTxDetail(id) {
     <div style="display:flex; flex-direction:column; gap:10px;">
       ${mainDetail}
       ${tx.notes ? `<div><div style="color:var(--gray-500); font-size:14px; margin-bottom:4px;">Notas</div><div style="font-size:14px; color:var(--gray-700); background:var(--gray-50); border-radius:8px; padding:10px;">${tx.notes}</div></div>` : ''}
+      ${tx.hasReceipt ? `<div id="detail-receipt"></div>` : ''}
     </div>
     <div style="display:flex; gap:10px; margin-top:24px;">
       ${(tx.isCogs || tx.isIva)
@@ -2038,6 +2165,28 @@ function openTxDetail(id) {
     </button>` : ''}
   `;
   document.getElementById('detail-overlay').classList.add('open');
+
+  // Cargar la foto del comprobante (asíncrono desde IndexedDB)
+  if (tx.hasReceipt) {
+    DB.getPhoto(tx.id).then(p => {
+      const el = document.getElementById('detail-receipt');
+      if (!el) return;
+      if (p) {
+        window._detailPhoto = p;
+        el.innerHTML = `
+          <div style="color:var(--gray-500); font-size:14px; margin-bottom:6px;">📷 Comprobante / Factura</div>
+          <img src="${p}" onclick="_openPhotoViewer(window._detailPhoto)"
+            style="width:100%; max-height:260px; object-fit:contain; background:var(--gray-50);
+              border-radius:10px; border:1px solid var(--gray-200); cursor:pointer;">`;
+      } else {
+        el.innerHTML = `
+          <div style="font-size:12px; color:var(--gray-400); padding:10px;
+            background:var(--gray-50); border-radius:8px;">
+            📷 El comprobante no está guardado en este dispositivo
+          </div>`;
+      }
+    });
+  }
 }
 
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }

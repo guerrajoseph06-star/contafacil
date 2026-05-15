@@ -406,6 +406,9 @@ const DB = (() => {
 
     _logAudit('delete_tx', `🗑️ ${tx.description} · $${tx.amount}`);
     save(KEYS.transactions, txs.filter(t => !toDelete.has(t.id)));
+
+    // Borrar la foto del comprobante asociada (si existe)
+    if (tx.hasReceipt) deletePhoto(id);
   }
 
   function _applyInventory(tx, action) {
@@ -700,6 +703,58 @@ const DB = (() => {
       .sort((a, b) => (b[1].count || 0) - (a[1].count || 0))
       .slice(0, 5)
       .map(([k, v]) => ({ key: k, ...v }));
+  }
+
+  // ── Fotos de comprobantes / facturas (IndexedDB) ──────────────────────────────
+  // Se usa IndexedDB en lugar de localStorage porque las imágenes ocuparían
+  // demasiado espacio: IndexedDB soporta cientos de fotos sin problema.
+  const PHOTO_DB_NAME = 'contafacil_photos';
+  const PHOTO_STORE   = 'receipts';
+  let   _photoDbPromise = null;
+
+  function _openPhotoDb() {
+    if (_photoDbPromise) return _photoDbPromise;
+    _photoDbPromise = new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB no disponible')); return; }
+      const req = indexedDB.open(PHOTO_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => reject(req.error);
+    });
+    return _photoDbPromise;
+  }
+
+  // Guarda una foto (dataURL) bajo una clave (el id de la transacción)
+  function savePhoto(key, dataUrl) {
+    return _openPhotoDb().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction(PHOTO_STORE, 'readwrite');
+      t.objectStore(PHOTO_STORE).put(dataUrl, key);
+      t.oncomplete = () => resolve(true);
+      t.onerror    = () => reject(t.error);
+    }));
+  }
+
+  // Recupera una foto; null si no existe o si IndexedDB falla
+  function getPhoto(key) {
+    return _openPhotoDb().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction(PHOTO_STORE, 'readonly');
+      const r = t.objectStore(PHOTO_STORE).get(key);
+      r.onsuccess = () => resolve(r.result || null);
+      r.onerror   = () => reject(r.error);
+    })).catch(() => null);
+  }
+
+  // Elimina una foto (al borrar la transacción asociada)
+  function deletePhoto(key) {
+    return _openPhotoDb().then(db => new Promise(resolve => {
+      const t = db.transaction(PHOTO_STORE, 'readwrite');
+      t.objectStore(PHOTO_STORE).delete(key);
+      t.oncomplete = () => resolve(true);
+      t.onerror    = () => resolve(false);
+    })).catch(() => false);
   }
 
   // ── Inventario ─────────────────────────────────────────────
@@ -1650,5 +1705,6 @@ const DB = (() => {
     getCompanyList, getActiveCompany, addCompany, switchToCompany, updateCompanyName, deleteCompany,
     calcIva, getIvaSuggestion, recordIvaMemory, IVA_DEFAULT,
     saveSmartDescEntry, getSmartDescSuggestions,
+    savePhoto, getPhoto, deletePhoto,
   };
 })();
