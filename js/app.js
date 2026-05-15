@@ -8,7 +8,72 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15g';
+const APP_VERSION = '2026.05.15h';
+
+// ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
+let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // Versión nueva ya descargada y esperando (de una visita anterior)
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          _showUpdateBanner(reg.waiting);
+        }
+        // Detectar la descarga de una versión nueva en vivo
+        reg.addEventListener('updatefound', () => {
+          const nuevo = reg.installing;
+          if (!nuevo) return;
+          nuevo.addEventListener('statechange', () => {
+            // installed + ya hay un SW controlando = es una ACTUALIZACIÓN
+            if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
+              _showUpdateBanner(nuevo);
+            }
+          });
+        });
+      })
+      .catch(() => { /* sin SW la app sigue funcionando con internet */ });
+
+    // Buscar actualizaciones cuando la app vuelve al primer plano
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+      }
+    });
+
+    // Cuando el SW nuevo toma el control, recargar (solo si el usuario lo pidió)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_cfWantsReload) location.reload();
+    });
+  });
+}
+
+// Banner "Actualización disponible" (se inyecta solo, sin tocar el HTML)
+function _showUpdateBanner(worker) {
+  if (document.getElementById('cf-update-banner')) return; // ya está visible
+  const bar = document.createElement('div');
+  bar.id = 'cf-update-banner';
+  bar.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99999;' +
+    'background:#2563eb; color:#fff; padding:13px 16px; display:flex;' +
+    'align-items:center; gap:12px; box-shadow:0 -4px 16px rgba(0,0,0,.20);';
+  bar.innerHTML =
+    '<div style="flex:1; font-size:13px; line-height:1.45;">' +
+      '<strong>🎉 Actualización disponible</strong><br>' +
+      '<span style="opacity:.85; font-size:12px;">Toca «Actualizar» para usar la versión más reciente</span>' +
+    '</div>' +
+    '<button id="cf-update-btn" style="background:#fff; color:#2563eb; border:none;' +
+      'border-radius:9px; padding:10px 16px; font-size:13px; font-weight:800;' +
+      'cursor:pointer; white-space:nowrap;">Actualizar</button>' +
+    '<button id="cf-update-x" style="background:none; border:none; color:#fff;' +
+      'font-size:22px; line-height:1; cursor:pointer; opacity:.7; padding:0 4px;">×</button>';
+  document.body.appendChild(bar);
+  document.getElementById('cf-update-btn').onclick = () => {
+    _cfWantsReload = true;
+    worker.postMessage('skipWaiting');
+    document.getElementById('cf-update-btn').textContent = 'Actualizando…';
+  };
+  document.getElementById('cf-update-x').onclick = () => bar.remove();
+}
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
