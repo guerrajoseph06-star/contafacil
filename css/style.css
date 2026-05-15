@@ -106,6 +106,54 @@ a { text-decoration: none; color: inherit; }
   color: var(--primary);
 }
 
+/* ── Dashboard topbar: nombre empresa y usuario ────────────────────── */
+/* En modo claro: texto oscuro (primary). En modo oscuro: texto blanco. */
+.dash-topbar-company {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--primary);       /* azul sobre fondo blanco — legible */
+  font-weight: 800;
+  font-size: 14px;
+  padding: 0;
+  max-width: 48vw;
+}
+.dash-topbar-user {
+  font-size: 11px;
+  background: var(--primary-light);
+  border-radius: 20px;
+  padding: 5px 11px;
+  color: var(--primary);       /* azul sobre fondo suave — legible */
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.dash-company-badge {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 8px;
+  font-size: 10px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+/* Modo oscuro: fondo oscuro → texto blanco */
+.dark-mode .dash-topbar-company {
+  color: #fff;
+}
+.dark-mode .dash-topbar-user {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+.dark-mode .dash-company-badge {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+}
+
 /* ===== BOTTOM NAV ===== */
 .bottom-nav {
   position: fixed;

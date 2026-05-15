@@ -254,16 +254,12 @@
 <div id="screen-dashboard" class="screen">
   <div class="topbar">
     <button onclick="navigate('settings'); setTimeout(openCompanySwitcher,150)"
-      style="background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;
-        color:white; font-weight:800; font-size:14px; padding:0; max-width:48vw;">
+      class="dash-topbar-company">
       <span>💼</span>
       <span id="dash-company" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Mi Negocio</span>
-      <span id="dash-company-badge" style="display:none; background:rgba(255,255,255,.25);
-        border-radius:8px; font-size:10px; padding:1px 5px; flex-shrink:0;"></span>
+      <span id="dash-company-badge" class="dash-company-badge" style="display:none;"></span>
     </button>
-    <button id="dash-user-btn" onclick="openQuickUserSwitch()"
-      style="font-size:11px; background:rgba(255,255,255,.22); border-radius:20px; padding:5px 11px;
-             color:white; font-weight:700; border:none; cursor:pointer; flex-shrink:0; white-space:nowrap;">
+    <button id="dash-user-btn" onclick="openQuickUserSwitch()" class="dash-topbar-user">
       👤 <span id="dash-user-name">Principal</span> ▾
     </button>
     <button class="topbar-action" onclick="openSettingsSheet('guide')">❓</button>
