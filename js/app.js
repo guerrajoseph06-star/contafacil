@@ -23,12 +23,15 @@ function toggleDarkMode() {
   applyTheme(!isDark);
 }
 // ── Variables PIN / Seguridad ─────────────────────────────────────────────────
-let _pinBuffer     = '';        // dígitos ingresados en el momento
-let _pinMode       = 'unlock';  // 'unlock' | 'confirm' | 'set' | 'confirm_new'
-let _pinAction     = null;      // función a ejecutar tras PIN correcto
-let _newPinTemp    = '';        // PIN nuevo (primer ingreso) para confirmar
-let _pinTargetUser = '';        // usuario cuyo PIN se está verificando/configurando
-let _encImportPending = null;// JSON cifrado pendiente de importar
+let _pinBuffer      = '';        // dígitos ingresados en el momento
+let _pinMode        = 'unlock';  // 'unlock' | 'confirm' | 'set' | 'confirm_new'
+let _pinAction      = null;      // función a ejecutar tras PIN correcto
+let _newPinTemp     = '';        // PIN nuevo (primer ingreso) para confirmar
+let _pinTargetUser  = '';        // usuario cuyo PIN se está verificando/configurando
+let _pinFailCount   = 0;         // intentos fallidos consecutivos
+let _pinLockedUntil = 0;         // timestamp hasta el que el teclado está bloqueado
+let _encImportPending = null;    // JSON cifrado pendiente de importar
+let _inactivityTimer  = null;    // temporizador de auto-bloqueo
 
 let editingTxId      = null;
 let formType         = 'expense';
@@ -234,9 +237,20 @@ function showLockScreen(mode, action, targetUser) {
 
 function hideLockScreen() {
   document.getElementById('screen-lock').style.display = 'none';
+  const sub = document.getElementById('lock-submsg');
+  if (sub) { sub.style.display = 'none'; sub.textContent = ''; }
+  _pinFailCount = 0; // resetear contador al cerrar exitosamente
+  resetInactivityTimer();
 }
 
 function appendPinDigit(d) {
+  // Verificar bloqueo por intentos fallidos
+  if (_pinLockedUntil > Date.now()) {
+    const segs = Math.ceil((_pinLockedUntil - Date.now()) / 1000);
+    const msgEl = document.getElementById('lock-msg');
+    if (msgEl) { msgEl.textContent = `⏳ Bloqueado ${segs}s`; msgEl.style.color = '#fca5a5'; }
+    return;
+  }
   if (_pinBuffer.length >= 4) return;
   _pinBuffer += String(d);
   _updatePinDots();
@@ -256,10 +270,18 @@ function _updatePinDots() {
 }
 
 async function _processPinEntry() {
+  // Verificar si está bloqueado por intentos fallidos
+  if (_pinLockedUntil > Date.now()) {
+    _pinBuffer = '';
+    _updatePinDots();
+    return;
+  }
+
   if (_pinMode === 'unlock') {
     // Verifica el PIN del usuario objetivo y lo activa
     const ok = await DB.verifyUserPin(_pinTargetUser, _pinBuffer);
     if (ok) {
+      _pinFailCount = 0; // reset
       const current = DB.getSettings().userName || 'Principal';
       if (_pinTargetUser && _pinTargetUser !== current) {
         DB.switchUser(_pinTargetUser);
@@ -271,17 +293,18 @@ async function _processPinEntry() {
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
       else showToast('✅ Bienvenido, ' + _pinTargetUser, 1500);
     } else {
-      _pinError('PIN incorrecto. Inténtalo de nuevo.');
+      _pinError('PIN incorrecto');
     }
 
   } else if (_pinMode === 'confirm') {
     // Verifica el PIN del usuario actual (sin cambiar de usuario)
     const ok = await DB.verifyUserPin(_pinTargetUser, _pinBuffer);
     if (ok) {
+      _pinFailCount = 0; // reset
       hideLockScreen();
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
     } else {
-      _pinError('PIN incorrecto. Inténtalo de nuevo.');
+      _pinError('PIN incorrecto');
     }
 
   } else if (_pinMode === 'set') {
@@ -303,21 +326,61 @@ async function _processPinEntry() {
   }
 }
 
-function _pinError(msg) {
+function _pinError(msg, isLockout) {
+  _pinFailCount++;
   const msgEl = document.getElementById('lock-msg');
   const prev  = msgEl.textContent;
-  msgEl.textContent = '❌ ' + msg;
+
+  let displayMsg = '❌ ' + msg;
+  let lockDuration = 0;
+
+  if (!isLockout) {
+    const remaining = 3 - _pinFailCount;
+    if (_pinFailCount >= 3) {
+      // Bloqueo progresivo: 30s, 60s, 120s, 240s (máx)
+      lockDuration = Math.min(30 * Math.pow(2, _pinFailCount - 3), 240) * 1000;
+      _pinLockedUntil = Date.now() + lockDuration;
+      const segs = lockDuration / 1000;
+      displayMsg = `🔴 Bloqueado ${segs}s por intentos fallidos`;
+    } else {
+      displayMsg = `❌ PIN incorrecto · ${remaining} intento${remaining !== 1 ? 's' : ''} restante${remaining !== 1 ? 's' : ''}`;
+    }
+  }
+
+  msgEl.textContent = displayMsg;
   msgEl.style.color = '#fca5a5';
 
   const dots = document.getElementById('pin-dots');
   dots.style.animation = 'pinShake .4s ease';
+
+  const delay = lockDuration > 0 ? lockDuration : 900;
   setTimeout(() => {
     dots.style.animation = '';
     _pinBuffer = '';
     _updatePinDots();
-    msgEl.textContent = prev;
-    msgEl.style.color = '';
-  }, 900);
+    if (!lockDuration) {
+      msgEl.textContent = prev;
+      msgEl.style.color = '';
+    } else {
+      // Mientras está bloqueado mostrar cuenta regresiva
+      _startLockCountdown(msgEl, prev);
+    }
+  }, lockDuration > 0 ? 400 : 900);
+}
+
+function _startLockCountdown(msgEl, prevMsg) {
+  const tick = () => {
+    const left = _pinLockedUntil - Date.now();
+    if (left <= 0) {
+      msgEl.textContent = prevMsg;
+      msgEl.style.color = '';
+      return;
+    }
+    msgEl.textContent = `⏳ Bloqueado ${Math.ceil(left/1000)}s`;
+    msgEl.style.color = '#fca5a5';
+    setTimeout(tick, 500);
+  };
+  tick();
 }
 
 // Pide PIN si está configurado; si no, ejecuta la acción directamente
@@ -325,6 +388,75 @@ function requirePin(action) {
   const currentUser = DB.getSettings().userName || 'Principal';
   if (!DB.userHasPin(currentUser)) { action(); return; }
   showLockScreen('confirm', action, currentUser);
+}
+
+// Pide siempre el PIN del PROPIETARIO, sin importar quién esté activo.
+// Usar para exportación PDF/Excel (solo el propietario puede).
+function requireOwnerPin(action) {
+  const users   = DB.getUserList();
+  const owner   = users.find(u => u.isOwner);
+  if (!owner) { action(); return; } // sin propietario definido, pasar
+
+  const currentUser = DB.getSettings().userName || 'Principal';
+  const isOwner     = owner.name === currentUser;
+
+  if (!owner.pinHash) {
+    // El propietario no tiene PIN: si es el owner, ejecutar; si no, rechazar
+    if (isOwner) { action(); return; }
+    showToast('⚠️ Solo el propietario puede exportar. Pídele que configure un PIN primero.', 4000);
+    return;
+  }
+
+  if (isOwner) {
+    // El usuario activo ES el propietario: pedir su propio PIN
+    showLockScreen('confirm', action, owner.name);
+  } else {
+    // Usuario no-propietario: pedir el PIN del propietario
+    // Mostramos mensaje explicativo en la pantalla de bloqueo
+    _pinAction     = action;
+    _pinMode       = 'confirm';
+    _pinTargetUser = owner.name;
+    _pinBuffer     = '';
+    _newPinTemp    = '';
+
+    const s      = DB.getSettings();
+    const lockEl = document.getElementById('screen-lock');
+    const picker = document.getElementById('lock-user-picker');
+    const pinArea = document.getElementById('lock-pin-area');
+
+    document.getElementById('lock-company').textContent = s.companyName || 'ContaFácil Pro';
+    document.getElementById('lock-msg').textContent     = '🏢 Exportación restringida';
+
+    // Mensaje secundario explicativo
+    const sub = document.getElementById('lock-submsg');
+    if (sub) {
+      sub.textContent     = `Solo el propietario puede descargar archivos.\nIngresa el PIN de: ${owner.name}`;
+      sub.style.display   = 'block';
+      sub.style.whiteSpace = 'pre-line';
+    }
+
+    if (picker)  picker.style.display  = 'none';
+    if (pinArea) pinArea.style.display = 'flex';
+    _updatePinDots();
+    lockEl.style.display = 'flex';
+  }
+}
+
+// ── Auto-bloqueo por inactividad ──────────────────────────────────────────────
+const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutos
+
+function resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  const s = DB.getSettings();
+  const currentUser = s.userName || 'Principal';
+  if (!DB.userHasPin(currentUser)) return; // sin PIN, no bloquear
+  _inactivityTimer = setTimeout(() => {
+    const lockEl = document.getElementById('screen-lock');
+    if (lockEl && lockEl.style.display !== 'none') return; // ya bloqueado
+    if (document.getElementById('screen-onboarding')?.classList.contains('active')) return;
+    showLockScreen('unlock', null, currentUser);
+    showToast('🔒 Sesión bloqueada por inactividad', 2500);
+  }, INACTIVITY_MS);
 }
 
 // ── Configuración de seguridad ────────────────────────────────────────────────
@@ -1600,9 +1732,10 @@ function nextMonth() {
   renderReports();
 }
 function printReport() {
-  const sec = DB.getSecuritySettings();
-  const doPrint = () => { showToast('📄 Preparando PDF...'); setTimeout(() => window.print(), 400); };
-  if (sec.requirePinForExport && DB.isPinSet()) { requirePin(doPrint); } else { doPrint(); }
+  requireOwnerPin(() => {
+    showToast('📄 Preparando PDF...');
+    setTimeout(() => window.print(), 400);
+  });
 }
 
 // ── Inventario ─────────────────────────────────────────────────────────────────
@@ -2404,9 +2537,7 @@ function exportAnnualExcel() {
 
 // ── Exportar a Excel ──────────────────────────────────────────────────────────
 function exportToExcel() {
-  const sec = DB.getSecuritySettings();
-  if (sec.requirePinForExport && DB.isPinSet()) { requirePin(_doExportToExcel); return; }
-  _doExportToExcel();
+  requireOwnerPin(_doExportToExcel);
 }
 function _doExportToExcel() {
   if (typeof XLSX === 'undefined') {
@@ -3895,6 +4026,12 @@ function emptyHTML(icon, title, text) {
 document.addEventListener('DOMContentLoaded', () => {
   DB.init();
   initSecurity();
+
+  // Auto-bloqueo por inactividad: reiniciar temporizador en cualquier interacción
+  ['click', 'touchstart', 'keydown', 'scroll'].forEach(ev =>
+    document.addEventListener(ev, resetInactivityTimer, { passive: true })
+  );
+  resetInactivityTimer();
 
   // Aplicar tema guardado (modo oscuro)
   const savedDark = localStorage.getItem('cf_dark_mode') === '1';
