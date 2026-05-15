@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15i';
+const APP_VERSION = '2026.05.15j';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -5730,9 +5730,10 @@ function saveUserName() {
   showToast('✅ Nombre guardado: ' + name);
 }
 
-function doExportForSync() {
+async function doExportForSync() {
   const s    = DB.getSettings();
-  const json = DB.exportForSync();
+  showToast('⏳ Preparando archivo (incluye fotos)…', 6000);
+  const json = await DB.exportForSync();
   const blob = new Blob([json], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -5754,7 +5755,7 @@ function doImportFromUser() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = async ev => {
       const text = ev.target.result;
       try {
         const parsed = JSON.parse(text);
@@ -5766,7 +5767,7 @@ function doImportFromUser() {
           return;
         }
         // Archivo normal (no cifrado)
-        const result = DB.importFromUser(text);
+        const result = await DB.importFromUser(text);
         closeSettingsSheet();
         const msg = result.addedTxs === 0
           ? `✅ Sin cambios — los datos de ${result.sourceUser} ya estaban importados`
@@ -5998,8 +5999,9 @@ function closeSettingsSheet() {
 }
 
 // ── Export / Import ────────────────────────────────────────────────────────────
-function exportData() {
-  const blob = new Blob([DB.exportData()], { type: 'application/json' });
+async function exportData() {
+  showToast('⏳ Preparando respaldo (incluye fotos)…', 6000);
+  const blob = new Blob([await DB.exportData()], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), { href: url, download: `contafacil-backup-${today()}.json` });
   a.click();
@@ -6009,8 +6011,8 @@ function exportData() {
 
 function importData(input) {
   const reader = new FileReader();
-  reader.onload = e => {
-    try { DB.importData(e.target.result); closeSettingsSheet(); navigate('dashboard'); showToast('✅ Datos importados'); }
+  reader.onload = async e => {
+    try { await DB.importData(e.target.result); closeSettingsSheet(); navigate('dashboard'); showToast('✅ Datos importados'); }
     catch { showToast('❌ Archivo inválido'); }
   };
   reader.readAsText(input.files[0]);

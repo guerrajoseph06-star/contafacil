@@ -757,6 +757,35 @@ const DB = (() => {
     })).catch(() => false);
   }
 
+  // Lee varias fotos a la vez → { idTransaccion: dataURL }  (para respaldos)
+  function getPhotosFor(keys) {
+    if (!keys || !keys.length) return Promise.resolve({});
+    return _openPhotoDb().then(db => new Promise(resolve => {
+      const out   = {};
+      const t     = db.transaction(PHOTO_STORE, 'readonly');
+      const store = t.objectStore(PHOTO_STORE);
+      let pending = keys.length;
+      keys.forEach(k => {
+        const r = store.get(k);
+        r.onsuccess = () => { if (r.result) out[k] = r.result; if (--pending === 0) resolve(out); };
+        r.onerror   = () => { if (--pending === 0) resolve(out); };
+      });
+    })).catch(() => ({}));
+  }
+
+  // Guarda un lote de fotos { idTransaccion: dataURL }  (al importar un respaldo)
+  function savePhotosMap(map) {
+    const keys = Object.keys(map || {});
+    if (!keys.length) return Promise.resolve(true);
+    return _openPhotoDb().then(db => new Promise(resolve => {
+      const t     = db.transaction(PHOTO_STORE, 'readwrite');
+      const store = t.objectStore(PHOTO_STORE);
+      keys.forEach(k => { if (map[k]) store.put(map[k], k); });
+      t.oncomplete = () => resolve(true);
+      t.onerror    = () => resolve(false);
+    })).catch(() => false);
+  }
+
   // ── Inventario ─────────────────────────────────────────────
   function getInventory() { return load(KEYS.inventory) || []; }
 
@@ -1327,7 +1356,7 @@ const DB = (() => {
   }
 
   async function exportForSyncEncrypted(password) {
-    const plain = new TextEncoder().encode(exportForSync());
+    const plain = new TextEncoder().encode(await exportForSync());
     const salt  = crypto.getRandomValues(new Uint8Array(16));
     const iv    = crypto.getRandomValues(new Uint8Array(12));
     const key   = await _deriveKey(password, salt);
@@ -1350,7 +1379,7 @@ const DB = (() => {
 
   async function importFromUserDecrypted(jsonStr, password) {
     const wrapper = JSON.parse(jsonStr);
-    if (!wrapper.cf_encrypted) return importFromUser(jsonStr); // sin cifrado
+    if (!wrapper.cf_encrypted) return await importFromUser(jsonStr); // sin cifrado
 
     const packed = Uint8Array.from(atob(wrapper.data), c => c.charCodeAt(0));
     // Verificar magic
@@ -1368,7 +1397,7 @@ const DB = (() => {
     } catch {
       throw new Error('Contraseña incorrecta');
     }
-    return importFromUser(new TextDecoder().decode(decrypted));
+    return await importFromUser(new TextDecoder().decode(decrypted));
   }
 
   // ── Multi-usuario / Sincronización entre dispositivos ────────────────────────
@@ -1406,20 +1435,25 @@ const DB = (() => {
   }
 
   // Exporta solo transacciones + CxC con userName (sin inventario ni settings)
-  function exportForSync() {
-    const s = getSettings();
+  // Incluye las fotos de comprobantes de las transacciones que las tengan.
+  async function exportForSync() {
+    const s    = getSettings();
+    const txs  = load(KEYS.transactions) || [];
+    const recs = load(KEYS.receivables)  || [];
+    const photos = await getPhotosFor(txs.filter(t => t.hasReceipt).map(t => t.id));
     return JSON.stringify({
       syncVersion: 1,
       exportedBy:  s.userName || 'Principal',
       companyName: s.companyName,
       exported:    new Date().toISOString(),
-      transactions: load(KEYS.transactions) || [],
-      receivables:  load(KEYS.receivables)  || [],
+      transactions: txs,
+      receivables:  recs,
+      photos,   // { idTransaccion: dataURL }
     }, null, 2);
   }
 
   // Importa el archivo de otro usuario: une transacciones y CxC sin duplicar por ID
-  function importFromUser(jsonStr) {
+  async function importFromUser(jsonStr) {
     const d = JSON.parse(jsonStr);
     if (!d.transactions && !d.syncVersion) throw new Error('Formato no reconocido');
 
@@ -1453,6 +1487,9 @@ const DB = (() => {
       }
     });
     save(KEYS.receivables, recs);
+
+    // Restaurar las fotos de comprobantes incluidas en el archivo
+    if (d.photos) await savePhotosMap(d.photos);
 
     return { addedTxs, addedRecs, sourceUser };
   }
@@ -1511,24 +1548,29 @@ const DB = (() => {
   function markOnboarded() { localStorage.setItem(KEYS.onboarded, '1'); }
 
   // ── Exportar / Importar ────────────────────────────────────
-  function exportData() {
+  // El respaldo completo incluye las fotos de comprobantes.
+  async function exportData() {
+    const txs    = load(KEYS.transactions) || [];
+    const photos = await getPhotosFor(txs.filter(t => t.hasReceipt).map(t => t.id));
     return JSON.stringify({
-      version: 3, exported: new Date().toISOString(),
-      transactions: load(KEYS.transactions),
+      version: 4, exported: new Date().toISOString(),
+      transactions: txs,
       categories:   load(KEYS.categories),
       accounts:     load(KEYS.accounts),
       inventory:    load(KEYS.inventory),
       settings:     load(KEYS.settings),
+      photos,   // { idTransaccion: dataURL }
     }, null, 2);
   }
 
-  function importData(jsonStr) {
+  async function importData(jsonStr) {
     const d = JSON.parse(jsonStr);
     if (d.transactions) save(KEYS.transactions, d.transactions);
     if (d.categories)   save(KEYS.categories,   d.categories);
     if (d.accounts)     save(KEYS.accounts,      d.accounts);
     if (d.inventory)    save(KEYS.inventory,     d.inventory);
     if (d.settings)     save(KEYS.settings,      d.settings);
+    if (d.photos)       await savePhotosMap(d.photos);
   }
 
   // ── Exportar / Importar configuración completa ───────────────────────────────
