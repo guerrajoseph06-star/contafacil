@@ -86,6 +86,9 @@ const DB = (() => {
     { id:'c-otros-l',   name:'Otras deudas',         type:'liability', emoji:'🔴', color:'#6b7280' },
     // SISTEMA — Costo de Mercadería Vendida (auto-generado, no visible para el usuario)
     { id:'c-cmv', name:'Costo de Ventas (CMV)', type:'expense', emoji:'📦', color:'#7c3aed', isSystem:true },
+    // SISTEMA — IVA (asientos auto-generados, no visibles en los selectores)
+    { id:'c-iva-ventas',  name:'IVA en Ventas (por pagar al SRI)',     type:'liability', emoji:'🧾', color:'#dc2626', isSystem:true },
+    { id:'c-iva-compras', name:'IVA en Compras (crédito tributario)',  type:'expense',   emoji:'🧾', color:'#0891b2', isSystem:true },
   ];
 
   const DEFAULT_ACCOUNTS = [
@@ -226,6 +229,54 @@ const DB = (() => {
     return tx.type === 'income' && tx.affectsInventory && tx.productId && tx.quantity;
   }
 
+  // ── IVA helper ─────────────────────────────────────────────
+  // Detecta si una transacción necesita generar un asiento de IVA
+  function _needsIva(tx) {
+    return (tx.type === 'income' || tx.type === 'expense')
+      && !tx.isCogs && !tx.isIva
+      && tx.ivaType && tx.ivaType !== 'SIN_IVA';
+  }
+
+  // Construye el asiento de IVA vinculado a una venta o compra.
+  // Ventas  → IVA cobrado  = PASIVO   (lo debes al SRI)
+  // Compras → IVA pagado   = CRÉDITO TRIBUTARIO (activo recuperable)
+  function _buildIvaEntry(parentTx, ivaValue) {
+    const isIncome = parentTx.type === 'income';
+    return {
+      id:              uuid(),
+      createdAt:       parentTx.createdAt,
+      userName:        parentTx.userName,
+      type:            'liability',
+      isIva:           true,
+      ivaDirection:    isIncome ? 'cobrado' : 'credito',
+      linkedParentId:  parentTx.id,
+      description:     'IVA ' + (parentTx.porcentajeIva || IVA_DEFAULT) + '% · ' + parentTx.description,
+      amount:          ivaValue,
+      date:            parentTx.date,
+      account:         parentTx.account || '',
+      category:        isIncome ? 'c-iva-ventas' : 'c-iva-compras',
+      liabilityStatus: 'pending',
+    };
+  }
+
+  // Desglosa el IVA: ajusta el monto de la transacción a la BASE (sin IVA)
+  // y agrega el asiento de IVA vinculado al array de transacciones.
+  function _applyIvaToTransaction(tx, txs) {
+    if (!_needsIva(tx)) return;
+    const pct  = parseFloat(tx.porcentajeIva) || getSettings().porcentajeIva || IVA_DEFAULT;
+    const calc = calcIva(tx.amount, tx.ivaType, pct);
+    tx.porcentajeIva = pct;
+    tx.ivaBase       = calc.precioBase;
+    tx.ivaAmount     = calc.valorIva;
+    tx.ivaTotal      = calc.precioFinal;
+    tx.amount        = calc.precioBase; // la transacción principal guarda SOLO la base
+    if (calc.valorIva > 0) {
+      const ivaEntry = _buildIvaEntry(tx, calc.valorIva);
+      tx.linkedIvaId = ivaEntry.id;
+      txs.push(ivaEntry);
+    }
+  }
+
   // ── Transacciones ──────────────────────────────────────────
   function getTransactions() {
     return (load(KEYS.transactions) || []).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -247,6 +298,9 @@ const DB = (() => {
     const amount = parseFloat(data.amount);
     const s  = getSettings();
     const tx = { id: uuid(), createdAt: new Date().toISOString(), userName: s.userName || 'Principal', ...data, amount };
+
+    // Auto-IVA: desglosa el IVA y crea el asiento vinculado (ajusta tx.amount a la base)
+    _applyIvaToTransaction(tx, txs);
 
     // Auto-COGS: cuando es una venta con inventario
     if (_needsCogs(tx)) {
@@ -274,14 +328,21 @@ const DB = (() => {
     const old = txs[idx];
     _applyInventory(old, 'reverse');
 
-    // Eliminar CMV anterior vinculado
+    // Eliminar CMV e IVA anteriores vinculados
     if (old.linkedCogsId) {
       txs = txs.filter(t => t.id !== old.linkedCogsId);
     }
+    if (old.linkedIvaId) {
+      txs = txs.filter(t => t.id !== old.linkedIvaId);
+    }
 
-    // Construir la tx actualizada (sin los campos de COGS anteriores)
-    const { linkedCogsId: _lc, cogsAmount: _ca, ...cleanOld } = old;
+    // Construir la tx actualizada (sin los campos de COGS/IVA anteriores)
+    const { linkedCogsId: _lc, cogsAmount: _ca,
+            linkedIvaId: _li, ivaBase: _ib, ivaAmount: _ia, ivaTotal: _it, ...cleanOld } = old;
     const updated = { ...cleanOld, ...newData, amount: parseFloat(newData.amount), id };
+
+    // Recalcular IVA si aplica (ajusta updated.amount a la base)
+    _applyIvaToTransaction(updated, txs);
 
     // Recalcular CMV si aplica
     if (_needsCogs(updated)) {
@@ -318,11 +379,25 @@ const DB = (() => {
       // Borrar también la entrada CMV vinculada
       toDelete.add(tx.linkedCogsId);
     }
+    if (tx.linkedIvaId) {
+      // Borrar también el asiento de IVA vinculado
+      toDelete.add(tx.linkedIvaId);
+    }
     if (tx.isCogs && tx.linkedSaleId) {
       // Si se borra el CMV directamente, limpiar el link en la venta
       txs = txs.map(t => {
         if (t.id === tx.linkedSaleId) {
           const { linkedCogsId, cogsAmount, ...rest } = t;
+          return rest;
+        }
+        return t;
+      });
+    }
+    if (tx.isIva && tx.linkedParentId) {
+      // Si se borra el asiento de IVA directamente, limpiar el link en la transacción
+      txs = txs.map(t => {
+        if (t.id === tx.linkedParentId) {
+          const { linkedIvaId, ivaBase, ivaAmount, ivaTotal, ...rest } = t;
           return rest;
         }
         return t;
@@ -349,13 +424,20 @@ const DB = (() => {
   function getMonthStats(year, month) {
     const txs = getTransactionsByMonth(year, month);
     let income = 0, cogs = 0, opExpenses = 0, liabilities = 0;
+    let ivaCobrado = 0, ivaCredito = 0;
     txs.forEach(t => {
+      if (t.isIva) {
+        if (t.ivaDirection === 'cobrado') ivaCobrado += t.amount;
+        else                              ivaCredito += t.amount;
+        return; // los asientos de IVA no son ingreso/gasto/deuda genérica
+      }
       if (t.type === 'income')    income     += t.amount;
       if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
       if (t.type === 'liability') liabilities += t.amount;
     });
     const totalExpenses = cogs + opExpenses;
     return { income, cogs, opExpenses, totalExpenses, liabilities,
+             ivaCobrado, ivaCredito, ivaPorPagar: ivaCobrado - ivaCredito,
              grossProfit: income - cogs, netProfit: income - cogs - opExpenses };
   }
 
@@ -363,6 +445,7 @@ const DB = (() => {
     const txs = getTransactions();
     let income = 0, cogs = 0, opExpenses = 0, liabilities = 0;
     txs.forEach(t => {
+      if (t.isIva) return; // los asientos de IVA no afectan ingreso/gasto
       if (t.type === 'income')    income     += t.amount;
       if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
       if (t.type === 'liability') liabilities += t.amount;
@@ -379,9 +462,16 @@ const DB = (() => {
     let serviceIncome = 0;  // otros ingresos (servicios, comisiones, etc.)
     let cogs          = 0;  // CMV auto-generado
     let opExpenses    = 0;  // gastos operativos (sin CMV)
+    let ivaCobrado    = 0;  // IVA cobrado en ventas (pasivo: por pagar al SRI)
+    let ivaCredito    = 0;  // IVA pagado en compras (activo: crédito tributario)
     const expByCat    = {}; // desglose por categoría
 
     txs.forEach(t => {
+      if (t.isIva) {
+        if (t.ivaDirection === 'cobrado') ivaCobrado += t.amount;
+        else                              ivaCredito += t.amount;
+        return; // los asientos de IVA no son ingreso ni gasto
+      }
       if (t.type === 'income') {
         if (t.affectsInventory) salesRevenue += t.amount;
         else                    serviceIncome += t.amount;
@@ -410,12 +500,18 @@ const DB = (() => {
       grossProfit, grossMargin,
       opExpenses, expByCat,
       netProfit, netMargin,
+      ivaCobrado, ivaCredito, ivaPorPagar: ivaCobrado - ivaCredito,
       hasCogs: cogs > 0,
+      hasIva:  (ivaCobrado + ivaCredito) > 0,
     };
   }
 
   function getPendingLiabilities() {
-    return getTransactions().filter(t => t.type === 'liability' && t.liabilityStatus !== 'paid');
+    return getTransactions().filter(t =>
+      t.type === 'liability' && t.liabilityStatus !== 'paid'
+      // El IVA crédito tributario es un ACTIVO (recuperable), no una deuda
+      && !(t.isIva && t.ivaDirection === 'credito')
+    );
   }
 
   // ── Categorías ─────────────────────────────────────────────
@@ -936,6 +1032,14 @@ const DB = (() => {
 
     txs.forEach(t => {
       if (t.isCogs) return;
+      // Asiento de IVA: mueve efectivo real (el cliente paga IVA / tú lo pagas)
+      if (t.isIva) {
+        if (t.account) {
+          bal[t.account] = (bal[t.account] || 0) +
+            (t.ivaDirection === 'cobrado' ? t.amount : -t.amount);
+        }
+        return;
+      }
       if (t.type === 'income' && t.account) {
         bal[t.account] = (bal[t.account] || 0) + t.amount;
       }
@@ -1320,7 +1424,12 @@ const DB = (() => {
     const inventory      = getInventory();
     const totalInventory = inventory.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
 
-    const totalCurrentAssets = totalCash + totalCxC + totalInventory;
+    // Crédito tributario IVA — IVA pagado en compras, recuperable ante el SRI (activo)
+    const ivaCreditoFiscal = getTransactions()
+      .filter(t => t.isIva && t.ivaDirection === 'credito')
+      .reduce((s, t) => s + t.amount, 0);
+
+    const totalCurrentAssets = totalCash + totalCxC + totalInventory + ivaCreditoFiscal;
     const totalAssets        = totalCurrentAssets; // Activos fijos: próxima versión
 
     // ── Pasivos Corrientes ──────────────────────────────
@@ -1335,6 +1444,7 @@ const DB = (() => {
       cashAccounts, totalCash,
       totalCxC,
       inventory, totalInventory,
+      ivaCreditoFiscal,
       totalCurrentAssets, totalAssets,
       pendingLiabs, totalLiabilities,
       equity,

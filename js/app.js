@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15f';
+const APP_VERSION = '2026.05.15g';
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
@@ -1032,8 +1032,8 @@ function renderDashboard() {
     alertEl.style.display = 'none';
   }
 
-  // Últimas 5 transacciones (excluir entradas de CMV auto-generadas)
-  const txs = DB.getTransactions().filter(t => !t.isCogs).slice(0, 5);
+  // Últimas 5 transacciones (excluir asientos auto-generados de CMV e IVA)
+  const txs = DB.getTransactions().filter(t => !t.isCogs && !t.isIva).slice(0, 5);
   const recentEl = document.getElementById('dash-recent');
   recentEl.innerHTML = txs.length
     ? `<ul class="tx-list">${txs.map(txItemHTML).join('')}</ul>`
@@ -1394,6 +1394,15 @@ function txItemHTML(tx) {
     amountClass = 'cogs';
     metaText = fmtDate(tx.date) + ' · Costo de Ventas (CMV) · Auto';
     extraStyle = 'opacity:.7; background:var(--gray-50);';
+  } else if (tx.isIva) {
+    // Asiento de IVA auto-generado
+    emoji = '🧾';
+    const cobrado = tx.ivaDirection === 'cobrado';
+    amountText  = (cobrado ? '+' : '-') + fmt(tx.amount);
+    amountClass = cobrado ? 'liability' : 'expense';
+    metaText    = fmtDate(tx.date) + ' · ' +
+      (cobrado ? 'IVA por pagar al SRI' : 'IVA crédito tributario') + ' · Auto';
+    extraStyle  = 'opacity:.85; background:#fffbeb;';
   } else if (tx.type === 'income') {
     emoji = cat ? cat.emoji : '💰';
     amountText = '+' + fmt(tx.amount);
@@ -1428,9 +1437,9 @@ function txItemHTML(tx) {
 
   return `
     <li class="tx-item" data-tx-id="${tx.id}" style="${extraStyle}">
-      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
+      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.isIva ? 'liability' : tx.type}"><span>${emoji}</span></div>
       <div class="tx-info">
-        <div class="tx-desc">${tx.description}${tx.isCogs ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
+        <div class="tx-desc">${tx.description}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
         <div class="tx-meta">${metaText}${userTag}</div>
       </div>
       <div class="tx-amount ${amountClass}">${amountText}</div>
@@ -1630,7 +1639,10 @@ function renderForm(editId = null) {
   const dateEl   = document.getElementById('f-date');
   const notesEl  = document.getElementById('f-notes');
   if (tx) {
-    if (amountEl) amountEl.value = tx.amount;
+    // Al editar: si el IVA está incluido, mostrar el TOTAL que el usuario tecleó
+    // (la transacción guarda solo la base); si es +IVA o sin IVA, mostrar el monto tal cual.
+    if (amountEl) amountEl.value = (tx.ivaType === 'IVA_INCLUIDO' && tx.ivaTotal)
+      ? tx.ivaTotal : tx.amount;
     if (descEl)   descEl.value   = tx.description;
     if (dateEl)   dateEl.value   = tx.date;
     if (notesEl)  notesEl.value  = tx.notes || '';
@@ -1901,6 +1913,16 @@ function openTxDetail(id) {
       <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Origen</span><span style="font-weight:600;">${from ? from.emoji + ' ' + from.name : '—'}</span></div>
       <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Destino</span><span style="font-weight:600;">${to ? to.emoji + ' ' + to.name : '—'}</span></div>
     `;
+  } else if (tx.isIva) {
+    const cobrado = tx.ivaDirection === 'cobrado';
+    mainDetail = `
+      <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px; font-size:13px; color:#92400e; line-height:1.6;">
+        🧾 <strong>Asiento de IVA automático</strong><br>
+        ${cobrado
+          ? 'IVA cobrado en una venta. Es un <strong>pasivo</strong>: lo debes declarar y pagar al SRI.'
+          : 'IVA pagado en una compra. Es un <strong>crédito tributario</strong> (activo): se descuenta del IVA que debes.'}
+      </div>
+    `;
   } else if (tx.type === 'liability') {
     const status = tx.liabilityStatus === 'paid' ? '✅ Pagada' : '🔴 Pendiente';
     mainDetail = `
@@ -1930,10 +1952,13 @@ function openTxDetail(id) {
       ${tx.notes ? `<div><div style="color:var(--gray-500); font-size:14px; margin-bottom:4px;">Notas</div><div style="font-size:14px; color:var(--gray-700); background:var(--gray-50); border-radius:8px; padding:10px;">${tx.notes}</div></div>` : ''}
     </div>
     <div style="display:flex; gap:10px; margin-top:24px;">
-      ${!isCurrentUserReadOnly()
-        ? `<button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>`
-        : `<button class="btn btn-secondary btn-block" style="opacity:.4; cursor:not-allowed;"
-            onclick="showToast('🔒 Modo solo-lectura: no puedes editar', 2000)">✏️ Editar</button>`
+      ${(tx.isCogs || tx.isIva)
+        ? `<button class="btn btn-secondary btn-block" style="opacity:.5; cursor:not-allowed;"
+            onclick="showToast('⚙️ Asiento automático: edita la transacción original', 3000)">✏️ Editar</button>`
+        : !isCurrentUserReadOnly()
+          ? `<button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>`
+          : `<button class="btn btn-secondary btn-block" style="opacity:.4; cursor:not-allowed;"
+              onclick="showToast('🔒 Modo solo-lectura: no puedes editar', 2000)">✏️ Editar</button>`
       }
       ${isCurrentUserOwner()
         ? `<button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>`
@@ -1941,7 +1966,7 @@ function openTxDetail(id) {
             onclick="showToast('🚫 Solo el propietario puede eliminar registros', 2500)">🗑️ Eliminar</button>`
       }
     </div>
-    ${!tx.isCogs ? `
+    ${!(tx.isCogs || tx.isIva) ? `
     <button class="btn btn-outline btn-block mt-8"
       onclick="closeDetail(); openDescriptionReport(window._txDescForReport)">
       🔍 Ver todos con: "${tx.description.length > 35 ? tx.description.substring(0,35)+'…' : tx.description}"
@@ -1965,8 +1990,8 @@ function renderReports() {
   // ── Estado de Resultados (P&L) ────────────────────────────
   _renderPnL(pnl);
 
-  // ── Deudas del mes ────────────────────────────────────────
-  const liabilities = txs.filter(t => t.type === 'liability');
+  // ── Deudas del mes (los asientos de IVA se reportan aparte) ──
+  const liabilities = txs.filter(t => t.type === 'liability' && !t.isIva);
   const totalLiab   = liabilities.reduce((s, t) => s + t.amount, 0);
   const liabEl      = document.getElementById('report-liabilities-section');
   if (liabilities.length) {
@@ -2047,6 +2072,13 @@ function renderReports() {
           debit = '';  credit = fmt(t.amount);
           typeLabel = 'CMV';
           catLabel  = '📦 Costo de Ventas';
+        } else if (t.isIva) {
+          // IVA cobrado → Haber (pasivo); IVA crédito → Debe (activo)
+          const cobrado = t.ivaDirection === 'cobrado';
+          if (cobrado) { debit = '';            credit = fmt(t.amount); }
+          else         { debit = fmt(t.amount); credit = '';            }
+          typeLabel = 'IVA';
+          catLabel  = cobrado ? '🧾 IVA por pagar (SRI)' : '🧾 IVA crédito tributario';
         } else if (t.type === 'income') {
           debit = fmt(t.amount); credit = '';
           typeLabel = 'Ingreso';
@@ -2065,11 +2097,11 @@ function renderReports() {
           catLabel  = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
         }
 
-        const typeColors = { income:'#16a34a', expense:'#dc2626', transfer:'#2563eb', liability:'#d97706', CMV:'#7c3aed' };
-        const rowBg = t.isCogs ? 'background:#faf5ff;' : '';
+        const typeColors = { income:'#16a34a', expense:'#dc2626', transfer:'#2563eb', liability:'#d97706', CMV:'#7c3aed', IVA:'#0891b2' };
+        const rowBg = t.isCogs ? 'background:#faf5ff;' : t.isIva ? 'background:#fffbeb;' : '';
         return `<tr style="${rowBg}">
           <td>${fmtDate(t.date)}</td>
-          <td>${t.description}${t.isCogs ? ' <em style="color:#9ca3af;font-size:11px;">(auto)</em>' : ''}</td>
+          <td>${t.description}${(t.isCogs || t.isIva) ? ' <em style="color:#9ca3af;font-size:11px;">(auto)</em>' : ''}</td>
           <td style="color:${typeColors[typeLabel] || '#374151'}; font-weight:600;">${typeLabel}</td>
           <td>${catLabel}</td>
           <td style="color:#16a34a; font-weight:700; text-align:right;">${debit}</td>
@@ -2243,6 +2275,10 @@ function renderBalanceSheet() {
 
   if (bs.totalInventory > 0) {
     activosHTML += row('📦 Inventarios (al costo)', bs.totalInventory, '#7c3aed');
+  }
+
+  if (bs.ivaCreditoFiscal > 0) {
+    activosHTML += row('🧾 Crédito Tributario IVA (SRI)', bs.ivaCreditoFiscal, '#0891b2');
   }
 
   if (bs.totalAssets === 0) {
