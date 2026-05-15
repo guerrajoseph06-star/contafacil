@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15e';
+const APP_VERSION = '2026.05.15f';
 
 // ── Modo Oscuro ───────────────────────────────────────────────────────────────
 function applyTheme(dark) {
@@ -1439,6 +1439,182 @@ function txItemHTML(tx) {
 }
 
 // ── Formulario de transacción ─────────────────────────────────────────────────
+// ── Sistema inteligente: autocompletar descripciones + selector IVA ───────────
+let _formIvaType      = 'IVA_INCLUIDO'; // tipo de IVA activo en el formulario
+let _smartSuggestions = [];              // lista de sugerencias actuales (por índice)
+
+// Normaliza texto a clave de aprendizaje: primeras 3 palabras ≥3 letras
+function _normalizeDescKey(desc) {
+  return (desc || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(w => w.length >= 3)
+    .slice(0, 3)
+    .join(' ');
+}
+
+// Se dispara mientras el usuario escribe en "Descripción"
+function onDescInput() {
+  const val = (document.getElementById('f-desc')?.value || '').trim();
+  if (val.length < 2) { _hideSuggestions(); return; }
+  _showSmartSuggestions(val);
+}
+
+// Oculta el dropdown con retraso para que click/touch en sugerencia llegue primero
+function _onDescBlur() { setTimeout(_hideSuggestions, 200); }
+
+function _hideSuggestions() {
+  const box = document.getElementById('smart-suggestions');
+  if (box) box.style.display = 'none';
+}
+
+// Construye y muestra el dropdown de sugerencias
+function _showSmartSuggestions(query) {
+  const box = document.getElementById('smart-suggestions');
+  if (!box) return;
+
+  const norm     = _normalizeDescKey(query);
+  const queryLow = query.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  // Sugerencias aprendidas del historial
+  const learned = DB.getSmartDescSuggestions(norm || queryLow.replace(/[^a-z0-9\s]/g, '').trim());
+
+  // Coincidencias en inventario
+  const inv = DB.getInventory().filter(p =>
+    (p.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(queryLow)
+  ).slice(0, 3);
+
+  _smartSuggestions = [];
+  if (learned.length === 0 && inv.length === 0) { _hideSuggestions(); return; }
+
+  const TYPE_ICON  = { income:'📈', expense:'📉', liability:'🔴', transfer:'↔️' };
+  const TYPE_LABEL = { income:'Ingreso', expense:'Gasto', liability:'Deuda', transfer:'Traslado' };
+  const IVA_LABEL  = { SIN_IVA:'Sin IVA', IVA_NO_INCLUIDO:'+IVA', IVA_INCLUIDO:'Inc. IVA' };
+
+  let html = '';
+
+  learned.forEach(s => {
+    const idx = _smartSuggestions.length;
+    _smartSuggestions.push({ source: 'learned', data: s });
+    html += `
+      <div onclick="_selectSuggestion(${idx})" onmousedown="event.preventDefault()"
+        style="padding:11px 14px; border-bottom:1px solid var(--gray-100); cursor:pointer;
+          display:flex; align-items:center; gap:10px;"
+        onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <div style="font-size:22px;">${TYPE_ICON[s.type] || '📋'}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            ${(s.exampleDesc || s.key).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))}
+          </div>
+          <div style="font-size:11px; color:var(--gray-400);">
+            ${TYPE_LABEL[s.type] || 'Transacción'} · ${IVA_LABEL[s.ivaType] || 'Sin IVA'} · Usado ${s.count || 1}×
+          </div>
+        </div>
+        <div style="font-size:10px; background:var(--primary-light); color:var(--primary);
+          padding:3px 9px; border-radius:20px; font-weight:700; white-space:nowrap;">⚡ Auto</div>
+      </div>`;
+  });
+
+  inv.forEach(p => {
+    const idx = _smartSuggestions.length;
+    _smartSuggestions.push({ source: 'inventory', data: p });
+    const IVA_L = { SIN_IVA:'Sin IVA', IVA_NO_INCLUIDO:'+IVA', IVA_INCLUIDO:'Inc. IVA' };
+    html += `
+      <div onclick="_selectSuggestion(${idx})" onmousedown="event.preventDefault()"
+        style="padding:11px 14px; border-bottom:1px solid var(--gray-100); cursor:pointer;
+          display:flex; align-items:center; gap:10px;"
+        onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <div style="font-size:22px;">${p.emoji || '📦'}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:700;">
+            ${(p.name || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))}
+          </div>
+          <div style="font-size:11px; color:var(--gray-400);">
+            Producto · Stock: ${p.quantity} ${p.unit} · ${IVA_L[p.tipoIva] || 'Sin IVA'}
+          </div>
+        </div>
+        <div style="font-size:10px; background:#dcfce7; color:#16a34a;
+          padding:3px 9px; border-radius:20px; font-weight:700; white-space:nowrap;">📦 Stock</div>
+      </div>`;
+  });
+
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
+// Aplica la sugerencia seleccionada al formulario
+function _selectSuggestion(idx) {
+  const entry = _smartSuggestions[idx];
+  if (!entry) return;
+  _hideSuggestions();
+
+  if (entry.source === 'learned') {
+    const s    = entry.data;
+    const desc = document.getElementById('f-desc');
+    if (desc) desc.value = s.exampleDesc || s.key;
+
+    // Cambiar tipo si difiere (re-renderiza el formulario)
+    if (s.type && s.type !== formType) { formType = s.type; updateTypeTabs(); }
+
+    setTimeout(() => {
+      if (s.category) { const c = document.getElementById('f-category'); if (c) c.value = s.category; }
+      if (s.account)  { const a = document.getElementById('f-account');  if (a) a.value = s.account;  }
+      if (s.creditor) { const r = document.getElementById('f-creditor'); if (r) r.value = s.creditor; }
+      if (s.ivaType)  selectIva(s.ivaType);
+      showToast('⚡ Campos completados automáticamente', 1800);
+    }, 30);
+
+  } else if (entry.source === 'inventory') {
+    const p    = entry.data;
+    const desc = document.getElementById('f-desc');
+    if (desc) desc.value = 'Venta de ' + p.name;
+
+    if (formType !== 'income') { formType = 'income'; updateTypeTabs(); }
+
+    setTimeout(() => {
+      const cb = document.getElementById('f-affects-inv');
+      if (cb) { cb.checked = true; toggleInventorySection(); }
+      const pe = document.getElementById('f-product');
+      if (pe) pe.value = p.id;
+      if (p.tipoIva) selectIva(p.tipoIva);
+      showToast('⚡ Producto "' + p.name + '" seleccionado', 1800);
+    }, 30);
+  }
+}
+
+// Cambia el tipo de IVA activo y actualiza los botones + desglose
+function selectIva(type) {
+  _formIvaType = type;
+  ['SIN_IVA', 'IVA_NO_INCLUIDO', 'IVA_INCLUIDO'].forEach(t => {
+    const btn = document.getElementById('iva-btn-' + t);
+    if (!btn) return;
+    const on = t === type;
+    btn.style.borderColor = on ? 'var(--primary)' : 'var(--gray-200)';
+    btn.style.background  = on ? 'var(--primary-light)' : 'var(--white)';
+    btn.style.color       = on ? 'var(--primary)' : 'var(--gray-400)';
+    btn.style.fontWeight  = on ? '800' : '600';
+  });
+  _updateIvaBreakdown();
+}
+
+// Muestra en tiempo real el desglose base + IVA según monto y tipo
+function _updateIvaBreakdown() {
+  const el = document.getElementById('iva-breakdown');
+  if (!el) return;
+  const amount = parseFloat(document.getElementById('f-amount')?.value) || 0;
+  if (!amount || _formIvaType === 'SIN_IVA') { el.innerHTML = ''; return; }
+  const s   = DB.getSettings();
+  const pct = s.porcentajeIva || DB.IVA_DEFAULT;
+  const res = DB.calcIva(amount, _formIvaType, pct);
+  const sym = s.currencySymbol || '$';
+  el.innerHTML = _formIvaType === 'IVA_NO_INCLUIDO'
+    ? `<span style="color:var(--gray-500)">Base: ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)} = <strong>Total: ${sym} ${fmt(res.precioFinal)}</strong></span>`
+    : `<span style="color:var(--gray-500)">Incluye: base ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)}</span>`;
+}
+
 function renderForm(editId = null) {
   editingTxId = editId || null;
   const isEdit = !!editId;
@@ -1458,12 +1634,15 @@ function renderForm(editId = null) {
     if (descEl)   descEl.value   = tx.description;
     if (dateEl)   dateEl.value   = tx.date;
     if (notesEl)  notesEl.value  = tx.notes || '';
+    _formIvaType = tx.ivaType || 'IVA_INCLUIDO'; // cargar IVA guardado
   } else {
     if (amountEl) amountEl.value = '';
     if (descEl)   descEl.value   = '';
     if (dateEl)   dateEl.value   = today();
     if (notesEl)  notesEl.value  = '';
+    _formIvaType = 'IVA_INCLUIDO'; // default para transacción nueva
   }
+  _hideSuggestions(); // cerrar sugerencias al abrir el formulario
 
   updateTypeTabs();
   renderFormFields(tx);
@@ -1543,7 +1722,7 @@ function renderFormFields(tx) {
       </div>
     `;
   } else {
-    // INGRESO o GASTO: categoría + cuenta + inventario opcional
+    // INGRESO o GASTO: categoría + cuenta + IVA + inventario opcional
     html += `
       <div class="form-group">
         <label class="form-label">Categoría</label>
@@ -1552,6 +1731,32 @@ function renderFormFields(tx) {
       <div class="form-group">
         <label class="form-label">Cuenta</label>
         <select id="f-account" class="form-control">${accOptions('account')}</select>
+      </div>
+    `;
+
+    // ── Selector de IVA ──────────────────────────────────────
+    const ivaPct     = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+    const ivaOptions = [
+      ['SIN_IVA',         '🚫', 'Sin IVA'],
+      ['IVA_NO_INCLUIDO', '➕', '+' + ivaPct + '% IVA'],
+      ['IVA_INCLUIDO',    '✅', 'IVA incluido'],
+    ];
+    html += `
+      <div class="form-group">
+        <label class="form-label">🧾 IVA / Impuesto</label>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          ${ivaOptions.map(([t, ico, lbl]) => `
+            <button type="button" id="iva-btn-${t}" onclick="selectIva('${t}')"
+              style="flex:1; padding:10px 4px; border-radius:10px; font-size:11px; line-height:1.5;
+                cursor:pointer; text-align:center; transition:all .15s;
+                border:2px solid ${_formIvaType === t ? 'var(--primary)' : 'var(--gray-200)'};
+                background:${_formIvaType === t ? 'var(--primary-light)' : 'var(--white)'};
+                color:${_formIvaType === t ? 'var(--primary)' : 'var(--gray-400)'};
+                font-weight:${_formIvaType === t ? '800' : '600'};">
+              ${ico}<br>${lbl}
+            </button>`).join('')}
+        </div>
+        <div id="iva-breakdown" style="font-size:12px; min-height:18px;"></div>
       </div>
     `;
 
@@ -1625,6 +1830,7 @@ function submitForm() {
   } else {
     data.category = document.getElementById('f-category')?.value;
     data.account  = document.getElementById('f-account')?.value;
+    data.ivaType  = _formIvaType; // guardar tipo de IVA seleccionado
     const affectsInv = document.getElementById('f-affects-inv')?.checked;
     if (affectsInv) {
       const productId = document.getElementById('f-product')?.value;
@@ -1643,6 +1849,20 @@ function submitForm() {
   } else {
     DB.addTransaction(data);
     showToast('✅ Transacción guardada');
+  }
+
+  // ── Aprendizaje: recordar descripción + configuración para futuros autocompletados
+  const descKey = _normalizeDescKey(desc);
+  if (descKey && formType !== 'transfer') {
+    DB.saveSmartDescEntry(descKey, {
+      exampleDesc: desc,
+      type:     formType,
+      category: data.category  || null,
+      account:  data.account   || null,
+      ivaType:  _formIvaType,
+      creditor: data.creditor  || null,
+    });
+    DB.recordIvaMemory(desc, data.category, _formIvaType);
   }
 
   // Ir al dashboard para mostrar el saldo actualizado inmediatamente

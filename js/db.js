@@ -580,6 +580,32 @@ const DB = (() => {
     save('cf_iva_memory', mem);
   }
 
+  // ── Memoria inteligente de descripciones (aprendizaje de transacciones) ───────
+  // Cada clave es la descripción normalizada; guarda tipo, categoría, cuenta, IVA, etc.
+  function saveSmartDescEntry(normalizedKey, data) {
+    if (!normalizedKey) return;
+    const mem  = load('cf_smart_desc') || {};
+    const prev = mem[normalizedKey] || {};
+    mem[normalizedKey] = {
+      ...prev,
+      ...data,
+      count:    (prev.count || 0) + 1,
+      lastUsed: new Date().toISOString().slice(0, 10),
+    };
+    save('cf_smart_desc', mem);
+  }
+
+  // Devuelve hasta 5 sugerencias ordenadas por frecuencia de uso
+  function getSmartDescSuggestions(query) {
+    if (!query || query.length < 2) return [];
+    const mem = load('cf_smart_desc') || {};
+    return Object.entries(mem)
+      .filter(([k]) => k.includes(query))
+      .sort((a, b) => (b[1].count || 0) - (a[1].count || 0))
+      .slice(0, 5)
+      .map(([k, v]) => ({ key: k, ...v }));
+  }
+
   // ── Inventario ─────────────────────────────────────────────
   function getInventory() { return load(KEYS.inventory) || []; }
 
@@ -1513,5 +1539,6 @@ const DB = (() => {
     getUpcomingAlerts,
     getCompanyList, getActiveCompany, addCompany, switchToCompany, updateCompanyName, deleteCompany,
     calcIva, getIvaSuggestion, recordIvaMemory, IVA_DEFAULT,
+    saveSmartDescEntry, getSmartDescSuggestions,
   };
 })();

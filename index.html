@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515e">
+  <link rel="stylesheet" href="css/style.css?v=20260515f">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -431,14 +431,23 @@
     <div class="amount-input-wrap">
       <div style="font-size:13px; color:var(--gray-400); margin-bottom:4px;">MONTO</div>
       <input type="number" id="f-amount" class="amount-input-large"
-        placeholder="0" min="0" step="any" inputmode="decimal">
+        placeholder="0" min="0" step="any" inputmode="decimal"
+        oninput="_updateIvaBreakdown()">
     </div>
 
-    <!-- Descripción (siempre presente) -->
-    <div class="form-group">
+    <!-- Descripción con autocompletar inteligente -->
+    <div class="form-group" style="position:relative;">
       <label class="form-label">Descripción *</label>
       <input type="text" id="f-desc" class="form-control"
-        placeholder="Ej: Venta de blusas al cliente García" maxlength="120">
+        placeholder="Ej: Venta de blusas al cliente García" maxlength="120"
+        autocomplete="off" oninput="onDescInput()" onblur="_onDescBlur()">
+      <!-- Dropdown de sugerencias inteligentes -->
+      <div id="smart-suggestions"
+        style="display:none; position:absolute; left:0; right:0; top:100%; z-index:300;
+          background:var(--white); border:1.5px solid var(--primary);
+          border-radius:0 0 14px 14px; overflow:hidden; max-height:280px; overflow-y:auto;
+          box-shadow:0 8px 24px rgba(37,99,235,.18);">
+      </div>
     </div>
 
     <!-- Fecha (siempre presente) -->
@@ -1089,7 +1098,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515e"></script>
-<script src="js/app.js?v=20260515e"></script>
+<script src="js/db.js?v=20260515f"></script>
+<script src="js/app.js?v=20260515f"></script>
 </body>
 </html>
