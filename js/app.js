@@ -23,10 +23,11 @@ function toggleDarkMode() {
   applyTheme(!isDark);
 }
 // ── Variables PIN / Seguridad ─────────────────────────────────────────────────
-let _pinBuffer  = '';        // dígitos ingresados en el momento
-let _pinMode    = 'unlock';  // 'unlock' | 'confirm' | 'set' | 'confirm_new'
-let _pinAction  = null;      // función a ejecutar tras PIN correcto
-let _newPinTemp = '';        // PIN nuevo (primer ingreso) para confirmar
+let _pinBuffer     = '';        // dígitos ingresados en el momento
+let _pinMode       = 'unlock';  // 'unlock' | 'confirm' | 'set' | 'confirm_new'
+let _pinAction     = null;      // función a ejecutar tras PIN correcto
+let _newPinTemp    = '';        // PIN nuevo (primer ingreso) para confirmar
+let _pinTargetUser = '';        // usuario cuyo PIN se está verificando/configurando
 let _encImportPending = null;// JSON cifrado pendiente de importar
 
 let editingTxId      = null;
@@ -141,24 +142,91 @@ function finishOnboarding() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function initSecurity() {
-  if (DB.isPinSet()) showLockScreen('unlock', null);
+  const users      = DB.getUserList();
+  const anyHasPin  = users.some(u => u.pinHash);
+  if (!anyHasPin) return; // ningún usuario tiene PIN, entrar libremente
+
+  if (users.length === 1) {
+    // Un solo usuario: ir directo a su pantalla de PIN
+    showLockScreen('unlock', null, users[0].name);
+  } else {
+    // Varios usuarios: mostrar selector primero
+    showUserPickerLock();
+  }
 }
 
-function showLockScreen(mode, action) {
-  _pinBuffer  = '';
-  _pinMode    = mode;
-  _pinAction  = action;
-  _newPinTemp = '';
+// Pantalla de selección de usuario (para el bloqueo al inicio)
+function showUserPickerLock() {
+  const s      = DB.getSettings();
+  const lockEl = document.getElementById('screen-lock');
+  const picker = document.getElementById('lock-user-picker');
+  const pinArea = document.getElementById('lock-pin-area');
+
+  document.getElementById('lock-company').textContent = s.companyName || 'ContaFácil Pro';
+  document.getElementById('lock-msg').textContent = '👤 ¿Quién eres?';
+
+  const users = DB.getUserList();
+  picker.innerHTML = users.map(u => `
+    <button onclick="selectLockUser('${u.name.replace(/\\/g,'\\\\').replace(/'/g, "\\'")}', ${!!u.pinHash})"
+      style="display:flex; align-items:center; gap:14px; width:100%; padding:14px 18px;
+        background:rgba(255,255,255,.18); border:none; border-radius:14px; color:white;
+        cursor:pointer; text-align:left; -webkit-tap-highlight-color:transparent;">
+      <div style="font-size:24px; width:44px; height:44px; background:rgba(255,255,255,.22);
+        border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        ${u.isOwner ? '👑' : '👤'}
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:16px; font-weight:700;">${u.name}</div>
+        <div style="font-size:11px; opacity:.7;">
+          ${u.isOwner ? '🏢 Propietario · ' : ''}${u.pinHash ? '🔒 Requiere PIN' : '🔓 Sin PIN'}
+        </div>
+      </div>
+      <div style="font-size:20px; opacity:.6;">›</div>
+    </button>
+  `).join('');
+
+  picker.style.display  = 'flex';
+  pinArea.style.display = 'none';
+  lockEl.style.display  = 'flex';
+}
+
+// Usuario seleccionado en el picker del bloqueo
+function selectLockUser(name, hasPin) {
+  if (hasPin) {
+    showLockScreen('unlock', null, name);
+  } else {
+    // Sin PIN: cambiar directamente
+    DB.switchUser(name);
+    hideLockScreen();
+    const nameEl = document.getElementById('dash-user-name');
+    if (nameEl) nameEl.textContent = name;
+    navigate('dashboard');
+    showToast('👤 Bienvenido, ' + name, 1800);
+  }
+}
+
+function showLockScreen(mode, action, targetUser) {
+  _pinBuffer     = '';
+  _pinMode       = mode;
+  _pinAction     = action;
+  _newPinTemp    = '';
+  _pinTargetUser = targetUser || DB.getSettings().userName || 'Principal';
 
   const s      = DB.getSettings();
   const lockEl = document.getElementById('screen-lock');
+  const picker  = document.getElementById('lock-user-picker');
+  const pinArea = document.getElementById('lock-pin-area');
 
   document.getElementById('lock-company').textContent = s.companyName || 'ContaFácil Pro';
   document.getElementById('lock-msg').textContent =
-    mode === 'confirm'      ? '🔐 Confirma tu PIN para continuar' :
-    mode === 'set'          ? '🔑 Elige un PIN de 4 dígitos'      :
-    mode === 'confirm_new'  ? '🔁 Repite el PIN nuevo'            :
-                              '🔒 Ingresa tu PIN';
+    mode === 'confirm'     ? `🔐 Confirma tu PIN (${_pinTargetUser})` :
+    mode === 'set'         ? `🔑 PIN nuevo para ${_pinTargetUser}`    :
+    mode === 'confirm_new' ? '🔁 Repite el PIN nuevo'                 :
+                             `🔒 PIN de ${_pinTargetUser}`;
+
+  // Mostrar numpad, ocultar picker
+  if (picker)  picker.style.display  = 'none';
+  if (pinArea) pinArea.style.display = 'flex';
 
   _updatePinDots();
   lockEl.style.display = 'flex';
@@ -188,31 +256,49 @@ function _updatePinDots() {
 }
 
 async function _processPinEntry() {
-  if (_pinMode === 'unlock' || _pinMode === 'confirm') {
-    const ok = await DB.verifyPin(_pinBuffer);
+  if (_pinMode === 'unlock') {
+    // Verifica el PIN del usuario objetivo y lo activa
+    const ok = await DB.verifyUserPin(_pinTargetUser, _pinBuffer);
+    if (ok) {
+      const current = DB.getSettings().userName || 'Principal';
+      if (_pinTargetUser && _pinTargetUser !== current) {
+        DB.switchUser(_pinTargetUser);
+        const nameEl = document.getElementById('dash-user-name');
+        if (nameEl) nameEl.textContent = _pinTargetUser;
+        renderSettings();
+      }
+      hideLockScreen();
+      if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
+      else showToast('✅ Bienvenido, ' + _pinTargetUser, 1500);
+    } else {
+      _pinError('PIN incorrecto. Inténtalo de nuevo.');
+    }
+
+  } else if (_pinMode === 'confirm') {
+    // Verifica el PIN del usuario actual (sin cambiar de usuario)
+    const ok = await DB.verifyUserPin(_pinTargetUser, _pinBuffer);
     if (ok) {
       hideLockScreen();
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
-      else if (_pinMode === 'unlock') showToast('✅ Bienvenido', 1500);
     } else {
       _pinError('PIN incorrecto. Inténtalo de nuevo.');
     }
 
   } else if (_pinMode === 'set') {
     _newPinTemp = _pinBuffer;
-    showLockScreen('confirm_new', _pinAction);
+    showLockScreen('confirm_new', _pinAction, _pinTargetUser);
 
   } else if (_pinMode === 'confirm_new') {
     if (_pinBuffer === _newPinTemp) {
-      await DB.setPinHash(_pinBuffer);
+      await DB.setUserPin(_pinTargetUser, _pinBuffer); // guarda para el usuario correcto
       hideLockScreen();
-      showToast('🔒 PIN configurado', 2500);
+      showToast('🔒 PIN configurado para ' + _pinTargetUser, 2500);
       renderSettings();
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
     } else {
       _newPinTemp = '';
       _pinError('Los PINs no coinciden.');
-      setTimeout(() => showLockScreen('set', _pinAction), 1200);
+      setTimeout(() => showLockScreen('set', _pinAction, _pinTargetUser), 1200);
     }
   }
 }
@@ -236,54 +322,99 @@ function _pinError(msg) {
 
 // Pide PIN si está configurado; si no, ejecuta la acción directamente
 function requirePin(action) {
-  if (!DB.isPinSet()) { action(); return; }
-  showLockScreen('confirm', action);
+  const currentUser = DB.getSettings().userName || 'Principal';
+  if (!DB.userHasPin(currentUser)) { action(); return; }
+  showLockScreen('confirm', action, currentUser);
 }
 
 // ── Configuración de seguridad ────────────────────────────────────────────────
 function openSecuritySettings() {
-  const sec    = DB.getSecuritySettings();
-  const pinSet = DB.isPinSet();
+  const sec         = DB.getSecuritySettings();
+  const s           = DB.getSettings();
+  const currentUser = s.userName || 'Principal';
+  const pinSet      = DB.userHasPin(currentUser);
+  const userEntry   = DB.getUserEntry(currentUser);
+  const isOwner     = !!(userEntry && userEntry.isOwner);
+  const users       = DB.getUserList();
 
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
-    <h3 class="sheet-title">🔐 Seguridad de Datos</h3>
+    <h3 class="sheet-title">🔐 Seguridad</h3>
 
-    <!-- Estado PIN -->
-    <div style="background:${pinSet ? '#f0fdf4' : '#fff7ed'}; border-radius:12px; padding:14px 16px; margin-bottom:16px;
-      border:1.5px solid ${pinSet ? '#86efac' : '#fdba74'}; display:flex; align-items:center; gap:12px;">
-      <div style="font-size:32px;">${pinSet ? '🔒' : '🔓'}</div>
+    <!-- Usuario actual -->
+    <div style="background:var(--gray-50); border-radius:12px; padding:12px 16px; margin-bottom:14px;
+      display:flex; align-items:center; gap:10px;">
+      <div style="font-size:26px;">${isOwner ? '👑' : '👤'}</div>
       <div>
-        <div style="font-size:14px; font-weight:800; color:${pinSet ? '#166534' : '#9a3412'};">
-          ${pinSet ? 'PIN activo — app protegida' : 'Sin PIN — app abierta'}
-        </div>
-        <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
-          ${pinSet ? 'Se pedirá el PIN cada vez que abras la app.' : 'Configura un PIN para bloquear el acceso.'}
+        <div style="font-size:13px; font-weight:800;">${currentUser}</div>
+        <div style="font-size:11px; color:var(--gray-400);">
+          ${isOwner ? 'Propietario de la empresa' : 'Usuario registrado'}
         </div>
       </div>
     </div>
 
-    <!-- Botones de PIN -->
+    <!-- Estado PIN del usuario actual -->
+    <div style="background:${pinSet ? '#f0fdf4' : '#fff7ed'}; border-radius:12px; padding:14px 16px; margin-bottom:14px;
+      border:1.5px solid ${pinSet ? '#86efac' : '#fdba74'}; display:flex; align-items:center; gap:12px;">
+      <div style="font-size:30px;">${pinSet ? '🔒' : '🔓'}</div>
+      <div style="flex:1;">
+        <div style="font-size:14px; font-weight:800; color:${pinSet ? '#166534' : '#9a3412'};">
+          ${pinSet ? 'Tu PIN está activo' : 'Sin PIN configurado'}
+        </div>
+        <div style="font-size:11px; color:var(--gray-500); margin-top:2px;">
+          ${pinSet ? 'Solo tú puedes entrar con tu PIN.' : 'Configura un PIN para proteger tu acceso.'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de PIN del usuario actual -->
     ${pinSet ? `
-      <button class="btn btn-outline btn-block mb-8" onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>showLockScreen('set',null)),200)">
-        🔑 Cambiar PIN
+      <button class="btn btn-outline btn-block mb-8"
+        onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>showLockScreen('set', null, '${currentUser}')),200)">
+        🔑 Cambiar mi PIN
       </button>
-      <button class="btn btn-danger btn-block mb-16" onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removePin(); showToast('🔓 PIN eliminado'); renderSettings(); }),200)">
-        🔓 Eliminar PIN
+      <button class="btn btn-danger btn-block mb-14"
+        onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removeUserPin('${currentUser}'); showToast('🔓 PIN eliminado'); renderSettings(); }),200)">
+        🔓 Eliminar mi PIN
       </button>
     ` : `
-      <button class="btn btn-primary btn-block mb-16" onclick="closeSettingsSheet(); setTimeout(()=>showLockScreen('set',null),200)">
-        🔒 Configurar PIN de seguridad
+      <button class="btn btn-primary btn-block mb-14"
+        onclick="closeSettingsSheet(); setTimeout(()=>showLockScreen('set', ()=>{ renderSettings(); }, '${currentUser}'),200)">
+        🔒 Configurar mi PIN
       </button>
     `}
 
+    ${users.length > 1 && isOwner ? `
+    <!-- Gestión de PINs de otros usuarios (solo propietario) -->
+    <div style="border-top:1px solid var(--gray-100); padding-top:14px; margin-bottom:14px;">
+      <div style="font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
+        letter-spacing:.5px; margin-bottom:10px;">🏢 PINs de otros usuarios</div>
+      ${users.filter(u => !u.isOwner).map(u => `
+        <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:8px;
+          background:var(--white); border:1.5px solid var(--gray-100); border-radius:10px;">
+          <div style="font-size:20px;">👤</div>
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:700;">${u.name}</div>
+            <div style="font-size:11px; color:var(--gray-400);">${u.pinHash ? '🔒 Tiene PIN' : '🔓 Sin PIN'}</div>
+          </div>
+          ${u.pinHash ? `
+            <button class="btn btn-outline" style="font-size:11px; padding:5px 10px;"
+              onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removeUserPin('${u.name}'); showToast('🔓 PIN de ${u.name} eliminado'); openSecuritySettings(); }),200)">
+              Eliminar PIN
+            </button>
+          ` : ''}
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
     <!-- Toggle: pedir PIN antes de exportar -->
-    <div style="background:var(--gray-50); border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+    <div style="background:var(--gray-50); border-radius:12px; padding:14px 16px; margin-bottom:14px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <div style="flex:1;">
-          <div style="font-size:14px; font-weight:700; margin-bottom:2px;">Pedir PIN antes de exportar</div>
+          <div style="font-size:14px; font-weight:700; margin-bottom:2px;">PIN antes de exportar</div>
           <div style="font-size:11px; color:var(--gray-400); line-height:1.4;">
-            PDF, Excel y sincronización requieren PIN para descargarse
+            PDF, Excel y sincronización requieren confirmar tu PIN
           </div>
         </div>
         <div onclick="toggleExportPin()" id="exp-pin-track"
@@ -301,17 +432,11 @@ function openSecuritySettings() {
       <div style="font-size:14px; font-weight:800; color:#1e40af; margin-bottom:6px;">🔐 Sincronización cifrada AES-256</div>
       <div style="font-size:12px; color:#1e3a8a; line-height:1.6; margin-bottom:12px;">
         Exporta tu registro con cifrado militar. Nadie puede leerlo sin la contraseña.
-        Úsalo para enviar datos entre dispositivos con total seguridad.
       </div>
       <button class="btn btn-block" style="background:var(--primary); color:white;"
         onclick="closeSettingsSheet(); setTimeout(()=>openEncryptedExportSheet(),200)">
         🔐 Exportar registro cifrado
       </button>
-    </div>
-
-    <div style="font-size:11px; color:var(--gray-400); line-height:1.5; margin-top:14px; padding:0 2px;">
-      ⚠️ <strong>Nota sobre PDF/Excel:</strong> Los archivos PDF y Excel no pueden cifrarse directamente desde el navegador.
-      La protección real está en el PIN: sin él, nadie puede abrir la app ni exportar nada.
     </div>
 
     <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
@@ -3274,36 +3399,41 @@ function openFacturacionPlaceholder() {
 function openQuickUserSwitch() {
   const s           = DB.getSettings();
   const currentUser = s.userName || 'Principal';
-  const users       = DB.getUsers();
+  const users       = DB.getUserList();
 
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
     <h3 class="sheet-title">👥 Cambiar Usuario</h3>
     <div style="font-size:13px; color:var(--gray-600); margin-bottom:16px; line-height:1.5;">
       Usuario activo: <strong style="color:var(--primary);">${currentUser}</strong><br>
-      <span style="font-size:11px; color:var(--gray-400);">Los nuevos registros quedan a nombre del usuario activo.</span>
+      <span style="font-size:11px; color:var(--gray-400);">
+        Cada usuario entra solo con su propio PIN.
+      </span>
     </div>
 
-    <!-- Lista de usuarios conocidos -->
+    <!-- Lista de usuarios -->
     <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
       ${users.map(u => `
-        <button onclick="switchToUser('${u.replace(/'/g, '&#39;')}')"
+        <button onclick="switchToUser('${u.name.replace(/'/g, '&#39;')}')"
           style="display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:12px;
-            border:2px solid ${u === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
-            background:${u === currentUser ? 'var(--primary-light)' : 'var(--white)'};
+            border:2px solid ${u.name === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
+            background:${u.name === currentUser ? 'var(--primary-light)' : 'var(--white)'};
             cursor:pointer; text-align:left; width:100%;">
           <div style="font-size:24px; width:42px; height:42px; display:flex; align-items:center;
-            justify-content:center; background:${u === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
+            justify-content:center; background:${u.name === currentUser ? 'var(--primary)' : 'var(--gray-100)'};
             border-radius:50%; flex-shrink:0;">
-            ${u === currentUser ? '✅' : '👤'}
+            ${u.name === currentUser ? '✅' : (u.isOwner ? '👑' : '👤')}
           </div>
           <div style="flex:1; min-width:0;">
             <div style="font-size:15px; font-weight:700;
-              color:${u === currentUser ? 'var(--primary)' : 'var(--gray-800)'};">${u}</div>
+              color:${u.name === currentUser ? 'var(--primary)' : 'var(--gray-800)'};">
+              ${u.name}${u.isOwner ? ' <span style="font-size:10px;color:var(--gray-400);">Propietario</span>' : ''}
+            </div>
             <div style="font-size:11px; color:var(--gray-400);">
-              ${u === currentUser ? '✓ Usuario activo ahora' : 'Toca para cambiar'}
+              ${u.name === currentUser ? '✓ Activo ahora' : (u.pinHash ? '🔒 Requiere su PIN' : '🔓 Sin PIN · Toca para cambiar')}
             </div>
           </div>
+          ${u.name !== currentUser ? '<div style="font-size:18px; color:var(--gray-300);">›</div>' : ''}
         </button>
       `).join('')}
     </div>
@@ -3317,8 +3447,11 @@ function openQuickUserSwitch() {
           placeholder="Nombre (ej: Ana, Vendedor 2)" maxlength="30" style="flex:1;"
           onkeydown="if(event.key==='Enter') addAndSwitchUser()">
         <button class="btn btn-primary" onclick="addAndSwitchUser()" style="flex-shrink:0; padding:0 16px;">
-          Agregar
+          Crear
         </button>
+      </div>
+      <div style="font-size:11px; color:var(--gray-400); margin-top:6px; line-height:1.5;">
+        Se pedirá elegir un PIN para el nuevo usuario.
       </div>
     </div>
 
@@ -3328,21 +3461,46 @@ function openQuickUserSwitch() {
 }
 
 function switchToUser(name) {
-  DB.switchUser(name);
+  const currentUser = DB.getSettings().userName || 'Principal';
+  if (name === currentUser) { closeSettingsSheet(); return; } // ya está activo
+
+  const entry = DB.getUserEntry(name);
   closeSettingsSheet();
-  document.getElementById('dash-user-name').textContent = name;
-  showToast('👤 Usuario activo: ' + name, 2000);
-  renderSettings();
+
+  if (entry && entry.pinHash) {
+    // El usuario objetivo tiene PIN: pedírselo
+    setTimeout(() => {
+      showLockScreen('unlock', () => {
+        document.getElementById('dash-user-name').textContent = name;
+        showToast('👤 Bienvenido, ' + name, 2000);
+        renderSettings();
+      }, name);
+    }, 200);
+  } else {
+    // Sin PIN: cambiar directamente
+    DB.switchUser(name);
+    document.getElementById('dash-user-name').textContent = name;
+    showToast('👤 Usuario activo: ' + name, 2000);
+    renderSettings();
+  }
 }
 
 function addAndSwitchUser() {
   const name = document.getElementById('new-user-input')?.value.trim();
   if (!name) { showToast('⚠️ Escribe un nombre'); return; }
-  DB.switchUser(name);
+  if (DB.getUserEntry(name)) { showToast('⚠️ Ese nombre ya existe'); return; }
+  DB.addUserToList(name);
   closeSettingsSheet();
-  document.getElementById('dash-user-name').textContent = name;
-  showToast('✅ Usuario creado y activo: ' + name, 2500);
-  renderSettings();
+  // Pedir PIN para el nuevo usuario antes de activarlo
+  setTimeout(() => {
+    showToast(`👤 Nuevo usuario: ${name}. Ahora elige su PIN de 4 dígitos.`, 3000);
+    showLockScreen('set', () => {
+      DB.switchUser(name);
+      document.getElementById('dash-user-name').textContent = name;
+      showToast('✅ Usuario creado con PIN: ' + name, 2500);
+      renderSettings();
+    }, name);
+  }, 200);
 }
 
 // ── Reporte por descripción ───────────────────────────────────────────────────
@@ -3623,7 +3781,8 @@ function renderSettings() {
   // Seguridad
   const pinDescEl = document.getElementById('settings-pin-desc');
   if (pinDescEl) {
-    pinDescEl.textContent = DB.isPinSet() ? '🟢 PIN activo — toca para cambiar' : 'Sin PIN configurado';
+    const cu = DB.getSettings().userName || 'Principal';
+    pinDescEl.textContent = DB.userHasPin(cu) ? `🟢 PIN activo (${cu})` : 'Sin PIN configurado';
   }
   const expPinDescEl = document.getElementById('settings-export-pin-desc');
   if (expPinDescEl) {

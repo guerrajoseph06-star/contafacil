@@ -672,24 +672,128 @@ const DB = (() => {
     return load(SEC_KEY) || { pinHash: null, requirePinForExport: false };
   }
 
-  function isPinSet() { return !!getSecuritySettings().pinHash; }
+  // ── Helpers de hash ──────────────────────────────────────────────────────────
+  async function _hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfpin_' + pin));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // ── PIN por usuario ──────────────────────────────────────────────────────────
+  // Cada usuario tiene su propio pinHash. El propietario (isOwner:true) es el
+  // usuario principal de la empresa. Nadie puede entrar con el PIN de otro.
+
+  function getUserList() {
+    const s         = getSettings();
+    const ownerName = s.userName || 'Principal';
+    const stored    = Array.isArray(s.users) ? s.users : [];
+
+    // Ya tiene formato nuevo (array de objetos)
+    if (stored.length > 0 && typeof stored[0] === 'object' && stored[0] !== null) {
+      // Asegurar que haya exactamente un owner marcado
+      if (!stored.some(u => u.isOwner)) {
+        const updated = stored.map((u, i) => i === 0 ? { ...u, isOwner: true } : u);
+        updateSettings({ users: updated });
+        return updated;
+      }
+      return stored;
+    }
+
+    // Formato antiguo (strings) o vacío → migrar
+    const sec   = load(SEC_KEY) || {};
+    const names = stored.length > 0 ? stored : [ownerName];
+    const list  = names.map((name, i) => ({
+      name,
+      pinHash: name === ownerName ? (sec.pinHash || null) : null,
+      isOwner: i === 0 || name === ownerName,
+    }));
+    // Dejar solo un owner
+    let ownerSet = false;
+    const deduped = list.map(u => {
+      if (u.isOwner && !ownerSet) { ownerSet = true; return u; }
+      return { ...u, isOwner: false };
+    });
+    updateSettings({ users: deduped });
+    return deduped;
+  }
+
+  function getUserEntry(userName) {
+    return getUserList().find(u => u.name === userName) || null;
+  }
+
+  function userHasPin(userName) {
+    const e = getUserEntry(userName);
+    return !!(e && e.pinHash);
+  }
+
+  async function setUserPin(userName, pin) {
+    const hash = await _hashPin(pin);
+    const list = getUserList();
+    const idx  = list.findIndex(u => u.name === userName);
+    if (idx >= 0) list[idx] = { ...list[idx], pinHash: hash };
+    else list.push({ name: userName, pinHash: hash, isOwner: false });
+    updateSettings({ users: list });
+    // Sincronizar cf_security para el owner (retrocompatibilidad con export)
+    if (list[idx]?.isOwner || (idx < 0 && false))
+      save(SEC_KEY, { ...getSecuritySettings(), pinHash: hash });
+    const entry = list.find(u => u.name === userName);
+    if (entry?.isOwner) save(SEC_KEY, { ...getSecuritySettings(), pinHash: hash });
+  }
+
+  async function verifyUserPin(userName, pin) {
+    const e = getUserEntry(userName);
+    if (!e || !e.pinHash) return true; // sin PIN = siempre pasa
+    const hash = await _hashPin(pin);
+    return hash === e.pinHash;
+  }
+
+  function removeUserPin(userName) {
+    const list = getUserList().map(u =>
+      u.name === userName ? { ...u, pinHash: null } : u
+    );
+    updateSettings({ users: list });
+    const entry = list.find(u => u.name === userName);
+    if (entry?.isOwner) save(SEC_KEY, { ...getSecuritySettings(), pinHash: null });
+  }
+
+  function addUserToList(name) {
+    const list = getUserList();
+    if (list.find(u => u.name === name)) return; // ya existe
+    list.push({ name, pinHash: null, isOwner: false });
+    updateSettings({ users: list });
+  }
+
+  function removeUserFromList(name) {
+    // No se puede eliminar al owner ni al único usuario
+    const list = getUserList();
+    if (list.length <= 1) return;
+    const filtered = list.filter(u => u.name !== name || u.isOwner);
+    updateSettings({ users: filtered });
+  }
+
+  // ── Funciones de seguridad (delegadas al usuario actual) ─────────────────────
+  function isPinSet() {
+    const s = getSettings();
+    return userHasPin(s.userName || 'Principal');
+  }
 
   async function setPinHash(pin) {
-    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfpin_' + pin));
-    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    save(SEC_KEY, { ...getSecuritySettings(), pinHash: hash });
+    const s = getSettings();
+    await setUserPin(s.userName || 'Principal', pin);
   }
 
   async function verifyPin(pin) {
-    const sec = getSecuritySettings();
-    if (!sec.pinHash) return true;
-    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfpin_' + pin));
-    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    return hash === sec.pinHash;
+    const s = getSettings();
+    return verifyUserPin(s.userName || 'Principal', pin);
   }
 
-  function removePin()         { save(SEC_KEY, { ...getSecuritySettings(), pinHash: null }); }
-  function setExportPin(val)   { save(SEC_KEY, { ...getSecuritySettings(), requirePinForExport: !!val }); }
+  function removePin() {
+    const s = getSettings();
+    removeUserPin(s.userName || 'Principal');
+  }
+
+  function setExportPin(val) {
+    save(SEC_KEY, { ...getSecuritySettings(), requirePinForExport: !!val });
+  }
 
   // ── Cifrado AES-256-GCM (Web Crypto API — 100% offline) ──────────────────────
   // Exportación cifrada: nadie puede leer el archivo sin la contraseña.
@@ -756,22 +860,26 @@ const DB = (() => {
   // Lógica: cada dispositivo tiene su userName. Exporta sus transacciones (con
   // userName estampado), el otro dispositivo las importa y la app une sin duplicar.
 
-  // Lista completa de usuarios: los almacenados + los encontrados en transacciones
+  // Lista completa de usuarios (nombres) para backward compat
   function getUsers() {
-    const s       = getSettings();
-    const stored  = Array.isArray(s.users) ? s.users : [];
-    const current = s.userName || 'Principal';
+    const list    = getUserList();
     const txUsers = getUserNames();
-    const all     = new Set([current, ...stored, ...txUsers]);
+    const all     = new Set([...list.map(u => u.name), ...txUsers]);
     return [...all].sort();
   }
 
-  // Cambia el usuario activo y lo guarda en la lista de usuarios conocidos
+  // Cambia el usuario activo; si no existe en la lista lo agrega (sin PIN)
   function switchUser(name) {
-    const current = getSettings().userName || 'Principal';
-    const stored  = Array.isArray(getSettings().users) ? getSettings().users : [current];
-    const all     = new Set([name, current, ...stored, ...getUserNames()]);
-    updateSettings({ userName: name, users: [...all].sort() });
+    const list = getUserList();
+    if (!list.find(u => u.name === name)) {
+      list.push({ name, pinHash: null, isOwner: false });
+    }
+    // Agregar usuarios de transacciones que no estén en la lista
+    getUserNames().forEach(txUser => {
+      if (!list.find(u => u.name === txUser))
+        list.push({ name: txUser, pinHash: null, isOwner: false });
+    });
+    updateSettings({ userName: name, users: list });
   }
 
   // Retorna los nombres de usuario únicos que existen en las transacciones
@@ -918,6 +1026,8 @@ const DB = (() => {
     getAccountBalances,
     getBalanceSheet,
     getSecuritySettings, isPinSet, setPinHash, verifyPin, removePin, setExportPin,
+    getUserList, getUserEntry, userHasPin, setUserPin, verifyUserPin,
+    removeUserPin, addUserToList, removeUserFromList,
     exportForSyncEncrypted, importFromUserDecrypted,
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
