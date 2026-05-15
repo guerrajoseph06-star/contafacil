@@ -664,6 +664,94 @@ const DB = (() => {
     return bal; // { accountId: saldo }
   }
 
+  // ── Seguridad: PIN de bloqueo ─────────────────────────────────────────────────
+  // El PIN se almacena como hash SHA-256 (nunca en texto plano)
+  const SEC_KEY = 'cf_security';
+
+  function getSecuritySettings() {
+    return load(SEC_KEY) || { pinHash: null, requirePinForExport: false };
+  }
+
+  function isPinSet() { return !!getSecuritySettings().pinHash; }
+
+  async function setPinHash(pin) {
+    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfpin_' + pin));
+    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    save(SEC_KEY, { ...getSecuritySettings(), pinHash: hash });
+  }
+
+  async function verifyPin(pin) {
+    const sec = getSecuritySettings();
+    if (!sec.pinHash) return true;
+    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfpin_' + pin));
+    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    return hash === sec.pinHash;
+  }
+
+  function removePin()         { save(SEC_KEY, { ...getSecuritySettings(), pinHash: null }); }
+  function setExportPin(val)   { save(SEC_KEY, { ...getSecuritySettings(), requirePinForExport: !!val }); }
+
+  // ── Cifrado AES-256-GCM (Web Crypto API — 100% offline) ──────────────────────
+  // Exportación cifrada: nadie puede leer el archivo sin la contraseña.
+
+  async function _deriveKey(password, salt) {
+    const km = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },
+      km,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function exportForSyncEncrypted(password) {
+    const plain = new TextEncoder().encode(exportForSync());
+    const salt  = crypto.getRandomValues(new Uint8Array(16));
+    const iv    = crypto.getRandomValues(new Uint8Array(12));
+    const key   = await _deriveKey(password, salt);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+
+    // Empacar: magic(8) + salt(16) + iv(12) + ciphertext
+    const magic  = new TextEncoder().encode('CFPRO_01'); // 8 bytes identificador
+    const packed = new Uint8Array(8 + 16 + 12 + cipher.byteLength);
+    packed.set(magic,   0);
+    packed.set(salt,    8);
+    packed.set(iv,      24);
+    packed.set(new Uint8Array(cipher), 36);
+
+    return JSON.stringify({
+      cf_encrypted: true,
+      version:      1,
+      data:         btoa(String.fromCharCode(...packed)),
+    }, null, 2);
+  }
+
+  async function importFromUserDecrypted(jsonStr, password) {
+    const wrapper = JSON.parse(jsonStr);
+    if (!wrapper.cf_encrypted) return importFromUser(jsonStr); // sin cifrado
+
+    const packed = Uint8Array.from(atob(wrapper.data), c => c.charCodeAt(0));
+    // Verificar magic
+    const magic = new TextDecoder().decode(packed.slice(0, 8));
+    if (magic !== 'CFPRO_01') throw new Error('Formato no reconocido');
+
+    const salt   = packed.slice(8,  24);
+    const iv     = packed.slice(24, 36);
+    const cipher = packed.slice(36);
+
+    let decrypted;
+    try {
+      const key = await _deriveKey(password, salt);
+      decrypted  = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+    } catch {
+      throw new Error('Contraseña incorrecta');
+    }
+    return importFromUser(new TextDecoder().decode(decrypted));
+  }
+
   // ── Multi-usuario / Sincronización entre dispositivos ────────────────────────
   // Lógica: cada dispositivo tiene su userName. Exporta sus transacciones (con
   // userName estampado), el otro dispositivo las importa y la app une sin duplicar.
@@ -829,6 +917,8 @@ const DB = (() => {
     getBudgets, setBudget, deleteBudget, getBudgetStatus,
     getAccountBalances,
     getBalanceSheet,
+    getSecuritySettings, isPinSet, setPinHash, verifyPin, removePin, setExportPin,
+    exportForSyncEncrypted, importFromUserDecrypted,
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,

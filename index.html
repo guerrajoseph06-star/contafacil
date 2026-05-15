@@ -11,6 +11,29 @@
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
+    /* ══ PANTALLA DE BLOQUEO / PIN ══ */
+    .pin-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(255,255,255,.3);
+      transition: background .15s, transform .15s;
+    }
+    .pin-dot.filled { background: white; }
+    .pin-key {
+      width: 76px; height: 76px; border-radius: 50%; border: none; cursor: pointer;
+      font-size: 26px; font-weight: 700;
+      background: rgba(255,255,255,.15); color: white;
+      transition: background .12s, transform .08s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin-key:active { background: rgba(255,255,255,.4); transform: scale(.93); }
+    .pin-key-empty  { background: transparent !important; cursor: default; pointer-events: none; }
+    .pin-key-del    { font-size: 22px; }
+    @keyframes pinShake {
+      0%,100% { transform: translateX(0); }
+      15%,45%,75% { transform: translateX(-9px); }
+      30%,60%,90% { transform: translateX( 9px); }
+    }
+
     /* Estilos adicionales v2 */
     .tx-icon.liability { background: #fef3c7; }
     .tx-amount.liability { color: var(--warning); }
@@ -107,6 +130,46 @@
   </style>
 </head>
 <body>
+
+<!-- ═══════════════════════════════════════════════════
+     PANTALLA DE BLOQUEO — PIN DE SEGURIDAD
+═══════════════════════════════════════════════════ -->
+<div id="screen-lock" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999;
+  background:linear-gradient(160deg,#1e3a8a,#2563eb,#0891b2);
+  flex-direction:column; align-items:center; justify-content:center; padding:32px 24px;">
+
+  <!-- Logo y nombre -->
+  <div style="text-align:center; margin-bottom:32px;">
+    <div style="font-size:54px; margin-bottom:12px; filter:drop-shadow(0 4px 12px rgba(0,0,0,.3));">🔒</div>
+    <div style="font-size:22px; font-weight:900; color:white; letter-spacing:-.5px;" id="lock-company">ContaFácil Pro</div>
+    <div style="font-size:13px; color:rgba(255,255,255,.75); margin-top:8px; font-weight:500;" id="lock-msg">Ingresa tu PIN</div>
+  </div>
+
+  <!-- Puntos indicadores (4 dígitos) -->
+  <div style="display:flex; gap:22px; margin-bottom:44px;" id="pin-dots">
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+    <div class="pin-dot"></div>
+  </div>
+
+  <!-- Teclado numérico 3×4 -->
+  <div style="display:grid; grid-template-columns:repeat(3,76px); grid-template-rows:repeat(4,76px); gap:12px;">
+    <button class="pin-key" onclick="appendPinDigit(1)">1</button>
+    <button class="pin-key" onclick="appendPinDigit(2)">2</button>
+    <button class="pin-key" onclick="appendPinDigit(3)">3</button>
+    <button class="pin-key" onclick="appendPinDigit(4)">4</button>
+    <button class="pin-key" onclick="appendPinDigit(5)">5</button>
+    <button class="pin-key" onclick="appendPinDigit(6)">6</button>
+    <button class="pin-key" onclick="appendPinDigit(7)">7</button>
+    <button class="pin-key" onclick="appendPinDigit(8)">8</button>
+    <button class="pin-key" onclick="appendPinDigit(9)">9</button>
+    <button class="pin-key pin-key-empty"></button>
+    <button class="pin-key" onclick="appendPinDigit(0)">0</button>
+    <button class="pin-key pin-key-del" onclick="deletePinDigit()">⌫</button>
+  </div>
+</div>
+
 
 <!-- ═══════════════════════════════════════════════════
      ONBOARDING
@@ -706,6 +769,26 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">🔐 Seguridad</div>
+      <button class="settings-item" onclick="openSecuritySettings()">
+        <div class="settings-item-icon">🔒</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">PIN de bloqueo</div>
+          <div class="settings-item-desc" id="settings-pin-desc">Sin PIN configurado</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
+      <button class="settings-item" onclick="openSecuritySettings()">
+        <div class="settings-item-icon">🔐</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label">Exportación segura</div>
+          <div class="settings-item-desc" id="settings-export-pin-desc">Exportar con contraseña</div>
+        </div>
+        <div class="settings-item-arrow">›</div>
+      </button>
     </div>
 
     <div class="settings-section">

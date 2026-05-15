@@ -22,6 +22,13 @@ function toggleDarkMode() {
   localStorage.setItem('cf_dark_mode', isDark ? '0' : '1');
   applyTheme(!isDark);
 }
+// ── Variables PIN / Seguridad ─────────────────────────────────────────────────
+let _pinBuffer  = '';        // dígitos ingresados en el momento
+let _pinMode    = 'unlock';  // 'unlock' | 'confirm' | 'set' | 'confirm_new'
+let _pinAction  = null;      // función a ejecutar tras PIN correcto
+let _newPinTemp = '';        // PIN nuevo (primer ingreso) para confirmar
+let _encImportPending = null;// JSON cifrado pendiente de importar
+
 let editingTxId      = null;
 let formType         = 'expense';
 let journalFilter    = 'all';
@@ -127,6 +134,313 @@ function finishOnboarding() {
   document.getElementById('screen-onboarding').classList.remove('active');
   document.getElementById('bottom-nav').style.display = 'flex';
   navigate('dashboard');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — PIN de bloqueo + exportación cifrada AES-256
+// ══════════════════════════════════════════════════════════════════════════════
+
+function initSecurity() {
+  if (DB.isPinSet()) showLockScreen('unlock', null);
+}
+
+function showLockScreen(mode, action) {
+  _pinBuffer  = '';
+  _pinMode    = mode;
+  _pinAction  = action;
+  _newPinTemp = '';
+
+  const s      = DB.getSettings();
+  const lockEl = document.getElementById('screen-lock');
+
+  document.getElementById('lock-company').textContent = s.companyName || 'ContaFácil Pro';
+  document.getElementById('lock-msg').textContent =
+    mode === 'confirm'      ? '🔐 Confirma tu PIN para continuar' :
+    mode === 'set'          ? '🔑 Elige un PIN de 4 dígitos'      :
+    mode === 'confirm_new'  ? '🔁 Repite el PIN nuevo'            :
+                              '🔒 Ingresa tu PIN';
+
+  _updatePinDots();
+  lockEl.style.display = 'flex';
+}
+
+function hideLockScreen() {
+  document.getElementById('screen-lock').style.display = 'none';
+}
+
+function appendPinDigit(d) {
+  if (_pinBuffer.length >= 4) return;
+  _pinBuffer += String(d);
+  _updatePinDots();
+  if (_pinBuffer.length === 4) setTimeout(_processPinEntry, 180);
+}
+
+function deletePinDigit() {
+  _pinBuffer = _pinBuffer.slice(0, -1);
+  _updatePinDots();
+}
+
+function _updatePinDots() {
+  document.querySelectorAll('.pin-dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < _pinBuffer.length);
+    dot.style.transform = (i === _pinBuffer.length - 1 && _pinBuffer.length > 0) ? 'scale(1.3)' : 'scale(1)';
+  });
+}
+
+async function _processPinEntry() {
+  if (_pinMode === 'unlock' || _pinMode === 'confirm') {
+    const ok = await DB.verifyPin(_pinBuffer);
+    if (ok) {
+      hideLockScreen();
+      if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
+      else if (_pinMode === 'unlock') showToast('✅ Bienvenido', 1500);
+    } else {
+      _pinError('PIN incorrecto. Inténtalo de nuevo.');
+    }
+
+  } else if (_pinMode === 'set') {
+    _newPinTemp = _pinBuffer;
+    showLockScreen('confirm_new', _pinAction);
+
+  } else if (_pinMode === 'confirm_new') {
+    if (_pinBuffer === _newPinTemp) {
+      await DB.setPinHash(_pinBuffer);
+      hideLockScreen();
+      showToast('🔒 PIN configurado', 2500);
+      renderSettings();
+      if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
+    } else {
+      _newPinTemp = '';
+      _pinError('Los PINs no coinciden.');
+      setTimeout(() => showLockScreen('set', _pinAction), 1200);
+    }
+  }
+}
+
+function _pinError(msg) {
+  const msgEl = document.getElementById('lock-msg');
+  const prev  = msgEl.textContent;
+  msgEl.textContent = '❌ ' + msg;
+  msgEl.style.color = '#fca5a5';
+
+  const dots = document.getElementById('pin-dots');
+  dots.style.animation = 'pinShake .4s ease';
+  setTimeout(() => {
+    dots.style.animation = '';
+    _pinBuffer = '';
+    _updatePinDots();
+    msgEl.textContent = prev;
+    msgEl.style.color = '';
+  }, 900);
+}
+
+// Pide PIN si está configurado; si no, ejecuta la acción directamente
+function requirePin(action) {
+  if (!DB.isPinSet()) { action(); return; }
+  showLockScreen('confirm', action);
+}
+
+// ── Configuración de seguridad ────────────────────────────────────────────────
+function openSecuritySettings() {
+  const sec    = DB.getSecuritySettings();
+  const pinSet = DB.isPinSet();
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🔐 Seguridad de Datos</h3>
+
+    <!-- Estado PIN -->
+    <div style="background:${pinSet ? '#f0fdf4' : '#fff7ed'}; border-radius:12px; padding:14px 16px; margin-bottom:16px;
+      border:1.5px solid ${pinSet ? '#86efac' : '#fdba74'}; display:flex; align-items:center; gap:12px;">
+      <div style="font-size:32px;">${pinSet ? '🔒' : '🔓'}</div>
+      <div>
+        <div style="font-size:14px; font-weight:800; color:${pinSet ? '#166534' : '#9a3412'};">
+          ${pinSet ? 'PIN activo — app protegida' : 'Sin PIN — app abierta'}
+        </div>
+        <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+          ${pinSet ? 'Se pedirá el PIN cada vez que abras la app.' : 'Configura un PIN para bloquear el acceso.'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de PIN -->
+    ${pinSet ? `
+      <button class="btn btn-outline btn-block mb-8" onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>showLockScreen('set',null)),200)">
+        🔑 Cambiar PIN
+      </button>
+      <button class="btn btn-danger btn-block mb-16" onclick="closeSettingsSheet(); setTimeout(()=>requirePin(()=>{ DB.removePin(); showToast('🔓 PIN eliminado'); renderSettings(); }),200)">
+        🔓 Eliminar PIN
+      </button>
+    ` : `
+      <button class="btn btn-primary btn-block mb-16" onclick="closeSettingsSheet(); setTimeout(()=>showLockScreen('set',null),200)">
+        🔒 Configurar PIN de seguridad
+      </button>
+    `}
+
+    <!-- Toggle: pedir PIN antes de exportar -->
+    <div style="background:var(--gray-50); border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="flex:1;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:2px;">Pedir PIN antes de exportar</div>
+          <div style="font-size:11px; color:var(--gray-400); line-height:1.4;">
+            PDF, Excel y sincronización requieren PIN para descargarse
+          </div>
+        </div>
+        <div onclick="toggleExportPin()" id="exp-pin-track"
+          style="width:46px; height:26px; border-radius:13px; cursor:pointer; flex-shrink:0;
+            background:${sec.requirePinForExport ? 'var(--primary)' : 'var(--gray-200)'}; position:relative; transition:background .25s;">
+          <div id="exp-pin-thumb" style="position:absolute; top:3px; width:20px; height:20px;
+            border-radius:50%; background:white; transition:left .25s; box-shadow:0 1px 4px rgba(0,0,0,.2);
+            left:${sec.requirePinForExport ? '23px' : '3px'};"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Exportación cifrada AES-256 -->
+    <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe); border-radius:12px; padding:14px 16px; border:1.5px solid #bfdbfe;">
+      <div style="font-size:14px; font-weight:800; color:#1e40af; margin-bottom:6px;">🔐 Sincronización cifrada AES-256</div>
+      <div style="font-size:12px; color:#1e3a8a; line-height:1.6; margin-bottom:12px;">
+        Exporta tu registro con cifrado militar. Nadie puede leerlo sin la contraseña.
+        Úsalo para enviar datos entre dispositivos con total seguridad.
+      </div>
+      <button class="btn btn-block" style="background:var(--primary); color:white;"
+        onclick="closeSettingsSheet(); setTimeout(()=>openEncryptedExportSheet(),200)">
+        🔐 Exportar registro cifrado
+      </button>
+    </div>
+
+    <div style="font-size:11px; color:var(--gray-400); line-height:1.5; margin-top:14px; padding:0 2px;">
+      ⚠️ <strong>Nota sobre PDF/Excel:</strong> Los archivos PDF y Excel no pueden cifrarse directamente desde el navegador.
+      La protección real está en el PIN: sin él, nadie puede abrir la app ni exportar nada.
+    </div>
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function toggleExportPin() {
+  const sec = DB.getSecuritySettings();
+  if (!sec.requirePinForExport && !DB.isPinSet()) {
+    showToast('⚠️ Primero configura un PIN', 2500); return;
+  }
+  const newVal = !sec.requirePinForExport;
+  DB.setExportPin(newVal);
+  document.getElementById('exp-pin-track').style.background = newVal ? 'var(--primary)' : 'var(--gray-200)';
+  document.getElementById('exp-pin-thumb').style.left = newVal ? '23px' : '3px';
+  showToast(newVal ? '🔐 PIN requerido para exportar' : '🔓 Exportación libre', 2000);
+  renderSettings();
+}
+
+// ── Exportación cifrada (AES-256-GCM) ────────────────────────────────────────
+function openEncryptedExportSheet() {
+  const s = DB.getSettings();
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🔐 Exportar Registro Cifrado</h3>
+
+    <div style="background:var(--primary-light); border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px; color:var(--primary); line-height:1.7;">
+      <strong>Cifrado AES-256-GCM</strong> — El archivo es completamente ilegible sin la contraseña.<br><br>
+      1️⃣ Pon una contraseña segura<br>
+      2️⃣ Envía el archivo por WhatsApp, email o USB<br>
+      3️⃣ En el otro dispositivo: <strong>Importar → detecta el cifrado → pide contraseña</strong>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Contraseña de cifrado</label>
+      <input type="password" class="form-control" id="enc-pass-1"
+        placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Repetir contraseña</label>
+      <input type="password" class="form-control" id="enc-pass-2"
+        placeholder="Igual que arriba" autocomplete="new-password">
+    </div>
+
+    <div style="font-size:11px; color:var(--gray-400); line-height:1.5; margin-bottom:16px;">
+      💡 Usa la misma contraseña en ambos dispositivos. Si la pierdes, no hay forma de recuperar el archivo.
+    </div>
+
+    <button class="btn btn-primary btn-block" onclick="doEncryptedExport()">
+      🔐 Cifrar y descargar
+    </button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+async function doEncryptedExport() {
+  const p1 = document.getElementById('enc-pass-1')?.value;
+  const p2 = document.getElementById('enc-pass-2')?.value;
+  if (!p1 || p1.length < 4) { showToast('⚠️ Contraseña mínimo 4 caracteres'); return; }
+  if (p1 !== p2)             { showToast('⚠️ Las contraseñas no coinciden');    return; }
+
+  showToast('⏳ Cifrando datos...', 8000);
+  try {
+    const encrypted = await DB.exportForSyncEncrypted(p1);
+    const s    = DB.getSettings();
+    const blob = new Blob([encrypted], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    const safe = (s.userName || 'registro').replace(/[^a-zA-Z0-9]/g, '-');
+    a.href     = url;
+    a.download = `contafacil-cifrado-${safe}-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    closeSettingsSheet();
+    showToast('🔐 Archivo cifrado descargado. ¡Guarda la contraseña!', 4000);
+  } catch (e) {
+    showToast('❌ Error al cifrar: ' + e.message, 3000);
+  }
+}
+
+// ── Importación cifrada — detectada automáticamente ──────────────────────────
+function openEncryptedImportSheet() {
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <div style="text-align:center; padding:16px 0 20px;">
+      <div style="font-size:52px; margin-bottom:12px;">🔐</div>
+      <div style="font-size:18px; font-weight:800; color:var(--gray-900);">Archivo cifrado</div>
+      <div style="font-size:13px; color:var(--gray-500); margin-top:6px; line-height:1.5;">
+        Este archivo está protegido con contraseña.<br>Ingresa la contraseña para importar los datos.
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Contraseña del archivo</label>
+      <input type="password" class="form-control" id="import-enc-pass"
+        placeholder="Contraseña de cifrado" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter') doDecryptImport()">
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="doDecryptImport()">
+      🔓 Descifrar e importar
+    </button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet(); _encImportPending=null;">
+      Cancelar
+    </button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+async function doDecryptImport() {
+  const pass = document.getElementById('import-enc-pass')?.value;
+  if (!pass) { showToast('⚠️ Ingresa la contraseña'); return; }
+  showToast('⏳ Descifrando...', 8000);
+  try {
+    const result = await DB.importFromUserDecrypted(_encImportPending, pass);
+    _encImportPending = null;
+    closeSettingsSheet();
+    const msg = result.addedTxs === 0
+      ? `✅ Ya estaban importados (${result.sourceUser})`
+      : `✅ ${result.addedTxs} registros de ${result.sourceUser} importados`;
+    showToast(msg, 4000);
+    renderDashboard();
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Contraseña incorrecta'), 3000);
+  }
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -1161,8 +1475,9 @@ function nextMonth() {
   renderReports();
 }
 function printReport() {
-  showToast('📄 Preparando PDF...');
-  setTimeout(() => window.print(), 400);
+  const sec = DB.getSecuritySettings();
+  const doPrint = () => { showToast('📄 Preparando PDF...'); setTimeout(() => window.print(), 400); };
+  if (sec.requirePinForExport && DB.isPinSet()) { requirePin(doPrint); } else { doPrint(); }
 }
 
 // ── Inventario ─────────────────────────────────────────────────────────────────
@@ -1964,6 +2279,11 @@ function exportAnnualExcel() {
 
 // ── Exportar a Excel ──────────────────────────────────────────────────────────
 function exportToExcel() {
+  const sec = DB.getSecuritySettings();
+  if (sec.requirePinForExport && DB.isPinSet()) { requirePin(_doExportToExcel); return; }
+  _doExportToExcel();
+}
+function _doExportToExcel() {
   if (typeof XLSX === 'undefined') {
     showToast('⚠️ Necesitas internet una vez para cargar el módulo Excel', 4000);
     return;
@@ -3243,8 +3563,18 @@ function doImportFromUser() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
+      const text = ev.target.result;
       try {
-        const result = DB.importFromUser(ev.target.result);
+        const parsed = JSON.parse(text);
+        if (parsed.cf_encrypted) {
+          // Archivo cifrado detectado → pedir contraseña
+          _encImportPending = text;
+          closeSettingsSheet();
+          setTimeout(() => openEncryptedImportSheet(), 200);
+          return;
+        }
+        // Archivo normal (no cifrado)
+        const result = DB.importFromUser(text);
         closeSettingsSheet();
         const msg = result.addedTxs === 0
           ? `✅ Sin cambios — los datos de ${result.sourceUser} ya estaban importados`
@@ -3288,6 +3618,19 @@ function renderSettings() {
     budgetDesc.textContent = budgetCount
       ? `${budgetCount} categoría(s) · ${fmt(Object.values(budgets).reduce((s, v) => s + v, 0))}/mes`
       : 'Límites por categoría de gasto';
+  }
+
+  // Seguridad
+  const pinDescEl = document.getElementById('settings-pin-desc');
+  if (pinDescEl) {
+    pinDescEl.textContent = DB.isPinSet() ? '🟢 PIN activo — toca para cambiar' : 'Sin PIN configurado';
+  }
+  const expPinDescEl = document.getElementById('settings-export-pin-desc');
+  if (expPinDescEl) {
+    const sec = DB.getSecuritySettings();
+    expPinDescEl.textContent = sec.requirePinForExport
+      ? '🔒 Se pide PIN antes de exportar'
+      : 'Exportar sin confirmación de PIN';
   }
 }
 
@@ -3392,6 +3735,7 @@ function emptyHTML(icon, title, text) {
 // ── Init ───────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   DB.init();
+  initSecurity();
 
   // Aplicar tema guardado (modo oscuro)
   const savedDark = localStorage.getItem('cf_dark_mode') === '1';
