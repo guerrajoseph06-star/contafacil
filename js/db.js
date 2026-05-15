@@ -27,8 +27,16 @@ const DB = (() => {
     auditLog:     'cf_audit_log',
   };
 
-  const load = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
-  const save = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+  // ── Claves globales (no pertenecen a ninguna empresa) ─────────────────────────
+  const GKEYS = { companies: 'cf_companies', active: 'cf_active_co' };
+  const loadG = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
+  const saveG = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+
+  // _prefix se inicializa en init() con el ID de la empresa activa ('coXXX_')
+  let _prefix = '';
+  const load = key => { try { return JSON.parse(localStorage.getItem(_prefix + key)); } catch { return null; } };
+  const save = (key, val) => localStorage.setItem(_prefix + key, JSON.stringify(val));
+
   function uuid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
   // ── Log de auditoría ─────────────────────────────────────────────────────────
@@ -94,8 +102,39 @@ const DB = (() => {
     users:    ['Principal'], // lista de todos los usuarios conocidos
   };
 
-  // ── Init / Migración ───────────────────────────────────────
+  // ── Init / Migración ───────────────────────────────────────────────────────
   function init() {
+    // ── 1. Multi-empresa: seleccionar o crear empresa activa ────────────────────
+    let companies = loadG(GKEYS.companies);
+
+    if (!companies || companies.length === 0) {
+      // Primera vez con multi-empresa: crear empresa por defecto y migrar datos
+      const defId = 'co' + Date.now().toString(36);
+      companies   = [{ id: defId, name: 'Mi Empresa', createdAt: new Date().toISOString() }];
+      saveG(GKEYS.companies, companies);
+      saveG(GKEYS.active, defId);
+      _prefix = defId + '_';
+
+      // Migrar datos existentes (sin prefijo) al nuevo espacio de empresa
+      const knownKeys = [
+        'cf_transactions','cf_settings','cf_categories','cf_accounts',
+        'cf_inventory','cf_recurring','cf_budgets','cf_receivables',
+        'cf_fixed_assets','cf_onboarded','cf_audit_log','cf_security',
+      ];
+      knownKeys.forEach(k => {
+        const v = localStorage.getItem(k);
+        if (v !== null) { localStorage.setItem(_prefix + k, v); localStorage.removeItem(k); }
+      });
+    } else {
+      let activeId = loadG(GKEYS.active);
+      if (!activeId || !companies.find(c => c.id === activeId)) {
+        activeId = companies[0].id;
+        saveG(GKEYS.active, activeId);
+      }
+      _prefix = activeId + '_';
+    }
+
+    // ── 2. Inicializar datos por defecto si la empresa es nueva ─────────────────
     if (!load(KEYS.categories))   save(KEYS.categories,   DEFAULT_CATEGORIES);
     if (!load(KEYS.accounts))     save(KEYS.accounts,     DEFAULT_ACCOUNTS);
     if (!load(KEYS.settings))     save(KEYS.settings,     DEFAULT_SETTINGS);
@@ -1114,6 +1153,51 @@ const DB = (() => {
   // Incluye: empresa, usuarios+permisos+PINs(hash), moneda, cuentas,
   // categorías, presupuestos, recurrentes y ajustes de seguridad.
   // NO incluye: transacciones ni inventario (esos van por exportForSync).
+  // ── Gestión multi-empresa ─────────────────────────────────────────────────────
+  // Cada empresa tiene su propio espacio de datos en localStorage (prefijo único).
+  // Las claves globales (cf_companies, cf_active_co) no llevan prefijo.
+
+  function getCompanyList() { return loadG(GKEYS.companies) || []; }
+
+  function getActiveCompany() {
+    const id = loadG(GKEYS.active);
+    return getCompanyList().find(c => c.id === id) || null;
+  }
+
+  function addCompany(name) {
+    const list = getCompanyList();
+    const id   = 'co' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    const co   = { id, name: name.trim() || 'Nueva Empresa', createdAt: new Date().toISOString() };
+    list.push(co);
+    saveG(GKEYS.companies, list);
+    return co;
+  }
+
+  function switchToCompany(id) {
+    if (!getCompanyList().find(c => c.id === id)) return false;
+    saveG(GKEYS.active, id);
+    _prefix = id + '_';
+    return true;
+  }
+
+  function updateCompanyName(id, name) {
+    const list = getCompanyList();
+    const c    = list.find(c => c.id === id);
+    if (c && name.trim()) { c.name = name.trim(); saveG(GKEYS.companies, list); }
+  }
+
+  function deleteCompany(id) {
+    const list = getCompanyList();
+    if (list.length <= 1) throw new Error('No puedes eliminar la única empresa');
+    // Eliminar todos los datos de esa empresa del localStorage
+    const pre = id + '_';
+    Object.keys(localStorage).filter(k => k.startsWith(pre)).forEach(k => localStorage.removeItem(k));
+    const newList = list.filter(c => c.id !== id);
+    saveG(GKEYS.companies, newList);
+    // Si era la activa, cambiar a la primera disponible
+    if (loadG(GKEYS.active) === id) saveG(GKEYS.active, newList[0].id);
+  }
+
   // ── Alertas de vencimiento unificadas ────────────────────────────────────────
   // Combina recurrentes activos + CxC pendientes en los próximos N días
   // También incluye CxC ya vencidas (daysUntil negativo).
@@ -1236,5 +1320,6 @@ const DB = (() => {
     exportData, importData,
     exportSettings, importSettings,
     getUpcomingAlerts,
+    getCompanyList, getActiveCompany, addCompany, switchToCompany, updateCompanyName, deleteCompany,
   };
 })();

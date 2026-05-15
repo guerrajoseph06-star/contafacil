@@ -943,6 +943,17 @@ function renderDashboard() {
   const pending = DB.getPendingLiabilities();
 
   document.getElementById('dash-company').textContent  = s.companyName;
+  // Badge multi-empresa en el header
+  const coList  = DB.getCompanyList();
+  const coBadge = document.getElementById('dash-company-badge');
+  if (coBadge) {
+    if (coList.length > 1) {
+      coBadge.style.display = 'inline';
+      coBadge.textContent   = coList.length + ' 🏢';
+    } else {
+      coBadge.style.display = 'none';
+    }
+  }
   document.getElementById('dash-balance').textContent  = fmt(all.netProfit);
   const userBtn = document.getElementById('dash-user-name');
   if (userBtn) userBtn.textContent = s.userName || 'Principal';
@@ -3185,6 +3196,112 @@ function openAuditLog() {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
+// ── Gestión multi-empresa ─────────────────────────────────────────────────────
+function openCompanySwitcher() {
+  const companies = DB.getCompanyList();
+  const active    = DB.getActiveCompany();
+
+  const rows = companies.map(co => {
+    const isActive = active && co.id === active.id;
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:8px;
+        background:${isActive ? 'var(--primary)' : 'var(--gray-50)'}; border-radius:12px;
+        border:2px solid ${isActive ? 'var(--primary)' : 'var(--gray-200)'};">
+        <div style="font-size:28px; flex-shrink:0;">🏢</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:800; color:${isActive ? 'white' : 'var(--gray-800)'};
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${co.name}</div>
+          <div style="font-size:11px; color:${isActive ? 'rgba(255,255,255,.75)' : 'var(--gray-400)'}; margin-top:1px;">
+            ${isActive ? '✓ Empresa activa' : 'Toca para cambiar'}
+          </div>
+        </div>
+        ${isActive ? `
+          <button onclick="_editCompanyName('${co.id}','${co.name.replace(/'/g,"&#39;")}')"
+            style="background:rgba(255,255,255,.2); border:none; border-radius:8px; padding:6px 10px;
+              color:white; font-size:12px; font-weight:700; cursor:pointer; flex-shrink:0;">
+            ✏️ Renombrar
+          </button>
+        ` : `
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button onclick="_switchToCompany('${co.id}')"
+              style="background:var(--primary); border:none; border-radius:8px; padding:6px 12px;
+                color:white; font-size:12px; font-weight:700; cursor:pointer;">
+              Cambiar
+            </button>
+            ${companies.length > 1 ? `
+              <button onclick="_deleteCompany('${co.id}','${co.name.replace(/'/g,"&#39;")}')"
+                style="background:#fef2f2; border:none; border-radius:8px; padding:6px 10px;
+                  color:var(--danger); font-size:16px; cursor:pointer;">
+                🗑️
+              </button>
+            ` : ''}
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🏢 Mis Empresas</h3>
+
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px;
+      padding:12px 14px; font-size:12px; color:#1e40af; margin-bottom:16px; line-height:1.6;">
+      Cada empresa tiene datos, usuarios y seguridad <strong>completamente independientes</strong>.
+      Al cambiar de empresa tendrás que ingresar el PIN de esa empresa.
+    </div>
+
+    <div style="margin-bottom:4px;">${rows}</div>
+
+    <button onclick="_addNewCompany()" class="btn btn-outline btn-block" style="margin-top:8px;">
+      ➕ Crear nueva empresa
+    </button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function _switchToCompany(id) {
+  DB.switchToCompany(id);
+  closeSettingsSheet();
+  showToast('🔄 Cambiando de empresa…');
+  setTimeout(() => location.reload(), 600);
+}
+
+function _addNewCompany() {
+  const name = prompt('Nombre de la nueva empresa:');
+  if (!name || !name.trim()) return;
+  const co = DB.addCompany(name);
+  DB.switchToCompany(co.id);
+  closeSettingsSheet();
+  showToast('✅ Empresa creada. Cargando…');
+  setTimeout(() => location.reload(), 700);
+}
+
+function _editCompanyName(id, currentName) {
+  const name = prompt('Nuevo nombre:', currentName);
+  if (!name || !name.trim() || name.trim() === currentName) return;
+  DB.updateCompanyName(id, name);
+  // Actualizar también companyName en settings de esa empresa
+  DB.updateSettings({ companyName: name.trim() });
+  openCompanySwitcher();
+  renderDashboard();
+  showToast('✅ Empresa renombrada');
+}
+
+function _deleteCompany(id, name) {
+  const msg = `⚠️ ¿Eliminar "${name}"?\n\nSe borrarán TODOS los datos: transacciones, inventario, usuarios y configuración. Esta acción NO se puede deshacer.`;
+  if (!confirm(msg)) return;
+  try {
+    DB.deleteCompany(id);
+    closeSettingsSheet();
+    showToast('🗑️ Empresa eliminada. Recargando…');
+    setTimeout(() => location.reload(), 700);
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
 // ── Transferir configuración ─────────────────────────────────────────────────
 function openSettingsTransferSheet() {
   const isOwner = isCurrentUserOwner();
@@ -4525,6 +4642,15 @@ function renderSettings() {
   const s = DB.getSettings();
   document.getElementById('settings-company-val').textContent  = s.companyName;
   document.getElementById('settings-currency-val').textContent = s.currency;
+
+  // Indicador multi-empresa
+  const coList = DB.getCompanyList();
+  const coEl   = document.getElementById('settings-company-switcher-desc');
+  if (coEl) {
+    coEl.textContent = coList.length > 1
+      ? `${coList.length} empresas · toca para cambiar`
+      : 'Toca para agregar otra empresa';
+  }
   const unEl = document.getElementById('settings-username-val');
   if (unEl) unEl.textContent = s.userName || 'Principal';
 

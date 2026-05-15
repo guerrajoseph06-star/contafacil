@@ -253,7 +253,14 @@
 ═══════════════════════════════════════════════════ -->
 <div id="screen-dashboard" class="screen">
   <div class="topbar">
-    <div class="topbar-logo"><span>💼</span><span id="dash-company">Mi Negocio</span></div>
+    <button onclick="navigate('settings'); setTimeout(openCompanySwitcher,150)"
+      style="background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;
+        color:white; font-weight:800; font-size:14px; padding:0; max-width:48vw;">
+      <span>💼</span>
+      <span id="dash-company" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Mi Negocio</span>
+      <span id="dash-company-badge" style="display:none; background:rgba(255,255,255,.25);
+        border-radius:8px; font-size:10px; padding:1px 5px; flex-shrink:0;"></span>
+    </button>
     <button id="dash-user-btn" onclick="openQuickUserSwitch()"
       style="font-size:11px; background:rgba(255,255,255,.22); border-radius:20px; padding:5px 11px;
              color:white; font-weight:700; border:none; cursor:pointer; flex-shrink:0; white-space:nowrap;">
@@ -784,8 +791,16 @@
   <div class="content">
     <div class="settings-section">
       <div class="settings-section-title">Empresa</div>
-      <button class="settings-item" onclick="openSettingsSheet('company')">
+      <button class="settings-item" onclick="openCompanySwitcher()" style="border:2px solid var(--primary); border-radius:14px; margin-bottom:4px;">
         <div class="settings-item-icon">🏢</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label" style="color:var(--primary); font-weight:800;">Mis Empresas</div>
+          <div class="settings-item-desc" id="settings-company-switcher-desc">Cambiar o crear empresa</div>
+        </div>
+        <div class="settings-item-arrow" style="color:var(--primary);">›</div>
+      </button>
+      <button class="settings-item" onclick="openSettingsSheet('company')">
+        <div class="settings-item-icon">📝</div>
         <div class="settings-item-info">
           <div class="settings-item-label">Información del negocio</div>
           <div class="settings-item-desc" id="settings-company-val">Mi Negocio</div>
