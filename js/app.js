@@ -239,9 +239,18 @@ function showLockScreen(mode, action, targetUser) {
     mode === 'confirm_new' ? '🔁 Repite el mismo PIN'      :
                              `🔒 PIN de ${_pinTargetUser}`;
 
-  // Ocultar submsg secundario
+  // Ocultar submsg secundario y área de recuperación
   const sub = document.getElementById('lock-submsg');
   if (sub) { sub.style.display = 'none'; sub.textContent = ''; }
+  const recArea = document.getElementById('lock-recovery-area');
+  if (recArea) recArea.style.display = 'none';
+
+  // Botón "Olvidé mi PIN" — solo en unlock y si el usuario tiene código de recuperación
+  const forgotBtn = document.getElementById('lock-forgot-btn');
+  if (forgotBtn) {
+    forgotBtn.style.display =
+      (mode === 'unlock' && DB.userHasRecoveryCode(_pinTargetUser)) ? 'block' : 'none';
+  }
 
   // Botón de retroceso/cancelar
   const backBtn = document.getElementById('lock-back-btn');
@@ -365,16 +374,124 @@ async function _processPinEntry() {
 
   } else if (_pinMode === 'confirm_new') {
     if (_pinBuffer === _newPinTemp) {
-      await DB.setUserPin(_pinTargetUser, _pinBuffer); // guarda para el usuario correcto
+      await DB.setUserPin(_pinTargetUser, _pinBuffer);
+      // Generar código de recuperación y mostrarlo antes de cerrar
+      const code = DB.generateRecoveryCode();
+      await DB.setUserRecoveryCode(_pinTargetUser, code);
       hideLockScreen();
-      showToast('🔒 PIN configurado para ' + _pinTargetUser, 2500);
       renderSettings();
       if (_pinAction) { const fn = _pinAction; _pinAction = null; fn(); }
+      // Mostrar el código de recuperación (IMPORTANTE: solo se ve una vez)
+      _showRecoveryCodeModal(code, _pinTargetUser);
     } else {
       _newPinTemp = '';
       _pinError('Los PINs no coinciden.');
       setTimeout(() => showLockScreen('set', _pinAction, _pinTargetUser), 1200);
     }
+  }
+}
+
+// Muestra el código de recuperación en un modal (solo al crear el PIN)
+function _showRecoveryCodeModal(code, userName) {
+  const overlay = document.createElement('div');
+  overlay.id = 'recovery-modal';
+  overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:10002;
+    background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:24px;`;
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:20px;padding:28px 24px;max-width:360px;width:100%;
+      box-shadow:0 20px 60px rgba(0,0,0,.3);">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:44px;margin-bottom:10px;">🔑</div>
+        <div style="font-size:18px;font-weight:900;color:#111;">Código de recuperación</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:6px;line-height:1.5;">
+          Si olvidas tu PIN, este código te permitirá crear uno nuevo.<br>
+          <strong style="color:#dc2626;">Guárdalo ahora — no se vuelve a mostrar.</strong>
+        </div>
+      </div>
+
+      <!-- El código -->
+      <div style="background:#f0f9ff;border:2px dashed #3b82f6;border-radius:14px;
+        padding:18px;text-align:center;margin-bottom:16px;">
+        <div style="font-size:11px;font-weight:700;color:#1e40af;letter-spacing:.5px;
+          text-transform:uppercase;margin-bottom:8px;">Código de ${userName}</div>
+        <div id="rc-code-display" style="font-size:28px;font-weight:900;color:#1e40af;
+          letter-spacing:4px;font-family:monospace;">${code}</div>
+      </div>
+
+      <div style="background:#fef3c7;border-radius:10px;padding:12px;font-size:12px;
+        color:#92400e;margin-bottom:20px;line-height:1.5;">
+        📸 Toma una captura de pantalla o anótalo en un lugar seguro.
+        No lo compartas con nadie.
+      </div>
+
+      <button onclick="
+        navigator.clipboard?.writeText('${code}').catch(()=>{});
+        this.textContent='✅ ¡Copiado!';
+        this.style.background='#d1fae5';
+        this.style.color='#065f46';
+        this.style.borderColor='#6ee7b7';
+      " style="width:100%;padding:12px;border:2px solid #3b82f6;border-radius:12px;
+        background:#eff6ff;color:#1e40af;font-size:14px;font-weight:700;
+        cursor:pointer;margin-bottom:10px;">
+        📋 Copiar código
+      </button>
+
+      <button onclick="document.getElementById('recovery-modal').remove();"
+        style="width:100%;padding:12px;border:none;border-radius:12px;
+          background:#111827;color:white;font-size:14px;font-weight:700;cursor:pointer;">
+        ✅ Ya guardé mi código
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+// Abre el flujo de recuperación de PIN (botón "Olvidé mi PIN")
+function openForgotPin() {
+  const lockEl  = document.getElementById('screen-lock');
+  const pinArea = document.getElementById('lock-pin-area');
+  const picker  = document.getElementById('lock-user-picker');
+  const sub     = document.getElementById('lock-submsg');
+  const recArea = document.getElementById('lock-recovery-area');
+
+  if (pinArea)  pinArea.style.display  = 'none';
+  if (picker)   picker.style.display   = 'none';
+  if (recArea)  recArea.style.display  = 'flex';
+  if (sub) { sub.style.display = 'none'; }
+
+  document.getElementById('lock-msg').textContent = '🔑 Código de recuperación';
+  document.getElementById('lock-company').textContent =
+    DB.getSettings().companyName || 'ContaFácil Pro';
+
+  const input = document.getElementById('lock-recovery-input');
+  if (input) { input.value = ''; setTimeout(() => input.focus(), 200); }
+}
+
+async function submitRecoveryCode() {
+  const input = document.getElementById('lock-recovery-input');
+  const code  = input?.value?.trim();
+  if (!code || code.length < 11) { showToast('⚠️ Ingresa el código completo (ej: AB3D-EF7G-HI9J)', 2500); return; }
+
+  const ok = await DB.verifyRecoveryCode(_pinTargetUser, code);
+  if (ok) {
+    // Código correcto: cerrar recuperación y pedir nuevo PIN
+    const recArea = document.getElementById('lock-recovery-area');
+    if (recArea) recArea.style.display = 'none';
+    showLockScreen('set', null, _pinTargetUser);
+    showToast('✅ Código correcto. Elige tu nuevo PIN.', 2500);
+  } else {
+    showToast('❌ Código incorrecto. Verifica y vuelve a intentar.', 3000);
+    if (input) { input.style.borderColor = '#dc2626'; setTimeout(() => { input.style.borderColor = ''; }, 1500); }
+  }
+}
+
+function closeRecoveryArea() {
+  const recArea = document.getElementById('lock-recovery-area');
+  const pinArea = document.getElementById('lock-pin-area');
+  if (recArea) recArea.style.display = 'none';
+  if (pinArea) {
+    pinArea.style.display = 'flex';
+    document.getElementById('lock-msg').textContent = `🔒 PIN de ${_pinTargetUser}`;
   }
 }
 

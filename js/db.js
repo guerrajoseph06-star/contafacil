@@ -770,6 +770,38 @@ const DB = (() => {
     updateSettings({ users: filtered });
   }
 
+  // ── Código de recuperación (si se olvida el PIN) ────────────────────────────
+  // Genera un código de 12 caracteres sin caracteres ambiguos, en grupos de 4
+  function generateRecoveryCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0,O,1,I,l
+    const arr   = crypto.getRandomValues(new Uint8Array(12));
+    let raw = '';
+    arr.forEach(b => { raw += chars[b % chars.length]; });
+    return raw.slice(0,4) + '-' + raw.slice(4,8) + '-' + raw.slice(8,12);
+  }
+
+  async function setUserRecoveryCode(userName, plainCode) {
+    const normalized = plainCode.replace(/-/g, '').toUpperCase();
+    const hash = await _hashPin('recovery_' + normalized); // prefijo distinto al PIN
+    const list = getUserList().map(u =>
+      u.name === userName ? { ...u, recoveryHash: hash } : u
+    );
+    updateSettings({ users: list });
+  }
+
+  async function verifyRecoveryCode(userName, plainCode) {
+    const e = getUserEntry(userName);
+    if (!e || !e.recoveryHash) return false;
+    const normalized = plainCode.replace(/-/g, '').toUpperCase();
+    const hash = await _hashPin('recovery_' + normalized);
+    return hash === e.recoveryHash;
+  }
+
+  function userHasRecoveryCode(userName) {
+    const e = getUserEntry(userName);
+    return !!(e && e.recoveryHash);
+  }
+
   // Marca un usuario como solo-lectura (empleado sin acceso a Reportes/Ajustes)
   function setUserReadOnly(userName, val) {
     const list = getUserList().map(u =>
@@ -1042,6 +1074,7 @@ const DB = (() => {
     getUserList, getUserEntry, userHasPin, setUserPin, verifyUserPin,
     removeUserPin, addUserToList, removeUserFromList,
     setUserReadOnly, isUserReadOnly,
+    generateRecoveryCode, setUserRecoveryCode, verifyRecoveryCode, userHasRecoveryCode,
     exportForSyncEncrypted, importFromUserDecrypted,
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,

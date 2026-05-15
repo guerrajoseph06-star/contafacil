@@ -184,6 +184,39 @@
         -webkit-tap-highlight-color:transparent;">
       ← Cancelar
     </button>
+
+    <!-- Botón "Olvidé mi PIN" (solo visible en modo unlock) -->
+    <button id="lock-forgot-btn" onclick="openForgotPin()"
+      style="display:none; margin-top:8px; background:transparent; border:none;
+        color:rgba(255,255,255,.4); font-size:12px; cursor:pointer; padding:6px 20px;
+        -webkit-tap-highlight-color:transparent;">
+      ¿Olvidaste tu PIN?
+    </button>
+  </div>
+
+  <!-- Área de recuperación de PIN (código de recuperación) -->
+  <div id="lock-recovery-area" style="display:none; flex-direction:column; align-items:center;
+    gap:14px; width:100%; max-width:320px;">
+    <div style="width:100%;">
+      <input id="lock-recovery-input" type="text" maxlength="14"
+        placeholder="AB3D-EF7G-HI9J"
+        style="width:100%; padding:16px; border-radius:14px; border:none;
+          font-size:22px; font-weight:700; text-align:center; letter-spacing:3px;
+          font-family:monospace; background:rgba(255,255,255,.15); color:white;
+          outline:none; box-sizing:border-box;"
+        oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'')"
+        onkeydown="if(event.key==='Enter') submitRecoveryCode()">
+    </div>
+    <button onclick="submitRecoveryCode()"
+      style="width:100%; padding:14px; border-radius:14px; border:none;
+        background:white; color:#1e40af; font-size:15px; font-weight:800; cursor:pointer;">
+      🔓 Recuperar acceso
+    </button>
+    <button onclick="closeRecoveryArea()"
+      style="background:transparent; border:none; color:rgba(255,255,255,.5);
+        font-size:13px; cursor:pointer; padding:6px 20px;">
+      ← Volver al PIN
+    </button>
   </div>
 </div>
 
