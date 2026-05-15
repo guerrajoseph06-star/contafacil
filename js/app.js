@@ -212,7 +212,8 @@ function showLockScreen(mode, action, targetUser) {
   _pinBuffer     = '';
   _pinMode       = mode;
   _pinAction     = action;
-  _newPinTemp    = '';
+  // ⚠️ NO resetear _newPinTemp si vamos a confirm_new: contiene el primer PIN
+  if (mode !== 'confirm_new') _newPinTemp = '';
   _pinTargetUser = targetUser || DB.getSettings().userName || 'Principal';
 
   const s      = DB.getSettings();
@@ -222,10 +223,33 @@ function showLockScreen(mode, action, targetUser) {
 
   document.getElementById('lock-company').textContent = s.companyName || 'ContaFácil Pro';
   document.getElementById('lock-msg').textContent =
-    mode === 'confirm'     ? `🔐 Confirma tu PIN (${_pinTargetUser})` :
-    mode === 'set'         ? `🔑 PIN nuevo para ${_pinTargetUser}`    :
-    mode === 'confirm_new' ? '🔁 Repite el PIN nuevo'                 :
+    mode === 'confirm'     ? `🔐 Confirma tu PIN`         :
+    mode === 'set'         ? `🔑 Elige tu PIN de 4 dígitos` :
+    mode === 'confirm_new' ? '🔁 Repite el mismo PIN'      :
                              `🔒 PIN de ${_pinTargetUser}`;
+
+  // Ocultar submsg secundario
+  const sub = document.getElementById('lock-submsg');
+  if (sub) { sub.style.display = 'none'; sub.textContent = ''; }
+
+  // Botón de retroceso/cancelar
+  const backBtn = document.getElementById('lock-back-btn');
+  if (backBtn) {
+    const users = DB.getUserList();
+    const multiUser = users.length > 1;
+    if (mode === 'confirm_new') {
+      backBtn.textContent = '← Volver a ingresar';
+      backBtn.style.display = 'block';
+    } else if (mode === 'set' || mode === 'confirm') {
+      backBtn.textContent = '← Cancelar';
+      backBtn.style.display = 'block';
+    } else if (mode === 'unlock' && multiUser) {
+      backBtn.textContent = '← Cambiar usuario';
+      backBtn.style.display = 'block';
+    } else {
+      backBtn.style.display = 'none';
+    }
+  }
 
   // Mostrar numpad, ocultar picker
   if (picker)  picker.style.display  = 'none';
@@ -233,6 +257,23 @@ function showLockScreen(mode, action, targetUser) {
 
   _updatePinDots();
   lockEl.style.display = 'flex';
+}
+
+function cancelPinEntry() {
+  const users = DB.getUserList();
+  if (_pinMode === 'confirm_new') {
+    // Volver al primer paso del PIN
+    _newPinTemp = '';
+    showLockScreen('set', _pinAction, _pinTargetUser);
+  } else if (_pinMode === 'unlock' && users.length > 1) {
+    // Volver al selector de usuarios
+    showUserPickerLock();
+  } else {
+    // Cancelar la acción y cerrar
+    hideLockScreen();
+    _pinAction  = null;
+    _newPinTemp = '';
+  }
 }
 
 function hideLockScreen() {
@@ -442,8 +483,18 @@ function requireOwnerPin(action) {
   }
 }
 
+// ── Roles / permisos ─────────────────────────────────────────────────────────
+function isCurrentUserOwner() {
+  const users   = DB.getUserList();
+  const current = DB.getSettings().userName || 'Principal';
+  return users.some(u => u.isOwner && u.name === current);
+}
+
 // ── Auto-bloqueo por inactividad ──────────────────────────────────────────────
-const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutos
+function _getInactivityMs() {
+  const mins = DB.getSettings().inactivityMinutes || 5;
+  return mins * 60 * 1000;
+}
 
 function resetInactivityTimer() {
   clearTimeout(_inactivityTimer);
@@ -456,7 +507,7 @@ function resetInactivityTimer() {
     if (document.getElementById('screen-onboarding')?.classList.contains('active')) return;
     showLockScreen('unlock', null, currentUser);
     showToast('🔒 Sesión bloqueada por inactividad', 2500);
-  }, INACTIVITY_MS);
+  }, _getInactivityMs());
 }
 
 // ── Configuración de seguridad ────────────────────────────────────────────────
@@ -540,22 +591,22 @@ function openSecuritySettings() {
     </div>
     ` : ''}
 
-    <!-- Toggle: pedir PIN antes de exportar -->
+    <!-- Auto-bloqueo por inactividad -->
     <div style="background:var(--gray-50); border-radius:12px; padding:14px 16px; margin-bottom:14px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-        <div style="flex:1;">
-          <div style="font-size:14px; font-weight:700; margin-bottom:2px;">PIN antes de exportar</div>
-          <div style="font-size:11px; color:var(--gray-400); line-height:1.4;">
-            PDF, Excel y sincronización requieren confirmar tu PIN
-          </div>
-        </div>
-        <div onclick="toggleExportPin()" id="exp-pin-track"
-          style="width:46px; height:26px; border-radius:13px; cursor:pointer; flex-shrink:0;
-            background:${sec.requirePinForExport ? 'var(--primary)' : 'var(--gray-200)'}; position:relative; transition:background .25s;">
-          <div id="exp-pin-thumb" style="position:absolute; top:3px; width:20px; height:20px;
-            border-radius:50%; background:white; transition:left .25s; box-shadow:0 1px 4px rgba(0,0,0,.2);
-            left:${sec.requirePinForExport ? '23px' : '3px'};"></div>
-        </div>
+      <div style="font-size:14px; font-weight:700; margin-bottom:4px;">⏰ Auto-bloqueo por inactividad</div>
+      <div style="font-size:11px; color:var(--gray-400); margin-bottom:10px;">
+        La app se bloquea sola si no la usas por el tiempo elegido
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        ${[1, 2, 5, 10, 15, 30].map(m => {
+          const current = s.inactivityMinutes || 5;
+          const active  = current === m;
+          return `<button onclick="DB.updateSettings({inactivityMinutes:${m}}); resetInactivityTimer(); openSecuritySettings();"
+            style="padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700; border:2px solid ${active ? 'var(--primary)' : 'var(--gray-200)'};
+              background:${active ? 'var(--primary)' : 'var(--white)'}; color:${active ? 'white' : 'var(--gray-600)'}; cursor:pointer;">
+            ${m}min
+          </button>`;
+        }).join('')}
       </div>
     </div>
 
@@ -1303,7 +1354,11 @@ function openTxDetail(id) {
     </div>
     <div style="display:flex; gap:10px; margin-top:24px;">
       <button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>
-      <button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>
+      ${isCurrentUserOwner()
+        ? `<button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteTransaction('${tx.id}'); showToast('🗑️ Eliminada'); renderJournal(); }, 100)">🗑️ Eliminar</button>`
+        : `<button class="btn btn-danger btn-block" style="opacity:.45; cursor:not-allowed;"
+            onclick="showToast('🚫 Solo el propietario puede eliminar registros', 2500)">🗑️ Eliminar</button>`
+      }
     </div>
     ${!tx.isCogs ? `
     <button class="btn btn-outline btn-block mt-8"
@@ -1907,6 +1962,9 @@ function adjustStock(productId) {
 }
 
 function deleteProduct(id) {
+  if (!isCurrentUserOwner()) {
+    showToast('🚫 Solo el propietario puede eliminar productos', 2500); return;
+  }
   if (!confirm('¿Eliminar este producto? El historial de transacciones no se verá afectado.')) return;
   DB.deleteProduct(id);
   closeSettingsSheet();
@@ -2325,6 +2383,9 @@ function toggleRecurring(id, newActive) {
 }
 
 function confirmDeleteRecurring(id) {
+  if (!isCurrentUserOwner()) {
+    showToast('🚫 Solo el propietario puede eliminar gastos recurrentes', 2500); return;
+  }
   const r = DB.getRecurringById(id);
   if (!r) return;
   if (!confirm(`¿Eliminar "${r.name}"?\n\nLas transacciones históricas ya generadas NO se borrarán.`)) return;
@@ -3158,6 +3219,9 @@ function saveReceivable(editId) {
 }
 
 function confirmDeleteReceivable(id) {
+  if (!isCurrentUserOwner()) {
+    showToast('🚫 Solo el propietario puede eliminar cuentas por cobrar', 2500); return;
+  }
   const rec = DB.getReceivableById(id);
   if (!rec) return;
   if (!confirm(`¿Eliminar la cuenta por cobrar de "${rec.clientName}"?\n\nEsta acción no se puede deshacer.`)) return;
@@ -4032,6 +4096,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener(ev, resetInactivityTimer, { passive: true })
   );
   resetInactivityTimer();
+
+  // Pantalla de privacidad: ocultar contenido al minimizar la app (App Switcher)
+  document.addEventListener('visibilitychange', () => {
+    const privEl = document.getElementById('screen-privacy');
+    if (!privEl) return;
+    if (document.hidden) {
+      privEl.style.display = 'flex'; // cubrir contenido
+    } else {
+      privEl.style.display = 'none'; // mostrar al volver
+      resetInactivityTimer();        // reiniciar timer al regresar
+    }
+  });
 
   // Aplicar tema guardado (modo oscuro)
   const savedDark = localStorage.getItem('cf_dark_mode') === '1';
