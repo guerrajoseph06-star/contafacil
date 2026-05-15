@@ -581,11 +581,36 @@
     <button class="topbar-action no-print" onclick="printReport()" title="PDF">🖨️</button>
   </div>
 
-  <!-- Encabezado solo en impresión -->
+  <!-- Encabezado solo en impresión mensual -->
   <div class="print-header" id="print-header-block">
     <h1 id="print-company">Mi Negocio</h1>
     <p id="print-period">Reporte mensual</p>
     <p id="print-generated">Generado hoy</p>
+  </div>
+
+  <!-- ═══ SECCIÓN IMPRESIÓN ANUAL — oculta en pantalla, visible en print-annual ═══ -->
+  <div id="print-annual-section" style="display:none; padding:0 16px;">
+    <div style="text-align:center; padding:20px 0 16px; border-bottom:2px solid #1d4ed8; margin-bottom:20px;">
+      <h1 id="pan-company" style="font-size:24px; color:#1d4ed8; margin:0 0 6px;">Mi Negocio</h1>
+      <p id="pan-title"   style="font-size:15px; font-weight:700; color:#374151; margin:0 0 4px;">Resumen Anual 2026</p>
+      <p id="pan-generated" style="font-size:12px; color:#9ca3af; margin:0;">Generado hoy</p>
+    </div>
+    <!-- KPIs: 3 cajas -->
+    <div id="pan-kpis" style="display:flex; gap:10px; margin-bottom:18px;"></div>
+    <!-- Tabla 12 meses -->
+    <table id="pan-table" style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px;">
+      <thead>
+        <tr style="background:#2563eb; color:white;">
+          <th style="padding:10px 12px; text-align:left; border-radius:6px 0 0 0;">Mes</th>
+          <th style="padding:10px 10px; text-align:right;">Ingresos</th>
+          <th style="padding:10px 10px; text-align:right;">Gastos</th>
+          <th style="padding:10px 12px; text-align:right; border-radius:0 6px 0 0;">Utilidad Neta</th>
+        </tr>
+      </thead>
+      <tbody id="pan-tbody"></tbody>
+      <tfoot id="pan-tfoot"></tfoot>
+    </table>
+    <div id="pan-footer" style="text-align:center; font-size:11px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; margin-top:16px;"></div>
   </div>
 
   <!-- Resumen de impresión -->
@@ -653,9 +678,14 @@
           </table>
         </div>
 
-        <button class="btn btn-outline btn-block mt-12" onclick="exportAnnualExcel()" style="font-size:13px;">
-          📊 Exportar año completo a Excel
-        </button>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn btn-primary" style="flex:1; font-size:13px;" onclick="printAnnualReport()">
+            🖨️ PDF Anual
+          </button>
+          <button class="btn btn-outline" style="flex:1; font-size:13px;" onclick="exportAnnualExcel()">
+            📊 Excel Anual
+          </button>
+        </div>
       </div>
     </div>
 

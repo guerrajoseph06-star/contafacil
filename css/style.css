@@ -734,6 +734,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   body { background: white; max-width: none; }
   #screen-reports { display: block !important; padding: 0; min-height: auto; }
 
+  /* ── Modo impresión MENSUAL (default) ─────────────────────────── */
   .print-header {
     text-align: center;
     padding: 24px;
@@ -742,6 +743,26 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   }
   .print-header h1 { font-size: 28px; color: #1d4ed8; }
   .print-header p { color: #6b7280; font-size: 14px; margin-top: 6px; }
+
+  /* Cuadro resumen superior: se muestra en impresión mensual */
+  .print-summary-box {
+    display: flex !important;
+    gap: 0;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    margin: 0 0 18px 0 !important;
+    overflow: hidden;
+    page-break-inside: avoid;
+  }
+  .print-summary-item {
+    flex: 1;
+    padding: 12px 8px;
+    text-align: center;
+    border-right: 1px solid #e5e7eb;
+  }
+  .print-summary-item:last-child { border-right: none; }
+  .print-summary-item .lbl { font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 5px; }
+  .print-summary-item .val { font-size: 16px; font-weight: 800; }
 
   .card { box-shadow: none; border: 1px solid #e5e7eb; page-break-inside: avoid; }
   .report-summary { page-break-inside: avoid; }
@@ -765,6 +786,14 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     border-top: 1px solid #e5e7eb;
     padding-top: 12px;
   }
+
+  /* ── Modo impresión ANUAL ──────────────────────────────────────── */
+  /* body.print-annual: oculta contenido mensual, muestra sección anual */
+  body.print-annual #print-annual-section { display: block !important; }
+  body.print-annual #screen-reports > .content { display: none !important; }
+  body.print-annual .print-header { display: none !important; }
+  body.print-annual .print-summary-box { display: none !important; }
+  #print-annual-section { display: none; }
 }
 
 /* ===== MODO OSCURO ===== */

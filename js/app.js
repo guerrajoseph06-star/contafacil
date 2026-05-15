@@ -1715,13 +1715,38 @@ function renderReports() {
 
   // ── Deudas del mes ────────────────────────────────────────
   const liabilities = txs.filter(t => t.type === 'liability');
-  const liabEl = document.getElementById('report-liabilities-section');
+  const totalLiab   = liabilities.reduce((s, t) => s + t.amount, 0);
+  const liabEl      = document.getElementById('report-liabilities-section');
   if (liabilities.length) {
-    const totalLiab = liabilities.reduce((s, t) => s + t.amount, 0);
     liabEl.style.display = 'block';
     document.getElementById('report-liabilities-total').textContent = fmt(totalLiab);
   } else {
     liabEl.style.display = 'none';
+  }
+
+  // ── Resumen superior del PDF mensual ─────────────────────────────────────────
+  // Estos elementos existen en el HTML con display:none; el CSS @media print los
+  // muestra. Sin este código los valores quedan en el "$ 0" del HTML inicial.
+  const totalExpenses = pnl.opExpenses + pnl.cogs;
+  const netSign       = pnl.netProfit >= 0;
+  const elInc  = document.getElementById('print-summary-income');
+  const elExp  = document.getElementById('print-summary-expense');
+  const elNet  = document.getElementById('print-summary-net');
+  const elLiab = document.getElementById('print-summary-liab');
+  const elLiabRow = document.getElementById('print-liab-row');
+  if (elInc)  elInc.textContent  = fmt(pnl.totalRevenue);
+  if (elExp)  elExp.textContent  = fmt(totalExpenses);
+  if (elNet) {
+    elNet.textContent = (netSign ? '+' : '') + fmt(pnl.netProfit);
+    elNet.style.color = netSign ? '#16a34a' : '#dc2626';
+  }
+  if (elLiab && elLiabRow) {
+    if (totalLiab > 0) {
+      elLiab.textContent    = fmt(totalLiab);
+      elLiabRow.style.display = '';
+    } else {
+      elLiabRow.style.display = 'none';
+    }
   }
 
   // ── Gastos operativos por categoría (barra) ───────────────
@@ -3206,6 +3231,78 @@ function renderAnnualView() {
       },
     });
   }
+}
+
+// ── PDF Anual ─────────────────────────────────────────────────────────────────
+// Construye la sección #print-annual-section con datos del año,
+// activa body.print-annual (CSS oculta el contenido mensual),
+// lanza window.print() y restaura el estado al cerrar el diálogo.
+function printAnnualReport() {
+  requireOwnerPin(() => {
+    const s      = DB.getSettings();
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const stats = DB.getMonthStats(annualYear, i + 1);
+      return { m: i + 1, label: MONTH_NAMES[i], ...stats };
+    });
+
+    const totInc = months.reduce((a, m) => a + m.income, 0);
+    const totExp = months.reduce((a, m) => a + m.opExpenses + m.cogs, 0);
+    const totNet = months.reduce((a, m) => a + m.netProfit, 0);
+    const sign   = v => (v >= 0 ? '+' : '') + fmt(v);
+    const clr    = v => v >= 0 ? '#16a34a' : '#dc2626';
+
+    // Llenar encabezado
+    document.getElementById('pan-company').textContent   = s.companyName;
+    document.getElementById('pan-title').textContent     = 'Resumen Anual ' + annualYear;
+    document.getElementById('pan-generated').textContent = 'Generado el ' + fmtDate(today());
+
+    // KPIs
+    document.getElementById('pan-kpis').innerHTML = `
+      <div style="flex:1; border:1px solid #e5e7eb; border-radius:10px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:#6b7280; font-weight:700; margin-bottom:5px;">INGRESOS</div>
+        <div style="font-size:17px; font-weight:800; color:#16a34a;">${fmt(totInc)}</div>
+      </div>
+      <div style="flex:1; border:1px solid #e5e7eb; border-radius:10px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:#6b7280; font-weight:700; margin-bottom:5px;">GASTOS</div>
+        <div style="font-size:17px; font-weight:800; color:#dc2626;">${fmt(totExp)}</div>
+      </div>
+      <div style="flex:1; border:1.5px solid ${totNet >= 0 ? '#bbf7d0' : '#fecaca'}; border-radius:10px; padding:12px; text-align:center; background:${totNet >= 0 ? '#f0fdf4' : '#fff1f2'};">
+        <div style="font-size:10px; color:#6b7280; font-weight:700; margin-bottom:5px;">UTILIDAD</div>
+        <div style="font-size:17px; font-weight:800; color:${clr(totNet)};">${sign(totNet)}</div>
+      </div>`;
+
+    // Tabla mensual
+    document.getElementById('pan-tbody').innerHTML = months.map((m, i) => {
+      const exp     = m.opExpenses + m.cogs;
+      const hasData = m.income > 0 || exp > 0;
+      return `<tr style="background:${i % 2 === 0 ? 'white' : '#f9fafb'}; ${!hasData ? 'opacity:.4;' : ''}">
+        <td style="padding:9px 12px; font-weight:600;">${m.label}</td>
+        <td style="padding:9px 10px; text-align:right; color:#16a34a; font-weight:600;">${m.income > 0 ? fmt(m.income) : '—'}</td>
+        <td style="padding:9px 10px; text-align:right; color:#dc2626;">${exp > 0 ? fmt(exp) : '—'}</td>
+        <td style="padding:9px 12px; text-align:right; font-weight:800; color:${clr(m.netProfit)};">${hasData ? sign(m.netProfit) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('pan-tfoot').innerHTML = `
+      <tr style="background:#2563eb; color:white; font-weight:800;">
+        <td style="padding:10px 12px; border-radius:0 0 0 6px;">TOTAL ${annualYear}</td>
+        <td style="padding:10px 10px; text-align:right;">${fmt(totInc)}</td>
+        <td style="padding:10px 10px; text-align:right;">${fmt(totExp)}</td>
+        <td style="padding:10px 12px; text-align:right; border-radius:0 0 6px 0;">${sign(totNet)}</td>
+      </tr>`;
+
+    document.getElementById('pan-footer').textContent =
+      'Generado con ContaFácil Pro · ' + s.companyName + ' · ' + annualYear;
+
+    // Activar modo impresión anual: CSS oculta el contenido mensual
+    DB.logAudit('export_pdf', '📅 PDF Anual ' + annualYear + ' exportado');
+    document.body.classList.add('print-annual');
+    setTimeout(() => {
+      window.print();
+      // Restaurar modo normal después de que se cierre el diálogo de impresión
+      setTimeout(() => document.body.classList.remove('print-annual'), 1200);
+    }, 300);
+  });
 }
 
 function exportAnnualExcel() {
