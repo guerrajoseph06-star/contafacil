@@ -2141,16 +2141,33 @@ function renderInventory() {
   } else if (!products.length) {
     container.innerHTML = emptyHTML('🔍', 'Sin resultados', 'No hay productos con ese nombre o código');
   } else {
-    container.innerHTML = products.map(p => `
+    container.innerHTML = products.map(p => {
+      // Badge IVA
+      const ivaBadge = p.tipoIva === 'SIN_IVA'
+        ? `<span style="font-size:10px; background:#dcfce7; color:#15803d; border-radius:6px; padding:1px 6px; font-weight:700; margin-left:4px;">0%</span>`
+        : p.tipoIva === 'IVA_NO_INCLUIDO'
+        ? `<span style="font-size:10px; background:#fef3c7; color:#d97706; border-radius:6px; padding:1px 6px; font-weight:700; margin-left:4px;">+IVA</span>`
+        : p.tipoIva === 'IVA_INCLUIDO'
+        ? `<span style="font-size:10px; background:#eff6ff; color:#2563eb; border-radius:6px; padding:1px 6px; font-weight:700; margin-left:4px;">c/IVA</span>`
+        : '';
+      // Línea de precio con desglose si tiene IVA
+      const precioLine = p.precioFinal > 0
+        ? (p.tipoIva === 'IVA_INCLUIDO'
+            ? `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Precio: ${fmt(p.precioFinal)} <span style="font-size:10px;">(base ${fmt(p.precioBase)} + IVA ${fmt(p.valorIva)})</span></div>`
+          : p.tipoIva === 'IVA_NO_INCLUIDO'
+            ? `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Precio base: ${fmt(p.precioBase)} → Total: ${fmt(p.precioFinal)}</div>`
+          : `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Precio: ${fmt(p.precioFinal)} (sin IVA)</div>`)
+        : '';
+
+      return `
       <div class="card inv-card" style="margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:12px;">
           <div style="font-size:36px; width:48px; text-align:center;">${p.emoji || '📦'}</div>
           <div style="flex:1; min-width:0;">
-            <div style="font-size:16px; font-weight:700;">${p.name}</div>
+            <div style="font-size:16px; font-weight:700;">${p.name}${ivaBadge}</div>
             ${p.sku ? `<div style="font-size:11px; color:var(--primary); font-family:monospace; margin-top:2px; background:var(--primary-light); display:inline-block; padding:1px 7px; border-radius:5px;">📊 ${p.sku}</div>` : ''}
-            <div style="font-size:13px; color:var(--gray-500); margin-top:2px;">
-              ${p.unitCost ? 'Costo: ' + fmt(p.unitCost) + ' / ' + p.unit : p.unit}
-            </div>
+            ${precioLine}
+            ${p.unitCost ? `<div style="font-size:12px; color:var(--gray-400);">Costo compra: ${fmt(p.unitCost)} / ${p.unit}</div>` : `<div style="font-size:12px; color:var(--gray-400);">${p.unit}</div>`}
           </div>
           <div style="text-align:right; flex-shrink:0;">
             <div style="font-size:24px; font-weight:800; color:${p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)'};">${p.quantity}</div>
@@ -2163,7 +2180,8 @@ function renderInventory() {
           <button class="btn btn-icon" style="background:var(--danger-light); color:var(--danger);" onclick="deleteProduct('${p.id}')">🗑️</button>
         </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   // Total valor inventario (siempre sobre todos los productos, no los filtrados)
@@ -2176,11 +2194,18 @@ function openProductForm(editId = null) {
   const p = editId ? DB.getProductById(editId) : null;
   const EMOJIS = ['📦','👗','👕','👖','👟','👔','👜','🧴','💄','🍕','🧃','📱','🔧','📚','🪑','🖥️'];
   const hasBarcode = 'BarcodeDetector' in window;
+  const ivaPct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+
+  // Sugerencia IVA inicial (si es producto nuevo)
+  const ivaInicial = p
+    ? { tipoIva: p.tipoIva || 'SIN_IVA' }
+    : DB.getIvaSuggestion('', null);
 
   const sheet = document.getElementById('settings-sheet');
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
     <h3 class="sheet-title">${p ? 'Editar Producto' : 'Nuevo Producto'}</h3>
+
     <div class="form-group">
       <label class="form-label">Emoji / Ícono</label>
       <div id="emoji-picker" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
@@ -2188,50 +2213,230 @@ function openProductForm(editId = null) {
       </div>
       <input type="hidden" id="p-emoji" value="${p?.emoji || '📦'}">
     </div>
+
     <div class="form-group">
       <label class="form-label">Nombre del producto *</label>
-      <input type="text" class="form-control" id="p-name" value="${p?.name || ''}" placeholder="Ej: Blusas, Zapatos, Shampoo">
+      <input type="text" class="form-control" id="p-name" value="${p?.name || ''}"
+        placeholder="Ej: Jean Levi's, Arroz 1kg, Galletas"
+        oninput="_onProductNameInput(this.value)">
+      <div id="p-iva-hint" style="display:none; margin-top:6px; padding:8px 10px; border-radius:8px;
+        background:#eff6ff; border:1px solid #bfdbfe; font-size:12px; color:#1e40af;"></div>
     </div>
+
+    <!-- ════ SELECTOR IVA — EL CORAZÓN DEL SISTEMA ════ -->
+    <div class="form-group">
+      <label class="form-label">¿Cómo manejas el IVA en este producto?</label>
+      <div id="iva-selector" style="display:flex; flex-direction:column; gap:8px;">
+
+        <label id="iva-opt-sin" onclick="_selectIva('SIN_IVA')" style="cursor:pointer; display:flex; align-items:flex-start; gap:12px;
+          padding:12px 14px; border-radius:12px; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='SIN_IVA'?'var(--success)':'var(--gray-200)'};
+          background:${(p?.tipoIva||ivaInicial.tipoIva)==='SIN_IVA'?'#f0fdf4':'white'}; transition:all .15s;">
+          <div style="width:20px; height:20px; border-radius:50%; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='SIN_IVA'?'var(--success)':'var(--gray-300)'};
+            background:${(p?.tipoIva||ivaInicial.tipoIva)==='SIN_IVA'?'var(--success)':'white'};
+            flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center;">
+            ${(p?.tipoIva||ivaInicial.tipoIva)==='SIN_IVA'?'<div style="width:8px;height:8px;border-radius:50%;background:white;"></div>':''}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:14px; font-weight:700; color:var(--gray-800);">🟢 No lleva IVA</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Tarifa 0%: alimentos naturales, medicinas, libros, etc.</div>
+          </div>
+        </label>
+
+        <label id="iva-opt-noinc" onclick="_selectIva('IVA_NO_INCLUIDO')" style="cursor:pointer; display:flex; align-items:flex-start; gap:12px;
+          padding:12px 14px; border-radius:12px; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_NO_INCLUIDO'?'var(--warning)':'var(--gray-200)'};
+          background:${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_NO_INCLUIDO'?'#fffbeb':'white'}; transition:all .15s;">
+          <div style="width:20px; height:20px; border-radius:50%; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_NO_INCLUIDO'?'var(--warning)':'var(--gray-300)'};
+            background:${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_NO_INCLUIDO'?'var(--warning)':'white'};
+            flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center;">
+            ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_NO_INCLUIDO'?'<div style="width:8px;height:8px;border-radius:50%;background:white;"></div>':''}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:14px; font-weight:700; color:var(--gray-800);">🟡 El precio NO incluye IVA</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Ingresas $10 → la app calcula +IVA ${ivaPct}% → total $${(10 * (1 + ivaPct/100)).toFixed(2)}</div>
+          </div>
+        </label>
+
+        <label id="iva-opt-inc" onclick="_selectIva('IVA_INCLUIDO')" style="cursor:pointer; display:flex; align-items:flex-start; gap:12px;
+          padding:12px 14px; border-radius:12px; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_INCLUIDO'?'var(--primary)':'var(--gray-200)'};
+          background:${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_INCLUIDO'?'#eff6ff':'white'}; transition:all .15s;">
+          <div style="width:20px; height:20px; border-radius:50%; border:2px solid ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_INCLUIDO'?'var(--primary)':'var(--gray-300)'};
+            background:${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_INCLUIDO'?'var(--primary)':'white'};
+            flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center;">
+            ${(p?.tipoIva||ivaInicial.tipoIva)==='IVA_INCLUIDO'?'<div style="width:8px;height:8px;border-radius:50%;background:white;"></div>':''}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:14px; font-weight:700; color:var(--gray-800);">🔵 El precio YA incluye IVA</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Ingresas $${(10 * (1 + ivaPct/100)).toFixed(2)} → la app separa base $10 + IVA $${(10 * ivaPct/100).toFixed(2)}</div>
+          </div>
+        </label>
+
+      </div>
+      <input type="hidden" id="p-tipo-iva" value="${p?.tipoIva || ivaInicial.tipoIva}">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" id="p-precio-label">Precio de venta</label>
+      <div style="position:relative;">
+        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--gray-500); font-weight:700; pointer-events:none;">$</span>
+        <input type="number" class="form-control" id="p-precio" min="0" step="any"
+          value="${p?.precioFinal || p?.unitCost || ''}"
+          placeholder="0.00"
+          style="padding-left:26px;"
+          oninput="_calcIvaPreview()">
+      </div>
+      <!-- Preview en tiempo real del desglose IVA -->
+      <div id="p-iva-preview" style="display:none; margin-top:8px; padding:10px 12px; border-radius:10px;
+        background:var(--gray-50); border:1px solid var(--gray-200); font-size:12px;"></div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">
         Código / SKU
-        <span style="font-size:11px; color:var(--gray-400); font-weight:400;"> — código de barras o código interno</span>
+        <span style="font-size:11px; color:var(--gray-400); font-weight:400;"> — código de barras o interno</span>
       </label>
       <div style="display:flex; gap:8px;">
-        <input type="text" class="form-control" id="p-sku"
-          value="${p?.sku || ''}"
-          placeholder="Ej: 7501234567890, CAM-RJ-M, ALI-ARR-1K"
+        <input type="text" class="form-control" id="p-sku" value="${p?.sku || ''}"
+          placeholder="Ej: 7501234567890, CAM-RJ-M"
           style="flex:1; font-family:monospace; letter-spacing:.5px;">
         ${hasBarcode
           ? `<button type="button" onclick="openBarcodeScanner('p-sku')"
-               style="padding:0 14px; border-radius:10px; background:var(--primary); color:white; border:none; cursor:pointer; font-size:20px;" title="Escanear código de barras">📷</button>`
+               style="padding:0 14px; border-radius:10px; background:var(--primary); color:white; border:none; cursor:pointer; font-size:20px;">📷</button>`
           : `<button type="button" onclick="showToast('📷 Abre en Chrome Android para escanear',3000)"
-               style="padding:0 14px; border-radius:10px; background:var(--gray-100); color:var(--gray-400); border:none; cursor:pointer; font-size:20px; opacity:.6;" title="Solo disponible en Chrome Android">📷</button>`}
-      </div>
-      <div style="font-size:11px; color:var(--gray-400); margin-top:5px;">
-        💡 Código interno libre (ej: CAM-AZ-M) o EAN-13 del fabricante. Sin obligación de formato.
+               style="padding:0 14px; border-radius:10px; background:var(--gray-100); color:var(--gray-400); border:none; cursor:pointer; font-size:20px; opacity:.6;">📷</button>`}
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Stock actual</label>
-      <input type="number" class="form-control" id="p-qty" value="${p?.quantity ?? 0}" min="0" step="1">
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group">
+        <label class="form-label">Stock actual</label>
+        <input type="number" class="form-control" id="p-qty" value="${p?.quantity ?? 0}" min="0" step="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unidad</label>
+        <select class="form-control" id="p-unit">
+          ${['unidades','pares','metros','litros','kilos','cajas','docenas'].map(u => `<option ${(p?.unit||'unidades')===u?'selected':''}>${u}</option>`).join('')}
+        </select>
+      </div>
     </div>
+
     <div class="form-group">
-      <label class="form-label">Costo unitario (opcional)</label>
+      <label class="form-label">Costo unitario de compra (opcional)</label>
       <input type="number" class="form-control" id="p-cost" value="${p?.unitCost || ''}" min="0" step="any" placeholder="0">
     </div>
-    <div class="form-group">
-      <label class="form-label">Unidad de medida</label>
-      <select class="form-control" id="p-unit">
-        ${['unidades','pares','metros','litros','kilos','cajas','docenas'].map(u => `<option ${(p?.unit||'unidades')===u?'selected':''}>${u}</option>`).join('')}
-      </select>
-    </div>
+
     <button class="btn btn-primary btn-block mt-16" onclick="saveProduct('${editId || ''}')">
-      ${p ? '✅ Actualizar' : '✅ Agregar Producto'}
+      ${p ? '✅ Actualizar Producto' : '✅ Agregar Producto'}
     </button>
     ${p ? `<button class="btn btn-danger btn-block mt-8" onclick="deleteProduct('${p.id}')">🗑️ Eliminar producto</button>` : ''}
   `;
   sheet.classList.add('open');
+
+  // Si es nuevo producto y hay sugerencia, mostrar hint
+  if (!p && ivaInicial.msg && ivaInicial.confianza !== 'baja') {
+    setTimeout(() => {
+      const hint = document.getElementById('p-iva-hint');
+      if (hint) { hint.style.display = 'block'; hint.textContent = '💡 ' + ivaInicial.msg; }
+    }, 300);
+  }
+  // Preview inicial si hay precio
+  if (p?.precioFinal) setTimeout(_calcIvaPreview, 100);
+}
+
+// ── Lógica IVA en tiempo real ──────────────────────────────────────────────
+let _ivaNameDebounce = null;
+function _onProductNameInput(nombre) {
+  clearTimeout(_ivaNameDebounce);
+  _ivaNameDebounce = setTimeout(() => {
+    if (!nombre.trim()) return;
+    const sug  = DB.getIvaSuggestion(nombre, null);
+    const hint = document.getElementById('p-iva-hint');
+    if (!hint) return;
+    if (sug.confianza === 'alta' || sug.confianza === 'media') {
+      hint.style.display = 'block';
+      hint.textContent   = '💡 ' + sug.msg;
+      // Auto-seleccionar si la confianza es alta (memoria del negocio)
+      if (sug.confianza === 'alta') _selectIva(sug.tipoIva);
+    } else {
+      hint.style.display = 'none';
+    }
+  }, 400);
+}
+
+function _selectIva(tipo) {
+  const el = document.getElementById('p-tipo-iva');
+  if (!el) return;
+  el.value = tipo;
+
+  const configs = {
+    'SIN_IVA':          { id:'iva-opt-sin',   border:'var(--success)', bg:'#f0fdf4', dot:'var(--success)' },
+    'IVA_NO_INCLUIDO':  { id:'iva-opt-noinc', border:'var(--warning)', bg:'#fffbeb', dot:'var(--warning)' },
+    'IVA_INCLUIDO':     { id:'iva-opt-inc',   border:'var(--primary)', bg:'#eff6ff', dot:'var(--primary)' },
+  };
+
+  Object.entries(configs).forEach(([t, cfg]) => {
+    const label = document.getElementById(cfg.id);
+    if (!label) return;
+    const isActive = t === tipo;
+    label.style.border     = `2px solid ${isActive ? cfg.border : 'var(--gray-200)'}`;
+    label.style.background = isActive ? cfg.bg : 'white';
+    const circle = label.querySelector('div');
+    if (circle) {
+      circle.style.border     = `2px solid ${isActive ? cfg.dot : 'var(--gray-300)'}`;
+      circle.style.background = isActive ? cfg.dot : 'white';
+      circle.innerHTML = isActive ? '<div style="width:8px;height:8px;border-radius:50%;background:white;"></div>' : '';
+    }
+  });
+
+  const lblEl = document.getElementById('p-precio-label');
+  if (lblEl) {
+    lblEl.textContent = tipo === 'SIN_IVA'         ? 'Precio de venta (sin IVA)'
+                      : tipo === 'IVA_NO_INCLUIDO' ? 'Precio base (SIN IVA) — la app sumará el IVA'
+                      : 'Precio de venta final (YA incluye IVA)';
+  }
+  _calcIvaPreview();
+}
+
+function _calcIvaPreview() {
+  const precio = parseFloat(document.getElementById('p-precio')?.value) || 0;
+  const tipo   = document.getElementById('p-tipo-iva')?.value || 'SIN_IVA';
+  const ivaPct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+  const prev   = document.getElementById('p-iva-preview');
+  if (!prev) return;
+
+  if (!precio || tipo === 'SIN_IVA') { prev.style.display = 'none'; return; }
+
+  const r = DB.calcIva(precio, tipo, ivaPct);
+  const fmtN = n => '$' + n.toFixed(2);
+
+  if (tipo === 'IVA_NO_INCLUIDO') {
+    prev.style.display = 'block';
+    prev.style.borderLeft = '3px solid var(--warning)';
+    prev.innerHTML = `
+      <div style="font-weight:700; margin-bottom:6px; color:var(--gray-700);">💰 El cliente pagará:</div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+        <span style="color:var(--gray-500);">Precio base</span><span style="font-weight:700;">${fmtN(r.precioBase)}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+        <span style="color:var(--gray-500);">IVA ${ivaPct}%</span><span style="font-weight:700; color:var(--warning);">+${fmtN(r.valorIva)}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:5px; border-top:1px solid var(--gray-200);">
+        <span style="font-weight:800;">Total final</span><span style="font-weight:800; color:var(--primary); font-size:14px;">${fmtN(r.precioFinal)}</span>
+      </div>`;
+  } else if (tipo === 'IVA_INCLUIDO') {
+    prev.style.display = 'block';
+    prev.style.borderLeft = '3px solid var(--primary)';
+    prev.innerHTML = `
+      <div style="font-weight:700; margin-bottom:6px; color:var(--gray-700);">📊 Desglose del precio final:</div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+        <span style="color:var(--gray-500);">Base gravable</span><span style="font-weight:700;">${fmtN(r.precioBase)}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+        <span style="color:var(--gray-500);">IVA ${ivaPct}% (incluido)</span><span style="font-weight:700; color:var(--primary);">${fmtN(r.valorIva)}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:5px; border-top:1px solid var(--gray-200);">
+        <span style="font-weight:800;">Precio final</span><span style="font-weight:800; color:var(--success); font-size:14px;">${fmtN(r.precioFinal)}</span>
+      </div>`;
+  }
 }
 
 function selectEmoji(e) {
@@ -2246,13 +2451,26 @@ function selectEmoji(e) {
 function saveProduct(editId) {
   const name = document.getElementById('p-name')?.value.trim();
   if (!name) { showToast('⚠️ Escribe el nombre del producto'); return; }
+
+  const tipoIva    = document.getElementById('p-tipo-iva')?.value || 'SIN_IVA';
+  const precioRaw  = parseFloat(document.getElementById('p-precio')?.value) || 0;
+  const ivaPct     = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+  const ivaCalc    = DB.calcIva(precioRaw, tipoIva, ivaPct);
+
   const data = {
     name,
-    emoji:    document.getElementById('p-emoji')?.value || '📦',
-    sku:      document.getElementById('p-sku')?.value.trim() || '',
-    quantity: parseFloat(document.getElementById('p-qty')?.value) || 0,
-    unitCost: parseFloat(document.getElementById('p-cost')?.value) || 0,
-    unit:     document.getElementById('p-unit')?.value || 'unidades',
+    emoji:        document.getElementById('p-emoji')?.value || '📦',
+    sku:          document.getElementById('p-sku')?.value.trim() || '',
+    quantity:     parseFloat(document.getElementById('p-qty')?.value) || 0,
+    unitCost:     parseFloat(document.getElementById('p-cost')?.value) || 0,
+    unit:         document.getElementById('p-unit')?.value || 'unidades',
+    // Campos IVA
+    tipoIva,
+    precioVenta:  precioRaw,
+    precioBase:   ivaCalc.precioBase,
+    precioFinal:  ivaCalc.precioFinal,
+    valorIva:     ivaCalc.valorIva,
+    porcentajeIva: ivaPct,
   };
   if (editId) DB.updateProduct(editId, data);
   else        DB.addProduct(data);
@@ -4237,28 +4455,68 @@ function openRegimenGeneral() {
 
 // ── Placeholders IVA y Facturación
 function openIvaPlaceholder() {
+  const s      = DB.getSettings();
+  const actual = s.porcentajeIva || DB.IVA_DEFAULT;
+
+  const paises = [
+    { flag:'🇪🇨', pais:'Ecuador',  pct:15, nombre:'IVA 15% (SRI)' },
+    { flag:'🇨🇴', pais:'Colombia', pct:19, nombre:'IVA 19% (DIAN)' },
+    { flag:'🇲🇽', pais:'México',   pct:16, nombre:'IVA 16% (SAT)' },
+    { flag:'🇵🇪', pais:'Perú',     pct:18, nombre:'IGV 18% (SUNAT)' },
+    { flag:'🌍',  pais:'Otro',     pct: 0, nombre:'Personalizado' },
+  ];
+
   document.getElementById('settings-sheet-content').innerHTML = `
     <div class="sheet-handle"></div>
-    <div style="text-align:center;padding:24px 0 16px;">
-      <div style="font-size:56px;margin-bottom:12px;">🏛️</div>
-      <h2 style="font-size:20px;font-weight:800;color:#0891b2;margin-bottom:8px;">IVA · SRI Ecuador</h2>
-      <p style="font-size:14px;color:var(--gray-500);line-height:1.6;">Próximamente podrás calcular y liquidar el IVA 15% según normativa SRI Ecuador.</p>
+    <h3 class="sheet-title">🏛️ Configuración de IVA</h3>
+
+    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px;
+      padding:14px; margin-bottom:18px; font-size:13px; color:#15803d; line-height:1.6;">
+      <strong>Porcentaje actual:</strong> <span style="font-size:18px; font-weight:800;">${actual}%</span><br>
+      Este % se usa para calcular IVA en todos los productos del inventario.
     </div>
-    <div style="background:#e0f2fe;border-radius:12px;padding:16px;margin-bottom:16px;">
-      <div style="font-size:13px;font-weight:700;color:#0c4a6e;margin-bottom:10px;">🗺️ Multi-país (próximamente)</div>
-      <div style="font-size:13px;color:#0c4a6e;line-height:1.7;">
-        🇪🇨 Ecuador — IVA 15% (SRI)<br>
-        🇨🇴 Colombia — IVA 19% (DIAN)<br>
-        🇲🇽 México — IVA 16% (SAT)<br>
-        🇵🇪 Perú — IGV 18% (SUNAT)
+
+    <div class="form-group">
+      <label class="form-label">Selecciona tu país / tasa</label>
+      <div style="display:flex; flex-direction:column; gap:6px;" id="pais-list">
+        ${paises.map(p => `
+          <button onclick="_setPorcentajeIva(${p.pct})" style="display:flex; align-items:center; gap:10px;
+            padding:10px 14px; border-radius:10px; border:2px solid ${actual===p.pct?'var(--primary)':'var(--gray-200)'};
+            background:${actual===p.pct?'#eff6ff':'white'}; cursor:pointer; text-align:left;">
+            <span style="font-size:22px;">${p.flag}</span>
+            <div style="flex:1;">
+              <div style="font-size:13px; font-weight:700;">${p.pais}</div>
+              <div style="font-size:11px; color:var(--gray-500);">${p.nombre}</div>
+            </div>
+            <div style="font-size:18px; font-weight:900; color:${actual===p.pct?'var(--primary)':'var(--gray-400)'};">${p.pct > 0 ? p.pct+'%' : '✎'}</div>
+          </button>`).join('')}
       </div>
     </div>
-    <div style="background:var(--gray-50);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--gray-600);line-height:1.6;">
-      Selecciona tu país de origen para aplicar automáticamente las tasas de IVA correctas en tus ventas y reportes.
+
+    <div class="form-group" id="custom-iva-group" style="${actual > 0 && paises.find(p=>p.pct===actual&&p.pct>0)?'display:none':''}">
+      <label class="form-label">Porcentaje personalizado</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="number" class="form-control" id="custom-iva-pct" value="${actual}" min="0" max="99" step="1"
+          style="flex:1;" placeholder="Ej: 15">
+        <span style="font-size:18px; font-weight:700;">%</span>
+      </div>
+      <button class="btn btn-primary btn-block mt-8" onclick="_setPorcentajeIva(parseFloat(document.getElementById('custom-iva-pct').value)||0, true)">
+        Guardar porcentaje
+      </button>
     </div>
-    <button class="btn btn-secondary btn-block" onclick="closeSettingsSheet()">Entendido</button>
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
   `;
   document.getElementById('settings-sheet').classList.add('open');
+}
+
+function _setPorcentajeIva(pct, esCustom = false) {
+  DB.updateSettings({ porcentajeIva: pct });
+  closeSettingsSheet();
+  showToast(`✅ IVA configurado al ${pct}%`);
+  // Actualizar descripción en Settings
+  const el = document.getElementById('settings-iva-desc');
+  if (el) el.textContent = `IVA ${pct}% · SRI Ecuador`;
 }
 
 function openFacturacionPlaceholder() {
@@ -4642,6 +4900,13 @@ function renderSettings() {
   const s = DB.getSettings();
   document.getElementById('settings-company-val').textContent  = s.companyName;
   document.getElementById('settings-currency-val').textContent = s.currency;
+
+  // Indicador IVA
+  const ivaDescEl = document.getElementById('settings-iva-desc');
+  if (ivaDescEl) {
+    const pct = s.porcentajeIva || DB.IVA_DEFAULT;
+    ivaDescEl.textContent = `IVA ${pct}% · activo en inventario`;
+  }
 
   // Indicador multi-empresa
   const coList = DB.getCompanyList();

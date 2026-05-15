@@ -401,14 +401,165 @@ const DB = (() => {
   function getSettings() { return { ...DEFAULT_SETTINGS, ...(load(KEYS.settings) || {}) }; }
   function updateSettings(data) { save(KEYS.settings, { ...getSettings(), ...data }); }
 
+  // ── Sistema IVA Ecuador ────────────────────────────────────────────────────────
+  // Porcentaje vigente en Ecuador (SRI). Puede editarse en configuración.
+  const IVA_DEFAULT = 15; // 15% desde abril 2024
+
+  // Catálogo de palabras clave para sugerencia automática de tipo IVA
+  // Fuente: Ley de Régimen Tributario Interno Ecuador (LORTI) art. 55 (tarifa 0%)
+  const _IVA_CERO_KEYWORDS = [
+    // Alimentos naturales / no procesados
+    'arroz','papa','papas','yuca','camote','verde','platano','plátano','maiz','maíz',
+    'quinua','cebada','trigo','centeno','avena','harina','azucar','azúcar','sal',
+    'panela','aceite','manteca','mantequilla','leche','queso','yogur','yogurt',
+    'huevo','huevos','pollo crudo','carne','res','cerdo','pescado','camaron','camarón',
+    'atun','atún','sardina','tilapia','corvina','trucha','marisco',
+    'tomate','cebolla','ajo','zanahoria','remolacha','espinaca','lechuga','brocoli',
+    'brócoli','pepino','zucchini','vainita','arveja','frijol','lenteja','garbanzo',
+    'naranja','mandarina','manzana','pera','uva','guineo','banano','mango','papaya',
+    'piña','melon','melón','sandia','sandía','fresa','mora','guayaba','limón','limon',
+    'pan','tortilla','arroz de cebada',
+    // Medicinas
+    'medicina','medicamento','pastilla','tableta','capsula','cápsula','jarabe','ampolla',
+    'inyeccion','inyección','vacuna','suero','antibiotico','antibiótico','analgesico',
+    'analgésico','antiinflamatorio','pomada','crema medicinal','gasa','venda',
+    // Educación
+    'libro','cuaderno','lapiz','lápiz','pluma','borrador','regla','compas','compás',
+    'utiles','útiles','escolar','texto escolar','uniforme escolar',
+    // Semillas / agro
+    'semilla','fertilizante','pesticida','fumigante','abono',
+    // Transporte público
+    'pasaje','tiquete bus',
+  ];
+
+  const _IVA_15_KEYWORDS = [
+    // Ropa y calzado
+    'jean','jeans','pantalon','pantalón','camisa','camiseta','polo','blusa','vestido',
+    'falda','short','bermuda','ropa','prenda','chompa','chaqueta','abrigo','buzo',
+    'zapato','zapatilla','sandalia','bota','tenis','deportivo','calzado','suela',
+    'medias','calcetines','ropa interior','pijama','traje','saco',
+    // Electrónica
+    'celular','telefono','teléfono','tablet','laptop','computadora','computador','pc',
+    'televisor','tv','monitor','impresora','router','modem','audifono','audífono',
+    'cargador','cable','funda','case','estuche','auricular','parlante','bocina',
+    // Alimentos procesados / snacks
+    'galleta','galletas','chips','snack','chocolatina','chocolate','caramelo','dulce',
+    'gaseosa','cola','pepsi','coca','fanta','sprite','cerveza','vino','licor',
+    'whisky','ron','vodka','bebida alcoholica','energizante','jugo en caja','néctar',
+    'nectar','enlatado','conserva','salsa','mayonesa','ketchup','mostaza','atún en lata',
+    'spam','salchicha','embutido','chorizo','mortadela','jamón','jamon',
+    // Higiene y belleza
+    'shampoo','acondicionador','jabón','jabon','desodorante','perfume','colonia',
+    'crema facial','maquillaje','labial','rimel','esmalte','base','polvo compacto',
+    'papel higienico','pañal','tampón','toalla femenina','cepillo dientes',
+    'pasta dental','hilo dental','enjuague',
+    // Hogar / limpieza
+    'detergente','lavaplatos','desinfectante','suavizante','cloro','limpiapisos',
+    'escoba','trapeador','mopa','esponja','guante limpieza',
+    // Muebles / decoración
+    'mueble','silla','mesa','sofa','sofá','cama','colchon','colchón','escritorio',
+    'armario','closet','estante','lampara','lámpara','cortina','espejo','cuadro',
+    // Herramientas / ferretería
+    'martillo','tornillo','pintura','brocha','tubo','cable electrico','cerradura',
+    'herramienta','taladro','sierra','llave','perno','clavo','cemento','varilla',
+    // Vehículos / repuestos
+    'llanta','bateria','batería','aceite motor','filtro','repuesto','accesorio auto',
+    // Cosméticos / spa
+    'spa','manicura','pedicura','tinte','tinte cabello','extensiones',
+  ];
+
+  // Calcula los campos IVA de un precio ingresado según el tipo
+  function calcIva(precio, tipoIva, porcentajeIva) {
+    const pct = (porcentajeIva || IVA_DEFAULT) / 100;
+    precio = parseFloat(precio) || 0;
+    if (tipoIva === 'SIN_IVA' || !tipoIva) {
+      return { precioBase: precio, valorIva: 0, precioFinal: precio, tipoIva: tipoIva || 'SIN_IVA', porcentajeIva: 0 };
+    }
+    if (tipoIva === 'IVA_NO_INCLUIDO') {
+      const valorIva = Math.round(precio * pct * 100) / 100;
+      return { precioBase: precio, valorIva, precioFinal: Math.round((precio + valorIva) * 100) / 100, tipoIva, porcentajeIva: porcentajeIva || IVA_DEFAULT };
+    }
+    if (tipoIva === 'IVA_INCLUIDO') {
+      const precioBase = Math.round((precio / (1 + pct)) * 100) / 100;
+      const valorIva   = Math.round((precio - precioBase) * 100) / 100;
+      return { precioBase, valorIva, precioFinal: precio, tipoIva, porcentajeIva: porcentajeIva || IVA_DEFAULT };
+    }
+    return { precioBase: precio, valorIva: 0, precioFinal: precio, tipoIva: 'SIN_IVA', porcentajeIva: 0 };
+  }
+
+  // Sugerencia automática de tipo IVA basada en nombre del producto
+  // 1. Busca en historial del negocio (aprendizaje)
+  // 2. Busca en palabras clave del catálogo SRI
+  // Retorna: { tipoIva, confianza: 'alta'|'media'|'baja', fuente: 'historial'|'catalogo'|'default' }
+  function getIvaSuggestion(nombre, categoriaId) {
+    nombre = (nombre || '').toLowerCase().trim();
+
+    // 1. Historial del negocio (aprendizaje por nombre exacto y categoría)
+    const mem = load('cf_iva_memory') || {};
+
+    // Coincidencia exacta de nombre
+    if (mem[nombre]) {
+      const e = mem[nombre];
+      return { tipoIva: e.tipoIva, confianza: 'alta', fuente: 'historial',
+               msg: `Usaste "${e.tipoIva === 'SIN_IVA' ? 'Sin IVA' : e.tipoIva === 'IVA_NO_INCLUIDO' ? 'IVA aparte' : 'IVA incluido'}" para este producto antes` };
+    }
+
+    // Historial por categoría
+    if (categoriaId && mem['cat_' + categoriaId]) {
+      const e = mem['cat_' + categoriaId];
+      return { tipoIva: e.tipoIva, confianza: 'media', fuente: 'historial_cat',
+               msg: `Usualmente esta categoría lleva: ${e.tipoIva === 'SIN_IVA' ? 'Sin IVA' : e.tipoIva === 'IVA_NO_INCLUIDO' ? 'IVA aparte' : 'IVA incluido'}` };
+    }
+
+    // 2. Catálogo SRI — tarifa 0%
+    const palabras = nombre.split(/\s+/);
+    const esCero = _IVA_CERO_KEYWORDS.some(kw => {
+      if (kw.includes(' ')) return nombre.includes(kw);
+      return palabras.some(p => p === kw || p.startsWith(kw.slice(0, -1)));
+    });
+    if (esCero) {
+      return { tipoIva: 'SIN_IVA', confianza: 'media', fuente: 'catalogo',
+               msg: '📋 Posible tarifa 0% (SRI Ecuador) — confirma si aplica' };
+    }
+
+    // 3. Catálogo SRI — gravado con IVA
+    const esGravado = _IVA_15_KEYWORDS.some(kw => {
+      if (kw.includes(' ')) return nombre.includes(kw);
+      return palabras.some(p => p === kw || p.startsWith(kw.slice(0, -1)));
+    });
+    if (esGravado) {
+      return { tipoIva: 'IVA_INCLUIDO', confianza: 'media', fuente: 'catalogo',
+               msg: '📋 Producto gravado con IVA — sugerimos "precio ya incluye IVA"' };
+    }
+
+    // 4. Sin coincidencia
+    return { tipoIva: 'IVA_INCLUIDO', confianza: 'baja', fuente: 'default',
+             msg: 'Sin historial para este producto — elige el tipo que aplica' };
+  }
+
+  // Guardar en memoria de aprendizaje
+  function recordIvaMemory(nombre, categoriaId, tipoIva) {
+    nombre = (nombre || '').toLowerCase().trim();
+    if (!nombre || !tipoIva) return;
+    const mem = load('cf_iva_memory') || {};
+    mem[nombre] = { tipoIva, updatedAt: new Date().toISOString() };
+    if (categoriaId) mem['cat_' + categoriaId] = { tipoIva, updatedAt: new Date().toISOString() };
+    save('cf_iva_memory', mem);
+  }
+
   // ── Inventario ─────────────────────────────────────────────
   function getInventory() { return load(KEYS.inventory) || []; }
 
   function addProduct(data) {
     const inv = getInventory();
-    const p = { id: uuid(), quantity: 0, unitCost: 0, unit: 'unidades', ...data };
+    // Calcular campos IVA antes de guardar
+    const ivaCalc = calcIva(data.precioVenta || data.unitCost || 0, data.tipoIva, data.porcentajeIva);
+    const p = { id: uuid(), quantity: 0, unitCost: 0, unit: 'unidades',
+                tipoIva: 'SIN_IVA', precioBase: 0, precioFinal: 0, valorIva: 0, porcentajeIva: 0,
+                ...data, ...ivaCalc };
     inv.push(p);
     save(KEYS.inventory, inv);
+    recordIvaMemory(p.name, p.category, p.tipoIva);
     _logAudit('create_product', `📦 ${p.name || 'Producto nuevo'}`);
     return p;
   }
@@ -417,8 +568,15 @@ const DB = (() => {
     const inv = getInventory();
     const idx = inv.findIndex(p => p.id === id);
     if (idx < 0) return null;
-    inv[idx] = { ...inv[idx], ...data, id };
+    const merged = { ...inv[idx], ...data, id };
+    // Recalcular IVA si cambió el precio o el tipo
+    if (data.tipoIva || data.precioVenta !== undefined) {
+      const ivaCalc = calcIva(merged.precioVenta || merged.unitCost || 0, merged.tipoIva, merged.porcentajeIva);
+      Object.assign(merged, ivaCalc);
+    }
+    inv[idx] = merged;
     save(KEYS.inventory, inv);
+    if (data.tipoIva) recordIvaMemory(merged.name, merged.category, merged.tipoIva);
     return inv[idx];
   }
 
@@ -1321,5 +1479,6 @@ const DB = (() => {
     exportSettings, importSettings,
     getUpcomingAlerts,
     getCompanyList, getActiveCompany, addCompany, switchToCompany, updateCompanyName, deleteCompany,
+    calcIva, getIvaSuggestion, recordIvaMemory, IVA_DEFAULT,
   };
 })();
