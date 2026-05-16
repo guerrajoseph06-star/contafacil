@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515m">
+  <link rel="stylesheet" href="css/style.css?v=20260515n">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -742,6 +742,15 @@
       </div>
     </div>
 
+    <!-- ══ IVA DEL MES (obligación tributaria — SRI) ══ -->
+    <div class="card no-print" id="iva-panel-card" style="margin-bottom:12px; display:none;">
+      <div class="card-header" style="margin-bottom:10px;">
+        <div class="card-title">🧾 IVA del mes</div>
+        <div style="font-size:11px; color:var(--gray-400);">Obligación tributaria · SRI</div>
+      </div>
+      <div id="iva-panel-content"></div>
+    </div>
+
     <!-- Deudas del mes -->
     <div id="report-liabilities-section" style="display:none; margin-bottom:12px;">
       <div class="card" style="background:#fef3c7; border:none;">
@@ -1110,7 +1119,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515m"></script>
-<script src="js/app.js?v=20260515m"></script>
+<script src="js/db.js?v=20260515n"></script>
+<script src="js/app.js?v=20260515n"></script>
 </body>
 </html>
