@@ -1228,11 +1228,24 @@ const DB = (() => {
         }
         return;
       }
-      if (t.type === 'income' && t.account) {
-        bal[t.account] = (bal[t.account] || 0) + t.amount;
+      // Pago dividido: el dinero entró/salió por 2 cuentas
+      const split = Array.isArray(t.splitPayments) && t.splitPayments.length
+        ? t.splitPayments : null;
+      if (t.type === 'income') {
+        if (split) {
+          split.forEach(sp => { if (sp.account)
+            bal[sp.account] = (bal[sp.account] || 0) + (parseFloat(sp.amount) || 0); });
+        } else if (t.account) {
+          bal[t.account] = (bal[t.account] || 0) + t.amount;
+        }
       }
-      if (t.type === 'expense' && t.account) {
-        bal[t.account] = (bal[t.account] || 0) - t.amount;
+      if (t.type === 'expense') {
+        if (split) {
+          split.forEach(sp => { if (sp.account)
+            bal[sp.account] = (bal[sp.account] || 0) - (parseFloat(sp.amount) || 0); });
+        } else if (t.account) {
+          bal[t.account] = (bal[t.account] || 0) - t.amount;
+        }
       }
       if (t.type === 'transfer') {
         if (t.fromAccount) bal[t.fromAccount] = (bal[t.fromAccount] || 0) - t.amount;

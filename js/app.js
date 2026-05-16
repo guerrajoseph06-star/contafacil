@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15k';
+const APP_VERSION = '2026.05.15l';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1195,6 +1195,9 @@ function openAccountDetail(accountId) {
     if (t.type === 'transfer') {
       return t.fromAccount === accountId || t.toAccount === accountId;
     }
+    if (Array.isArray(t.splitPayments) && t.splitPayments.length) {
+      return t.splitPayments.some(sp => sp.account === accountId);
+    }
     return t.account === accountId;
   }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -1678,16 +1681,60 @@ function selectIva(type) {
 // Muestra en tiempo real el desglose base + IVA según monto y tipo
 function _updateIvaBreakdown() {
   const el = document.getElementById('iva-breakdown');
-  if (!el) return;
+  if (el) {
+    const amount = parseFloat(document.getElementById('f-amount')?.value) || 0;
+    if (!amount || _formIvaType === 'SIN_IVA') {
+      el.innerHTML = '';
+    } else {
+      const s   = DB.getSettings();
+      const pct = s.porcentajeIva || DB.IVA_DEFAULT;
+      const res = DB.calcIva(amount, _formIvaType, pct);
+      const sym = s.currencySymbol || '$';
+      el.innerHTML = _formIvaType === 'IVA_NO_INCLUIDO'
+        ? `<span style="color:var(--gray-500)">Base: ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)} = <strong>Total: ${sym} ${fmt(res.precioFinal)}</strong></span>`
+        : `<span style="color:var(--gray-500)">Incluye: base ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)}</span>`;
+    }
+  }
+  _updateSplitInfo(); // el total cambió → actualizar el reparto del pago dividido
+}
+
+// ── Pago dividido en 2 cuentas (ingreso/gasto recibido o pagado de 2 formas) ──
+// Total real de la transacción incluyendo IVA (lo que se reparte entre cuentas)
+function _formTotal() {
   const amount = parseFloat(document.getElementById('f-amount')?.value) || 0;
-  if (!amount || _formIvaType === 'SIN_IVA') { el.innerHTML = ''; return; }
-  const s   = DB.getSettings();
-  const pct = s.porcentajeIva || DB.IVA_DEFAULT;
-  const res = DB.calcIva(amount, _formIvaType, pct);
-  const sym = s.currencySymbol || '$';
-  el.innerHTML = _formIvaType === 'IVA_NO_INCLUIDO'
-    ? `<span style="color:var(--gray-500)">Base: ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)} = <strong>Total: ${sym} ${fmt(res.precioFinal)}</strong></span>`
-    : `<span style="color:var(--gray-500)">Incluye: base ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)}</span>`;
+  if (!amount) return 0;
+  if (_formIvaType === 'IVA_NO_INCLUIDO') {
+    const pct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+    return DB.calcIva(amount, _formIvaType, pct).precioFinal;
+  }
+  return amount; // SIN_IVA e IVA_INCLUIDO: el monto ya es el total
+}
+
+function toggleSplitPayment() {
+  const on  = document.getElementById('f-split-on')?.checked;
+  const sec = document.getElementById('split-section');
+  if (sec) sec.style.display = on ? 'block' : 'none';
+  _updateSplitInfo();
+}
+
+// Muestra en vivo cómo se reparte el total entre las 2 cuentas
+function _updateSplitInfo() {
+  const el = document.getElementById('split-info');
+  if (!el) return;
+  if (!document.getElementById('f-split-on')?.checked) { el.innerHTML = ''; return; }
+  const sym    = DB.getSettings().currencySymbol || '$';
+  const total  = _formTotal();
+  const monto2 = parseFloat(document.getElementById('f-split-amount')?.value) || 0;
+  if (total <= 0) {
+    el.innerHTML = `<span style="color:var(--gray-400)">Escribe primero el monto arriba</span>`;
+  } else if (monto2 <= 0) {
+    el.innerHTML = `<span style="color:var(--gray-400)">Total a repartir: ${sym} ${fmt(total)}</span>`;
+  } else if (monto2 >= total) {
+    el.innerHTML = `<span style="color:#dc2626; font-weight:700">⚠️ El monto de la 2da cuenta debe ser menor a ${sym} ${fmt(total)}</span>`;
+  } else {
+    const monto1 = Math.round((total - monto2) * 100) / 100;
+    el.innerHTML = `<span style="color:#16a34a; font-weight:700">✅ Cuenta 1: ${sym} ${fmt(monto1)} &nbsp;·&nbsp; Cuenta 2: ${sym} ${fmt(monto2)}</span>`;
+  }
 }
 
 // ── Foto de comprobante / factura (opcional en ingreso, gasto y deuda) ────────
@@ -2243,7 +2290,14 @@ function renderFormFields(tx) {
       </div>
     `;
   } else {
-    // INGRESO o GASTO: categoría + cuenta + IVA + inventario opcional
+    // INGRESO o GASTO: categoría + cuenta (con opción de pago dividido) + IVA + inventario
+    const splitOn      = !!(tx && Array.isArray(tx.splitPayments) && tx.splitPayments.length === 2);
+    const acc1Sel      = splitOn ? tx.splitPayments[0].account : (tx?.account || '');
+    const acc2Sel      = splitOn ? tx.splitPayments[1].account : '';
+    const split2Amount = splitOn ? tx.splitPayments[1].amount  : '';
+    const accSel = sel => '<option value="">— Cuenta —</option>' +
+      DB.getAccounts().map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
+
     html += `
       <div class="form-group">
         <label class="form-label">Categoría</label>
@@ -2251,7 +2305,25 @@ function renderFormFields(tx) {
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta</label>
-        <select id="f-account" class="form-control">${accOptions('account')}</select>
+        <select id="f-account" class="form-control">${accSel(acc1Sel)}</select>
+      </div>
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:10px 12px;
+        background:var(--gray-50); border-radius:8px; margin-bottom:12px;">
+        <input type="checkbox" id="f-split-on" ${splitOn ? 'checked' : ''} onchange="toggleSplitPayment()"
+          style="width:18px; height:18px; accent-color:var(--primary);">
+        <div style="font-size:13px; font-weight:600;">💳 El pago se dividió en 2 cuentas</div>
+      </label>
+      <div id="split-section" style="display:${splitOn ? 'block' : 'none'};">
+        <div class="form-group">
+          <label class="form-label">Segunda cuenta</label>
+          <select id="f-account2" class="form-control">${accSel(acc2Sel)}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">¿Cuánto se recibió / pagó en la 2da cuenta?</label>
+          <input type="number" id="f-split-amount" class="form-control" value="${split2Amount}"
+            placeholder="0.00" min="0" step="any" inputmode="decimal" oninput="_updateSplitInfo()">
+        </div>
+        <div id="split-info" style="font-size:12px; min-height:16px; margin-bottom:8px;"></div>
       </div>
     `;
 
@@ -2319,6 +2391,7 @@ function renderFormFields(tx) {
 
   container.innerHTML = html;
   _renderReceiptArea(); // pinta el estado actual de la foto
+  _updateSplitInfo();   // pinta el reparto del pago dividido (si aplica)
 }
 
 function toggleInventorySection() {
@@ -2354,8 +2427,28 @@ function submitForm() {
 
   } else {
     data.category = document.getElementById('f-category')?.value;
-    data.account  = document.getElementById('f-account')?.value;
     data.ivaType  = _formIvaType; // guardar tipo de IVA seleccionado
+
+    // Pago dividido en 2 cuentas (opcional)
+    if (document.getElementById('f-split-on')?.checked) {
+      const acc1   = document.getElementById('f-account')?.value;
+      const acc2   = document.getElementById('f-account2')?.value;
+      const monto2 = parseFloat(document.getElementById('f-split-amount')?.value) || 0;
+      const total  = _formTotal();
+      if (!acc1 || !acc2)   { showToast('⚠️ Selecciona las 2 cuentas del pago dividido'); return; }
+      if (acc1 === acc2)    { showToast('⚠️ Las 2 cuentas deben ser diferentes'); return; }
+      if (monto2 <= 0)      { showToast('⚠️ Indica cuánto se recibió en la 2da cuenta'); return; }
+      if (monto2 >= total)  { showToast('⚠️ El monto de la 2da cuenta debe ser menor al total'); return; }
+      data.splitPayments = [
+        { account: acc1, amount: Math.round((total - monto2) * 100) / 100 },
+        { account: acc2, amount: monto2 },
+      ];
+      data.account = ''; // el dinero se reparte vía splitPayments
+    } else {
+      data.account       = document.getElementById('f-account')?.value;
+      data.splitPayments = null;
+    }
+
     const affectsInv = document.getElementById('f-affects-inv')?.checked;
     if (affectsInv) {
       const productId = document.getElementById('f-product')?.value;
@@ -2466,9 +2559,20 @@ function openTxDetail(id) {
     `;
   } else {
     const acc = DB.getAccountById(tx.account);
+    const isSplit = Array.isArray(tx.splitPayments) && tx.splitPayments.length;
+    const splitHTML = isSplit ? `
+      <div style="background:var(--gray-50); border-radius:8px; padding:10px 12px; font-size:13px;">
+        <div style="font-weight:700; margin-bottom:4px;">💳 Pago dividido en 2 cuentas</div>
+        ${tx.splitPayments.map(sp => {
+          const a = DB.getAccountById(sp.account);
+          return `<div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--gray-500);">${a ? a.emoji + ' ' + a.name : 'Cuenta'}</span>
+            <span style="font-weight:700;">${fmt(sp.amount)}</span></div>`;
+        }).join('')}
+      </div>` : '';
     mainDetail = `
       ${cat ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Categoría</span><span style="font-weight:600;">${cat.emoji} ${cat.name}</span></div>` : ''}
-      ${acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : ''}
+      ${isSplit ? splitHTML : (acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : '')}
       ${tx.affectsInventory ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Inventario</span><span style="font-weight:600; color:var(--primary);">📦 -${tx.quantity} unidades</span></div>` : ''}
     `;
   }
@@ -4340,12 +4444,15 @@ function _doExportToExcel() {
     const fAcc = DB.getAccountById(t.fromAccount);
     const tAcc = DB.getAccountById(t.toAccount);
     let ingreso = '', gastoOp = '', cmv = '', deuda = '', catLabel = '', accLabel = '';
+    const splitAcc = (Array.isArray(t.splitPayments) && t.splitPayments.length)
+      ? t.splitPayments.map(sp => { const a = DB.getAccountById(sp.account); return a ? a.name : '?'; }).join(' + ')
+      : '';
     if (t.isCogs) {
       cmv = t.amount; catLabel = 'Costo de Ventas (CMV)';
     } else if (t.type === 'income') {
-      ingreso = t.amount; catLabel = cat ? cat.name : 'Ingresos'; accLabel = acc ? acc.name : '';
+      ingreso = t.amount; catLabel = cat ? cat.name : 'Ingresos'; accLabel = splitAcc || (acc ? acc.name : '');
     } else if (t.type === 'expense') {
-      gastoOp = t.amount; catLabel = cat ? cat.name : 'Gastos'; accLabel = acc ? acc.name : '';
+      gastoOp = t.amount; catLabel = cat ? cat.name : 'Gastos'; accLabel = splitAcc || (acc ? acc.name : '');
     } else if (t.type === 'transfer') {
       catLabel = (fAcc ? fAcc.name : '—') + ' → ' + (tAcc ? tAcc.name : '—');
     } else if (t.type === 'liability') {
