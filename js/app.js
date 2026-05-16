@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15q';
+const APP_VERSION = '2026.05.15r';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -4515,54 +4515,14 @@ function printAnnualReport() {
   });
 }
 
-// ── Generador de Excel 100% OFFLINE (SpreadsheetML 2003) ──────────────────────
-// No depende de ninguna librería externa ni de internet: genera un archivo .xls
-// XML nativo que abre en Excel, Google Sheets y WPS, con fórmulas reales
-// (SUM, restas, promedios, porcentajes) que el usuario puede auditar.
+// ── Generador de Excel .xlsx REAL, 100% OFFLINE ───────────────────────────────
+// Genera un archivo .xlsx genuino (formato Open XML: un ZIP con XML adentro).
+// Sin librerías, sin internet. Abre limpio en Excel PC, Excel móvil, Google
+// Sheets y WPS — sin avisos de "archivo dañado". Con fórmulas reales auditables.
 function _xmlEsc(str) {
   return String(str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-}
-
-// Convierte una celda (string | number | {v,f,s,t,merge}) a XML SpreadsheetML
-function _xlsCellXML(c) {
-  if (c === null || c === undefined || c === '') return '<Cell/>';
-  const cell  = (typeof c === 'object') ? c : { v: c };
-  const attrs = [];
-  if (cell.s)     attrs.push('ss:StyleID="' + cell.s + '"');
-  if (cell.merge) attrs.push('ss:MergeAcross="' + cell.merge + '"');
-  if (cell.f)     attrs.push('ss:Formula="' + _xmlEsc(cell.f) + '"');
-  const a = attrs.length ? ' ' + attrs.join(' ') : '';
-  const hasVal = cell.v !== undefined && cell.v !== null && cell.v !== '';
-  if (!cell.f && !hasVal) return '<Cell' + a + '/>';   // celda con estilo, sin valor
-  let type, val;
-  if (cell.f) {
-    type = cell.t || 'Number';
-    val  = hasVal ? cell.v : 0;
-    if (type === 'String') val = _xmlEsc(String(val));
-  } else if (typeof cell.v === 'number') {
-    type = 'Number'; val = cell.v;
-  } else if (cell.t === 'DateTime') {
-    type = 'DateTime'; val = cell.v;
-  } else {
-    type = 'String'; val = _xmlEsc(String(cell.v));
-  }
-  return '<Cell' + a + '><Data ss:Type="' + type + '">' + val + '</Data></Cell>';
-}
-
-function _xlsRowXML(cells) {
-  let out = '<Row>';
-  cells.forEach(c => { out += _xlsCellXML(c); });
-  return out + '</Row>';
-}
-
-// Celda de fecha: si es YYYY-MM-DD válida, la pasa como fecha real de Excel
-function _xlsDate(d) {
-  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-    return { v: d + 'T00:00:00.000', t: 'DateTime', s: 'date' };
-  }
-  return d ? String(d) : '';
 }
 
 function _xlsStatusLabel(st) {
@@ -4570,49 +4530,272 @@ function _xlsStatusLabel(st) {
     || (st || '—');
 }
 
-// Construye el libro Excel completo a partir de un arreglo de hojas
-function _genExcelXML(sheets, sym) {
-  const mf = '&quot;' + (sym || '$') + '&quot;#,##0.00';
-  const styles =
-    '<Styles>' +
-    '<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/>' +
-      '<Font ss:FontName="Calibri" ss:Size="11"/></Style>' +
-    '<Style ss:ID="title"><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#1E3A8A"/></Style>' +
-    '<Style ss:ID="subtitle"><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#64748B"/></Style>' +
-    '<Style ss:ID="header"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
-      '<Interior ss:Color="#2563EB" ss:Pattern="Solid"/>' +
-      '<Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>' +
-      '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#1E3A8A"/></Borders></Style>' +
-    '<Style ss:ID="label"><Font ss:Bold="1"/></Style>' +
-    '<Style ss:ID="money"><NumberFormat ss:Format="' + mf + '"/></Style>' +
-    '<Style ss:ID="moneyBold"><Font ss:Bold="1"/><NumberFormat ss:Format="' + mf + '"/></Style>' +
-    '<Style ss:ID="date"><Alignment ss:Horizontal="Center"/><NumberFormat ss:Format="Short Date"/></Style>' +
-    '<Style ss:ID="percent"><Font ss:Bold="1"/><NumberFormat ss:Format="0.0%"/></Style>' +
-    '<Style ss:ID="sectionHead"><Font ss:Bold="1" ss:Color="#1E3A8A"/>' +
-      '<Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="totalLabel"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
-      '<Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="totalRow"><Font ss:Bold="1" ss:Color="#FFFFFF"/>' +
-      '<Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/><NumberFormat ss:Format="' + mf + '"/></Style>' +
-    '</Styles>';
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n<?mso-application progid="Excel.Sheet"?>\r\n' +
-    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
-    'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
-    'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
-    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' + styles;
-  sheets.forEach(sh => {
-    xml += '<Worksheet ss:Name="' + _xmlEsc(sh.name) + '"><Table>';
-    (sh.cols || []).forEach(w => { xml += '<Column ss:Width="' + w + '"/>'; });
-    sh.rows.forEach(r => { xml += _xlsRowXML(r); });
-    xml += '</Table></Worksheet>';
-  });
-  return xml + '</Workbook>';
+// Celda de fecha: si es YYYY-MM-DD válida, la marca como fecha real de Excel
+function _xlsDate(d) {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    return { v: d, t: 'date', s: 'date' };
+  }
+  return d ? String(d) : '';
 }
 
-function _downloadXls(xml, filename) {
-  const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+// Letra de columna a partir del número (1→A, 27→AA)
+function _colLetter(n) {
+  let s = '';
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+// Número de serie de fecha de Excel (días desde 1899-12-30)
+function _excelSerial(iso) {
+  const p = String(iso).split('-');
+  return Math.floor((Date.UTC(+p[0], +p[1] - 1, +p[2]) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+// Convierte una fórmula de notación R1C1 a A1 (la celda conoce su fila/columna)
+function _r1c1ToA1(formula, curRow, curCol) {
+  return formula.replace(/R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?/g, (m, rp, cp) => {
+    let row, col;
+    if (rp === undefined)   row = curRow;
+    else if (rp[0] === '[') row = curRow + parseInt(rp.slice(1, -1), 10);
+    else                    row = parseInt(rp, 10);
+    if (cp === undefined)   col = curCol;
+    else if (cp[0] === '[') col = curCol + parseInt(cp.slice(1, -1), 10);
+    else                    col = parseInt(cp, 10);
+    return _colLetter(col) + row;
+  });
+}
+
+// Índice de cada estilo dentro de cellXfs (ver _xlsxStyles)
+const _XLSX_STYLE = {
+  title: 1, subtitle: 2, header: 3, label: 4, money: 5, moneyBold: 6,
+  date: 7, percent: 8, sectionHead: 9, totalLabel: 10, totalRow: 11,
+};
+
+// styles.xml — fuentes, rellenos, bordes y formatos de número
+function _xlsxStyles(sym) {
+  const money = '&quot;' + _xmlEsc(sym || '$') + '&quot;#,##0.00';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="3">' +
+      '<numFmt numFmtId="164" formatCode="' + money + '"/>' +
+      '<numFmt numFmtId="165" formatCode="0.0%"/>' +
+      '<numFmt numFmtId="166" formatCode="dd/mm/yyyy"/>' +
+    '</numFmts>' +
+    '<fonts count="6">' +
+      '<font><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="15"/><color rgb="FF1E3A8A"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FF64748B"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FF1E3A8A"/><name val="Calibri"/></font>' +
+    '</fonts>' +
+    '<fills count="5">' +
+      '<fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF2563EB"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFDBEAFE"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF1E3A8A"/></patternFill></fill>' +
+    '</fills>' +
+    '<borders count="2">' +
+      '<border><left/><right/><top/><bottom/><diagonal/></border>' +
+      '<border><left/><right/><top/><bottom style="thin"><color rgb="FF1E3A8A"/></bottom><diagonal/></border>' +
+    '</borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="12">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+      '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+      '<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+      '<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+      '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="164" fontId="4" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
+      '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>' +
+      '<xf numFmtId="165" fontId="4" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
+      '<xf numFmtId="0" fontId="5" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="0" fontId="3" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="164" fontId="3" fillId="4" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+    '</cellXfs>' +
+    '</styleSheet>';
+}
+
+// Genera el XML de una hoja de cálculo (worksheet OOXML)
+function _xlsxSheetXML(sheet) {
+  const merges = [];
+  let body = '';
+  sheet.rows.forEach((cells, ri) => {
+    const rowNum = ri + 1;
+    body += '<row r="' + rowNum + '">';
+    let col = 1;
+    cells.forEach(c => {
+      if (c === null || c === undefined) { col++; return; }
+      const cell = (typeof c === 'object') ? c : { v: c };
+      const sIdx = cell.s ? (_XLSX_STYLE[cell.s] || 0) : 0;
+      const sAttr = sIdx ? ' s="' + sIdx + '"' : '';
+      const ref  = _colLetter(col) + rowNum;
+      const hasVal = cell.v !== undefined && cell.v !== null && cell.v !== '';
+      if (cell.merge) merges.push(ref + ':' + _colLetter(col + cell.merge) + rowNum);
+
+      if (cell.f) {
+        const f = _r1c1ToA1(String(cell.f).replace(/^=/, ''), rowNum, col);
+        body += '<c r="' + ref + '"' + sAttr + '><f>' + _xmlEsc(f) + '</f><v>' +
+                (hasVal ? cell.v : 0) + '</v></c>';
+      } else if (cell.t === 'date' && hasVal) {
+        body += '<c r="' + ref + '"' + sAttr + '><v>' + _excelSerial(cell.v) + '</v></c>';
+      } else if (typeof cell.v === 'number') {
+        body += '<c r="' + ref + '"' + sAttr + '><v>' + cell.v + '</v></c>';
+      } else if (hasVal) {
+        const txt = String(cell.v);
+        const sp  = /^\s|\s$/.test(txt) ? ' xml:space="preserve"' : '';
+        body += '<c r="' + ref + '"' + sAttr + ' t="inlineStr"><is><t' + sp + '>' +
+                _xmlEsc(txt) + '</t></is></c>';
+      } else if (sIdx) {
+        body += '<c r="' + ref + '" s="' + sIdx + '"/>';
+      }
+      col += 1 + (cell.merge || 0);
+    });
+    body += '</row>';
+  });
+  let cols = '';
+  if (sheet.cols && sheet.cols.length) {
+    cols = '<cols>' + sheet.cols.map((w, i) =>
+      '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' +
+      (w / 7).toFixed(2) + '" customWidth="1"/>').join('') + '</cols>';
+  }
+  const mergeXml = merges.length
+    ? '<mergeCells count="' + merges.length + '">' +
+      merges.map(m => '<mergeCell ref="' + m + '"/>').join('') + '</mergeCells>'
+    : '';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    cols + '<sheetData>' + body + '</sheetData>' + mergeXml + '</worksheet>';
+}
+
+// CRC-32 (necesario para el ZIP)
+let _CRC_TABLE = null;
+function _crc32(bytes) {
+  if (!_CRC_TABLE) {
+    _CRC_TABLE = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      _CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = _CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+// Empaqueta los archivos en un ZIP (método "stored", sin compresión)
+function _zipFiles(files) {
+  const enc   = new TextEncoder();
+  const parts = [];
+  const meta  = [];
+  let offset  = 0;
+  const w16 = n => [n & 0xFF, (n >>> 8) & 0xFF];
+  const w32 = n => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+  const add = arr => {
+    const u = (arr instanceof Uint8Array) ? arr : new Uint8Array(arr);
+    parts.push(u); offset += u.length;
+  };
+
+  files.forEach(f => {
+    const nameBytes = enc.encode(f.name);
+    const data = f.data;
+    const crc  = _crc32(data);
+    meta.push({ nameBytes, crc, size: data.length, off: offset });
+    add([].concat(
+      [0x50, 0x4B, 0x03, 0x04], w16(20), w16(0), w16(0), w16(0), w16(0x21),
+      w32(crc), w32(data.length), w32(data.length),
+      w16(nameBytes.length), w16(0)
+    ));
+    add(nameBytes);
+    add(data);
+  });
+
+  const cdStart = offset;
+  files.forEach((f, i) => {
+    const m = meta[i];
+    add([].concat(
+      [0x50, 0x4B, 0x01, 0x02], w16(20), w16(20), w16(0), w16(0), w16(0), w16(0x21),
+      w32(m.crc), w32(m.size), w32(m.size),
+      w16(m.nameBytes.length), w16(0), w16(0), w16(0), w16(0), w32(0),
+      w32(m.off)
+    ));
+    add(m.nameBytes);
+  });
+  const cdSize = offset - cdStart;
+  add([].concat(
+    [0x50, 0x4B, 0x05, 0x06], w16(0), w16(0),
+    w16(files.length), w16(files.length), w32(cdSize), w32(cdStart), w16(0)
+  ));
+
+  let total = 0;
+  parts.forEach(p => total += p.length);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  parts.forEach(p => { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+// Construye el .xlsx completo a partir del arreglo de hojas
+function _buildXlsx(sheets, sym) {
+  const enc   = new TextEncoder();
+  const files = [];
+  const e = (name, str) => files.push({ name, data: enc.encode(str) });
+
+  let ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  sheets.forEach((s, i) => {
+    ct += '<Override PartName="/xl/worksheets/sheet' + (i + 1) +
+          '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+  });
+  ct += '</Types>';
+  e('[Content_Types].xml', ct);
+
+  e('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>');
+
+  let wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+  sheets.forEach((s, i) => {
+    wb += '<sheet name="' + _xmlEsc(s.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+  });
+  wb += '</sheets></workbook>';
+  e('xl/workbook.xml', wb);
+
+  let rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  sheets.forEach((s, i) => {
+    rels += '<Relationship Id="rId' + (i + 1) +
+      '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' +
+      (i + 1) + '.xml"/>';
+  });
+  rels += '<Relationship Id="rId' + (sheets.length + 1) +
+    '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+  rels += '</Relationships>';
+  e('xl/_rels/workbook.xml.rels', rels);
+
+  e('xl/styles.xml', _xlsxStyles(sym));
+  sheets.forEach((s, i) => e('xl/worksheets/sheet' + (i + 1) + '.xml', _xlsxSheetXML(s)));
+
+  return _zipFiles(files);
+}
+
+// Descarga un .xlsx
+function _downloadXlsx(bytes, filename) {
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
@@ -4668,16 +4851,20 @@ function exportAnnualExcel() {
     ],
   ];
 
-  const xml = _genExcelXML([{
-    name: 'Anual ' + annualYear,
-    cols: [95, 125, 145, 105, 140, 135],
-    rows,
-  }], sym);
   const filename = 'ContaFacil_Anual_' + annualYear + '_' +
-    s.companyName.replace(/\s+/g, '-') + '.xls';
-  _downloadXls(xml, filename);
-  DB.logAudit('export_excel', '📊 Excel anual: ' + filename);
-  showToast('📥 Resumen anual ' + annualYear + ' descargado', 3000);
+    s.companyName.replace(/\s+/g, '-') + '.xlsx';
+  try {
+    const bytes = _buildXlsx([{
+      name: 'Anual ' + annualYear,
+      cols: [95, 125, 145, 105, 140, 135],
+      rows,
+    }], sym);
+    _downloadXlsx(bytes, filename);
+    DB.logAudit('export_excel', '📊 Excel anual: ' + filename);
+    showToast('📥 Resumen anual ' + annualYear + ' descargado', 3000);
+  } catch (err) {
+    showToast('❌ No se pudo generar el Excel: ' + err.message, 4000);
+  }
 }
 
 // ── Exportar a Excel mensual (100% offline, con fórmulas auditables) ──────────
@@ -4888,12 +5075,16 @@ function _doExportToExcel() {
     });
   }
 
-  const xml = _genExcelXML(sheets, sym);
   const filename = 'ContaFacil_' + s.companyName.replace(/\s+/g, '-') +
-    '_' + reportYear + '-' + String(reportMonth).padStart(2, '0') + '.xls';
-  _downloadXls(xml, filename);
-  DB.logAudit('export_excel', '📊 Excel: ' + filename);
-  showToast('📥 Excel descargado: ' + filename, 3500);
+    '_' + reportYear + '-' + String(reportMonth).padStart(2, '0') + '.xlsx';
+  try {
+    const bytes = _buildXlsx(sheets, sym);
+    _downloadXlsx(bytes, filename);
+    DB.logAudit('export_excel', '📊 Excel: ' + filename);
+    showToast('📥 Excel descargado: ' + filename, 3500);
+  } catch (err) {
+    showToast('❌ No se pudo generar el Excel: ' + err.message, 4000);
+  }
 }
 
 // ── Log de auditoría ─────────────────────────────────────────────────────────
