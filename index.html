@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515n">
+  <link rel="stylesheet" href="css/style.css?v=20260515o">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -743,10 +743,11 @@
     </div>
 
     <!-- ══ IVA DEL MES (obligación tributaria — SRI) ══ -->
-    <div class="card no-print" id="iva-panel-card" style="margin-bottom:12px; display:none;">
+    <div class="card no-print" id="iva-panel-card" style="margin-bottom:12px; display:none; cursor:pointer;"
+      onclick="openIvaReport()">
       <div class="card-header" style="margin-bottom:10px;">
         <div class="card-title">🧾 IVA del mes</div>
-        <div style="font-size:11px; color:var(--gray-400);">Obligación tributaria · SRI</div>
+        <div style="font-size:11px; color:var(--primary); font-weight:600;">Ver detalle ›</div>
       </div>
       <div id="iva-panel-content"></div>
     </div>
@@ -802,11 +803,15 @@
       </button>
     </div>
 
-    <!-- Deducibles del año -->
-    <button class="btn btn-outline btn-block no-print" style="margin-bottom:12px;"
-      onclick="openDeduciblesReport()">
-      📋 Mis Deducibles del año
-    </button>
+    <!-- Deducibles del año + Detalle del IVA -->
+    <div style="display:flex; gap:8px; margin-bottom:12px;" class="no-print">
+      <button class="btn btn-outline" style="flex:1; font-size:13px;" onclick="openDeduciblesReport()">
+        📋 Deducibles
+      </button>
+      <button class="btn btn-outline" style="flex:1; font-size:13px;" onclick="openIvaReport()">
+        🧾 IVA a pagar
+      </button>
+    </div>
 
     <div class="card no-print" style="background:var(--primary-light); border:none; margin-bottom:12px;">
       <div style="font-size:13px; color:var(--primary); font-weight:600; margin-bottom:4px;">💡 ¿Cómo obtener el PDF?</div>
@@ -1119,7 +1124,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515n"></script>
-<script src="js/app.js?v=20260515n"></script>
+<script src="js/db.js?v=20260515o"></script>
+<script src="js/app.js?v=20260515o"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15n';
+const APP_VERSION = '2026.05.15o';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2180,6 +2180,99 @@ function _renderDeduciblesReport() {
       <div style="font-size:11px; font-weight:800; color:var(--gray-500); text-transform:uppercase;
         letter-spacing:.5px; margin-bottom:2px;">Detalle (${sum.items.length})</div>
       <div>${itemsHTML}</div>` : ''}
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+// ── Reporte: Detalle del IVA del mes (de dónde proviene cada asiento) ─────────
+let _ivaRepYear  = new Date().getFullYear();
+let _ivaRepMonth = new Date().getMonth() + 1;
+
+function openIvaReport() {
+  _ivaRepYear  = reportYear;   // arranca en el mes que se está viendo en Reportes
+  _ivaRepMonth = reportMonth;
+  _renderIvaReport();
+}
+
+function _changeIvaRepMonth(delta) {
+  _ivaRepMonth += delta;
+  if (_ivaRepMonth > 12) { _ivaRepMonth = 1;  _ivaRepYear++; }
+  if (_ivaRepMonth < 1)  { _ivaRepMonth = 12; _ivaRepYear--; }
+  _renderIvaReport();
+}
+
+function _renderIvaReport() {
+  const sym = DB.getSettings().currencySymbol || '$';
+  const ivaTxs  = DB.getTransactionsByMonth(_ivaRepYear, _ivaRepMonth).filter(t => t.isIva);
+  const cobrado = ivaTxs.filter(t => t.ivaDirection === 'cobrado');
+  const credito = ivaTxs.filter(t => t.ivaDirection === 'credito');
+  const totCob  = cobrado.reduce((s, t) => s + t.amount, 0);
+  const totCred = credito.reduce((s, t) => s + t.amount, 0);
+  const neto    = totCob - totCred;
+  const aPagar  = neto >= 0;
+  const monthLabel = new Date(_ivaRepYear, _ivaRepMonth - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  // Una fila por asiento de IVA, mostrando la transacción de origen
+  const ivaRow = t => {
+    const parent  = t.linkedParentId ? DB.getTransactionById(t.linkedParentId) : null;
+    const srcDesc = parent ? parent.description : t.description.replace(/^IVA[^·]*·\s*/, '');
+    const baseAmt = parent ? parent.amount : 0;
+    const isSplit = parent && Array.isArray(parent.splitPayments) && parent.splitPayments.length;
+    const acc     = (parent && parent.account) ? DB.getAccountById(parent.account) : null;
+    const accTxt  = isSplit ? '💳 pago dividido' : (acc ? acc.emoji + ' ' + acc.name : 'Sin cuenta');
+    const tap     = parent
+      ? `onclick="closeSettingsSheet(); setTimeout(()=>openTxDetail('${parent.id}'),220);" style="cursor:pointer;"`
+      : '';
+    return `
+      <div ${tap} style="display:flex; align-items:center; gap:10px; padding:9px 0;
+        border-bottom:1px solid var(--gray-50);">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${srcDesc}</div>
+          <div style="font-size:11px; color:var(--gray-400);">${fmtDate(t.date)} · Base: ${sym} ${fmt(baseAmt)} · ${accTxt}</div>
+        </div>
+        <div style="font-size:14px; font-weight:800; color:var(--primary); flex-shrink:0;">${sym} ${fmt(t.amount)}</div>
+        ${parent ? '<div style="color:var(--gray-300); font-size:15px;">›</div>' : ''}
+      </div>`;
+  };
+  const listOrEmpty = (arr, msg) => arr.length
+    ? arr.map(ivaRow).join('')
+    : `<div style="text-align:center; color:var(--gray-400); padding:14px; font-size:13px;">${msg}</div>`;
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🧾 IVA</h3>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <button onclick="_changeIvaRepMonth(-1)" style="width:38px; height:38px; border-radius:8px;
+        background:var(--gray-100); border:none; cursor:pointer; font-size:18px;">‹</button>
+      <span style="font-weight:800; font-size:16px; text-transform:capitalize;">${monthLabel}</span>
+      <button onclick="_changeIvaRepMonth(1)" style="width:38px; height:38px; border-radius:8px;
+        background:var(--gray-100); border:none; cursor:pointer; font-size:18px;">›</button>
+    </div>
+
+    <div style="background:linear-gradient(135deg,${aPagar ? '#2563eb,#1d4ed8' : '#16a34a,#15803d'});
+      border-radius:14px; padding:18px; color:#fff; margin-bottom:16px; text-align:center;">
+      <div style="font-size:12px; opacity:.85;">${aPagar ? 'IVA a pagar al SRI' : 'IVA a favor (crédito)'}</div>
+      <div style="font-size:30px; font-weight:900; margin-top:4px;">${sym} ${fmt(Math.abs(neto))}</div>
+      <div style="font-size:11px; opacity:.85; margin-top:6px;">
+        Cobrado ${sym} ${fmt(totCob)} − Crédito ${sym} ${fmt(totCred)}
+      </div>
+    </div>
+
+    <div style="font-size:11px; font-weight:800; color:#16a34a; text-transform:uppercase;
+      letter-spacing:.5px; margin-bottom:2px;">📈 IVA cobrado en ventas · ${sym} ${fmt(totCob)}</div>
+    <div style="margin-bottom:16px;">${listOrEmpty(cobrado, 'Sin ventas con IVA este mes')}</div>
+
+    <div style="font-size:11px; font-weight:800; color:#0891b2; text-transform:uppercase;
+      letter-spacing:.5px; margin-bottom:2px;">📉 IVA crédito en compras · ${sym} ${fmt(totCred)}</div>
+    <div style="margin-bottom:10px;">${listOrEmpty(credito, 'Sin compras con IVA este mes')}</div>
+
+    <div style="background:var(--gray-50); border-radius:10px; padding:11px 13px; font-size:12px;
+      color:var(--gray-500); line-height:1.5;">
+      💡 Toca cualquier asiento para ver la transacción de donde proviene el IVA.
+    </div>
+
     <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
   `;
   document.getElementById('settings-sheet').classList.add('open');
