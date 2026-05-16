@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15r';
+const APP_VERSION = '2026.05.15s';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1283,8 +1283,12 @@ function openAccountDetail(accountId) {
                 </span>
               </div>
               ${mTxs.map(t => {
-                const isOut = t.type === 'expense' || (t.type === 'transfer' && t.fromAccount === accountId);
-                const isIn  = t.type === 'income'  || (t.type === 'transfer' && t.toAccount === accountId);
+                const isOut = t.type === 'expense'
+                  || (t.type === 'transfer' && t.fromAccount === accountId)
+                  || (t.isIva && t.ivaDirection === 'credito');  // IVA pagado en compras = sale dinero
+                const isIn  = t.type === 'income'
+                  || (t.type === 'transfer' && t.toAccount === accountId)
+                  || (t.isIva && t.ivaDirection === 'cobrado');  // IVA cobrado en ventas = entra dinero
                 const sign  = isOut ? '−' : '+';
                 const color = isOut ? 'var(--danger)' : 'var(--success)';
                 return `
