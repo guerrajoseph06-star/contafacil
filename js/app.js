@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15l';
+const APP_VERSION = '2026.05.15m';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1182,6 +1182,16 @@ function renderAccountBalances() {
 }
 
 // ── Desglose de transacciones por cuenta ─────────────────────────────────────
+// Cuánto movió una transacción EN una cuenta específica.
+// En pagos divididos devuelve solo la parte que cayó en esa cuenta.
+function _txAmountForAccount(t, accountId) {
+  if (Array.isArray(t.splitPayments) && t.splitPayments.length) {
+    const sp = t.splitPayments.find(s => s.account === accountId);
+    return sp ? (parseFloat(sp.amount) || 0) : 0;
+  }
+  return t.amount;
+}
+
 function openAccountDetail(accountId) {
   const accounts = DB.getAccounts();
   const account  = accounts.find(a => a.id === accountId);
@@ -1236,8 +1246,8 @@ function openAccountDetail(accountId) {
 
     <!-- Resumen rápido -->
     ${(() => {
-      const ingresos  = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-      const gastos    = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const ingresos  = txs.filter(t => t.type === 'income').reduce((s, t) => s + _txAmountForAccount(t, accountId), 0);
+      const gastos    = txs.filter(t => t.type === 'expense').reduce((s, t) => s + _txAmountForAccount(t, accountId), 0);
       const traslados = txs.filter(t => t.type === 'transfer').length;
       return `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:18px;">
@@ -1261,8 +1271,8 @@ function openAccountDetail(accountId) {
            Sin movimientos en esta cuenta
          </div>`
       : Object.entries(byMonth).map(([key, mTxs]) => {
-          const mInc = mTxs.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
-          const mExp = mTxs.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
+          const mInc = mTxs.filter(t => t.type === 'income').reduce((s,t) => s + _txAmountForAccount(t, accountId), 0);
+          const mExp = mTxs.filter(t => t.type === 'expense').reduce((s,t) => s + _txAmountForAccount(t, accountId), 0);
           return `
             <div style="margin-bottom:16px;">
               <div style="display:flex; justify-content:space-between; align-items:center;
@@ -1286,10 +1296,10 @@ function openAccountDetail(accountId) {
                     <div style="width:8px; height:8px; border-radius:50%; background:${COLORS[t.type] || 'var(--gray-300)'}; flex-shrink:0;"></div>
                     <div style="flex:1; min-width:0;">
                       <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.description}</div>
-                      <div style="font-size:11px; color:var(--gray-400);">${fmtDate(t.date)} · ${TYPE_LABEL[t.type] || t.type}</div>
+                      <div style="font-size:11px; color:var(--gray-400);">${fmtDate(t.date)} · ${TYPE_LABEL[t.type] || t.type}${(Array.isArray(t.splitPayments) && t.splitPayments.length) ? ' · 💳 parte de pago dividido' : ''}</div>
                     </div>
                     <div style="font-size:14px; font-weight:800; color:${color}; flex-shrink:0;">
-                      ${sign}${fmt(t.amount)}
+                      ${sign}${fmt(_txAmountForAccount(t, accountId))}
                     </div>
                   </div>
                 `;
