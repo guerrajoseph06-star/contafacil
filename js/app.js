@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15o';
+const APP_VERSION = '2026.05.15p';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1082,20 +1082,17 @@ function renderDashboard() {
   const roEl = document.getElementById('dash-readonly-banner');
   if (roEl) roEl.style.display = isCurrentUserReadOnly() ? 'flex' : 'none';
 
-  // Alerta deudas pendientes
-  const alertEl = document.getElementById('dash-liabilities-alert');
-  if (pending.length) {
-    const total = pending.reduce((s, t) => s + t.amount, 0);
-    alertEl.style.display = 'flex';
-    alertEl.innerHTML = `
-      <span style="font-size:20px;">🔴</span>
-      <div>
-        <div style="font-weight:700; font-size:14px;">Deudas pendientes: ${fmt(total)}</div>
-        <div style="font-size:12px; opacity:.8;">${pending.length} deuda${pending.length > 1 ? 's' : ''} sin pagar</div>
-      </div>
-    `;
-  } else {
-    alertEl.style.display = 'none';
+  // Insignia de deudas en la esquina del rectángulo de Utilidad Neta
+  // (toca para ver el desglose — sin banner que estrese al usuario)
+  const debtBadge = document.getElementById('dash-debt-badge');
+  if (debtBadge) {
+    if (pending.length) {
+      debtBadge.style.display = 'flex';
+      const cEl = document.getElementById('dash-debt-count');
+      if (cEl) cEl.textContent = pending.length;
+    } else {
+      debtBadge.style.display = 'none';
+    }
   }
 
   // Últimas 5 transacciones (excluir asientos auto-generados de CMV e IVA)
@@ -1707,6 +1704,7 @@ function _updateIvaBreakdown() {
     }
   }
   _updateSplitInfo(); // el total cambió → actualizar el reparto del pago dividido
+  _liabilityHint();   // el monto cambió → actualizar la pista de plazo/cuota
 }
 
 // ── Pago dividido en 2 cuentas (ingreso/gasto recibido o pagado de 2 formas) ──
@@ -2122,6 +2120,88 @@ function saveFactura() {
   navigate('dashboard');
 }
 
+// ── Panel de Deudas (se abre desde la insignia roja del tablero) ─────────────
+function openDebtsPanel() {
+  const sym   = DB.getSettings().currencySymbol || '$';
+  const debts = DB.getPendingLiabilities()
+    .filter(t => !t.isIva)
+    .sort((a, b) => (a.liabilityEndDate || '9999-99').localeCompare(b.liabilityEndDate || '9999-99'));
+  const total       = debts.reduce((s, t) => s + t.amount, 0);
+  const totalMensual = debts.reduce((s, t) => s + (parseFloat(t.liabilityMonthly) || 0), 0);
+
+  const rows = debts.map(t => {
+    const cat    = DB.getCategoryById(t.category);
+    const titulo = t.creditor || (cat ? cat.name : 'Deuda');
+    const fechas = [];
+    if (t.date)              fechas.push('Inicio: ' + fmtDate(t.date));
+    if (t.liabilityEndDate)  fechas.push('Vence: ' + fmtDate(t.liabilityEndDate));
+    const mensual = (parseFloat(t.liabilityMonthly) || 0) > 0
+      ? `<div style="font-size:11px; color:var(--primary); font-weight:700; margin-top:2px;">💵 Cuota: ${sym} ${fmt(t.liabilityMonthly)}/mes</div>`
+      : '';
+    return `
+      <div onclick="closeSettingsSheet(); setTimeout(()=>openTxDetail('${t.id}'),220);"
+        style="background:var(--white); border:1.5px solid var(--gray-100); border-radius:12px;
+          padding:12px 14px; margin-bottom:8px; cursor:pointer; display:flex;
+          justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:800;">🔴 ${titulo}</div>
+          ${fechas.length ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${fechas.join(' · ')}</div>` : ''}
+          ${mensual}
+        </div>
+        <div style="font-size:16px; font-weight:900; color:var(--danger); white-space:nowrap;">${sym} ${fmt(t.amount)}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🔴 Mis Deudas</h3>
+    ${debts.length === 0 ? `
+      <div style="text-align:center; padding:36px 0; color:var(--gray-400);">
+        <div style="font-size:44px; margin-bottom:10px;">✅</div>
+        <div style="font-weight:700;">No tienes deudas pendientes</div>
+      </div>
+    ` : `
+      <div style="background:linear-gradient(135deg,#dc2626,#b91c1c); border-radius:14px;
+        padding:16px; color:#fff; margin-bottom:14px; text-align:center;">
+        <div style="font-size:12px; opacity:.85;">Total que debes</div>
+        <div style="font-size:28px; font-weight:900; margin-top:2px;">${sym} ${fmt(total)}</div>
+        <div style="font-size:11px; opacity:.85; margin-top:4px;">
+          ${debts.length} deuda${debts.length !== 1 ? 's' : ''} pendiente${debts.length !== 1 ? 's' : ''}${totalMensual > 0 ? ` · cuotas ${sym} ${fmt(totalMensual)}/mes` : ''}
+        </div>
+      </div>
+      ${rows}
+    `}
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+// Pista en vivo del formulario de deuda: plazo y cuota sugerida
+function _liabilityHint() {
+  const el = document.getElementById('liability-hint');
+  if (!el) return;
+  const total   = parseFloat(document.getElementById('f-amount')?.value) || 0;
+  const inicio  = document.getElementById('f-date')?.value;
+  const fin     = document.getElementById('f-liability-end')?.value;
+  const mensual = parseFloat(document.getElementById('f-liability-monthly')?.value) || 0;
+  const sym = DB.getSettings().currencySymbol || '$';
+  const parts = [];
+  if (inicio && fin) {
+    const d1 = new Date(inicio + 'T12:00:00'), d2 = new Date(fin + 'T12:00:00');
+    const meses = Math.round((d2 - d1) / (1000 * 60 * 60 * 24 * 30.44));
+    if (meses >= 1) {
+      parts.push(`Plazo ≈ ${meses} mes${meses !== 1 ? 'es' : ''}`);
+      if (total > 0 && mensual <= 0) parts.push(`cuota sugerida ${sym} ${fmt(total / meses)}/mes`);
+    }
+  }
+  if (total > 0 && mensual > 0) {
+    const m = Math.ceil(total / mensual);
+    parts.push(`a ${sym} ${fmt(mensual)}/mes se salda en ≈ ${m} mes${m !== 1 ? 'es' : ''}`);
+  }
+  el.innerHTML = parts.length
+    ? `<span style="color:var(--gray-500);">💡 ${parts.join(' · ')}</span>` : '';
+}
+
 // ── Reporte: Mis Deducibles del año ──────────────────────────────────────────
 let _deducibleYear = new Date().getFullYear();
 
@@ -2386,6 +2466,18 @@ function renderFormFields(tx) {
         <input type="text" id="f-creditor" class="form-control" value="${tx?.creditor || ''}" placeholder="Ej: Alianza del Valle, Banco X">
       </div>
       <div class="form-group">
+        <label class="form-label">🏁 Vencimiento (fin de la deuda)</label>
+        <input type="date" id="f-liability-end" class="form-control"
+          value="${tx?.liabilityEndDate || ''}" onchange="_liabilityHint()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">💵 Monto mensual a pagar (opcional)</label>
+        <input type="number" id="f-liability-monthly" class="form-control"
+          value="${tx?.liabilityMonthly || ''}" placeholder="Ej: 100.00" min="0" step="any"
+          inputmode="decimal" oninput="_liabilityHint()">
+        <div id="liability-hint" style="font-size:12px; min-height:16px; margin-top:4px;"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Estado</label>
         <select id="f-liability-status" class="form-control">
           <option value="pending" ${tx?.liabilityStatus !== 'paid' ? 'selected' : ''}>🔴 Pendiente de pago</option>
@@ -2496,6 +2588,11 @@ function renderFormFields(tx) {
   container.innerHTML = html;
   _renderReceiptArea(); // pinta el estado actual de la foto
   _updateSplitInfo();   // pinta el reparto del pago dividido (si aplica)
+  _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
+
+  // La etiqueta de "Fecha" cambia de significado en una deuda
+  const dateLabel = document.getElementById('f-date-label');
+  if (dateLabel) dateLabel.textContent = isLiability ? '📅 Inicio de la deuda *' : 'Fecha *';
 }
 
 function toggleInventorySection() {
@@ -2528,6 +2625,8 @@ function submitForm() {
     data.category        = document.getElementById('f-category')?.value;
     data.creditor        = document.getElementById('f-creditor')?.value.trim();
     data.liabilityStatus = document.getElementById('f-liability-status')?.value || 'pending';
+    data.liabilityEndDate = document.getElementById('f-liability-end')?.value || '';
+    data.liabilityMonthly = parseFloat(document.getElementById('f-liability-monthly')?.value) || 0;
 
   } else {
     data.category = document.getElementById('f-category')?.value;
@@ -2656,10 +2755,14 @@ function openTxDetail(id) {
       <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Forma de pago</span><span style="font-weight:600;">${pagoLabel}</span></div>
     `;
   } else if (tx.type === 'liability') {
-    const status = tx.liabilityStatus === 'paid' ? '✅ Pagada' : '🔴 Pendiente';
+    const status  = tx.liabilityStatus === 'paid' ? '✅ Pagada' : '🔴 Pendiente';
+    const detRow  = (lbl, val) => `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">${lbl}</span><span style="font-weight:600;">${val}</span></div>`;
     mainDetail = `
-      ${tx.creditor ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Acreedor</span><span style="font-weight:600;">${tx.creditor}</span></div>` : ''}
-      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Estado</span><span style="font-weight:600;">${status}</span></div>
+      ${tx.creditor ? detRow('Acreedor', tx.creditor) : ''}
+      ${detRow('📅 Inicio de la deuda', fmtDate(tx.date))}
+      ${tx.liabilityEndDate ? detRow('🏁 Vencimiento', fmtDate(tx.liabilityEndDate)) : ''}
+      ${(parseFloat(tx.liabilityMonthly) || 0) > 0 ? detRow('💵 Cuota mensual', fmt(tx.liabilityMonthly)) : ''}
+      ${detRow('Estado', status)}
     `;
   } else {
     const acc = DB.getAccountById(tx.account);
