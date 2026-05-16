@@ -254,6 +254,7 @@ a { text-decoration: none; color: inherit; }
   width: 150px; height: 150px;
   border-radius: 50%;
   background: rgba(255,255,255,.07);
+  pointer-events: none;   /* adorno decorativo: no debe interceptar toques */
 }
 .balance-hero::before {
   content: '';
@@ -262,6 +263,7 @@ a { text-decoration: none; color: inherit; }
   width: 180px; height: 180px;
   border-radius: 50%;
   background: rgba(255,255,255,.05);
+  pointer-events: none;   /* adorno decorativo: no debe interceptar toques */
 }
 .balance-label {
   font-size: 13px;
@@ -579,16 +581,22 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   padding: 12px 4px 6px;
 }
 .settings-item {
+  width: 100%;             /* los <button> con flex se encogían al contenido */
+  box-sizing: border-box;  /* el borde de "Mis Empresas" no agranda el ancho */
+  text-align: left;
+  font-family: inherit;
   background: var(--white);
+  border: none;
   border-radius: var(--radius);
   padding: 14px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   cursor: pointer;
   transition: background .1s;
   box-shadow: var(--shadow-sm);
+  -webkit-tap-highlight-color: transparent;
 }
 .settings-item:active { background: var(--gray-50); }
 .settings-item-icon { font-size: 22px; width: 38px; text-align: center; }
