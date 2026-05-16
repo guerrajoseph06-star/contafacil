@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515j">
+  <link rel="stylesheet" href="css/style.css?v=20260515k">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -427,6 +427,12 @@
       <button class="type-tab" data-type="liability" onclick="setFormType('liability')">🔴 Deuda</button>
     </div>
 
+    <!-- Atajo: registrar una factura detallada con IVA -->
+    <button class="btn btn-outline btn-block" style="margin-bottom:14px; font-size:13px;"
+      onclick="openFacturaForm()">
+      🧾 Registrar factura detallada (IVA mixto, deducible)
+    </button>
+
     <!-- Monto (siempre presente) -->
     <div class="amount-input-wrap">
       <div style="font-size:13px; color:var(--gray-400); margin-bottom:4px;">MONTO</div>
@@ -787,6 +793,12 @@
       </button>
     </div>
 
+    <!-- Deducibles del año -->
+    <button class="btn btn-outline btn-block no-print" style="margin-bottom:12px;"
+      onclick="openDeduciblesReport()">
+      📋 Mis Deducibles del año
+    </button>
+
     <div class="card no-print" style="background:var(--primary-light); border:none; margin-bottom:12px;">
       <div style="font-size:13px; color:var(--primary); font-weight:600; margin-bottom:4px;">💡 ¿Cómo obtener el PDF?</div>
       <div style="font-size:13px; color:var(--gray-700); line-height:1.6;">
@@ -1098,7 +1110,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515j"></script>
-<script src="js/app.js?v=20260515j"></script>
+<script src="js/db.js?v=20260515k"></script>
+<script src="js/app.js?v=20260515k"></script>
 </body>
 </html>

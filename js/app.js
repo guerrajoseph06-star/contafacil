@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15j';
+const APP_VERSION = '2026.05.15k';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1476,11 +1476,12 @@ function txItemHTML(tx) {
     metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + cogsTag;
 
   } else if (tx.type === 'expense') {
-    emoji = cat ? cat.emoji : '💸';
+    emoji = tx.isFactura ? '🧾' : (cat ? cat.emoji : '💸');
     amountText = '-' + fmt(tx.amount);
     amountClass = 'expense';
     const recTag = tx.isRecurring ? ' · 🔄 Auto' : '';
-    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + recTag;
+    const facTag = tx.isFactura ? ' · 🧾 Factura' : '';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + facTag + recTag;
 
   } else if (tx.type === 'transfer') {
     const fromAcc = DB.getAccountById(tx.fromAccount);
@@ -1796,6 +1797,334 @@ function _openPhotoViewer(dataUrl) {
       align-items:center; justify-content:center; font-size:24px;">×</div>`;
   ov.onclick = () => ov.remove();
   document.body.appendChild(ov);
+}
+
+// ── Registrar factura de compra (IVA mixto + deducible) ───────────────────────
+let _facturaPhoto = null;
+let _facturaPago  = 'efectivo';
+
+function openFacturaForm() {
+  _facturaPhoto = null;
+  _facturaPago  = 'efectivo';
+  const accounts = DB.getAccounts();
+  const cats     = DB.getCategoriesByType('expense');
+  const pct      = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+
+  const accOpts = '<option value="">— Selecciona cuenta —</option>' +
+    accounts.map(a => `<option value="${a.id}">${a.emoji} ${a.name}</option>`).join('');
+  const catOpts = '<option value="">— Categoría (opcional) —</option>' +
+    cats.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  const dedTipos = [
+    ['alimentacion', '🍽️ Alimentación'], ['salud', '⚕️ Salud'],
+    ['vivienda', '🏠 Vivienda'], ['educacion', '📚 Educación'],
+    ['vestimenta', '👕 Vestimenta'], ['turismo', '✈️ Turismo'],
+  ];
+
+  const sec = (n, title) => `<div style="font-size:11px; font-weight:800; color:var(--primary);
+    text-transform:uppercase; letter-spacing:.5px; margin:18px 0 8px;">${n} · ${title}</div>`;
+  const pagoBtn = (m, ico, lbl) => `<button type="button" id="fac-pago-${m}"
+    onclick="selectFacturaPago('${m}')" style="flex:1; padding:10px 4px; border-radius:10px;
+      font-size:12px; line-height:1.4; cursor:pointer; text-align:center;
+      border:2px solid ${m === _facturaPago ? 'var(--primary)' : 'var(--gray-200)'};
+      background:${m === _facturaPago ? 'var(--primary-light)' : 'var(--white)'};
+      color:${m === _facturaPago ? 'var(--primary)' : 'var(--gray-400)'};
+      font-weight:${m === _facturaPago ? '800' : '600'};">${ico}<br>${lbl}</button>`;
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🧾 Registrar Factura de Compra</h3>
+
+    ${sec('1', 'Datos de la factura')}
+    <div class="form-group"><label class="form-label">Fecha de la factura</label>
+      <input type="date" id="fac-fecha" class="form-control" value="${today()}"></div>
+    <div class="form-group"><label class="form-label">Proveedor / negocio</label>
+      <input type="text" id="fac-proveedor" class="form-control" placeholder="Ej: Supermaxi" maxlength="60"></div>
+    <div class="form-group"><label class="form-label">Concepto</label>
+      <input type="text" id="fac-concepto" class="form-control" placeholder="Ej: Compra de supermercado" maxlength="80"></div>
+    <div class="form-group"><label class="form-label">Categoría (opcional)</label>
+      <select id="fac-categoria" class="form-control">${catOpts}</select></div>
+
+    ${sec('2', 'Valores de la factura')}
+    <div style="font-size:12px; color:var(--gray-500); margin-bottom:8px;">
+      Tecléalos de la parte de abajo de tu factura — vienen claros.</div>
+    <div class="form-group"><label class="form-label">Tarifa 0% (sin IVA)</label>
+      <input type="number" id="fac-t0" class="form-control" placeholder="0.00" min="0" step="any"
+        inputmode="decimal" oninput="_facturaRecalc()"></div>
+    <div class="form-group"><label class="form-label">Tarifa ${pct}% — base gravada</label>
+      <input type="number" id="fac-t15" class="form-control" placeholder="0.00" min="0" step="any"
+        inputmode="decimal" oninput="_facturaOnT15()"></div>
+    <div class="form-group"><label class="form-label">IVA ${pct}%
+      <span style="font-weight:400; color:var(--gray-400);">(se calcula solo, ajustable)</span></label>
+      <input type="number" id="fac-iva" class="form-control" placeholder="0.00" min="0" step="any"
+        inputmode="decimal" oninput="_facturaRecalc()"></div>
+    <div class="form-group"><label class="form-label">TOTAL impreso en la factura</label>
+      <input type="number" id="fac-total" class="form-control" placeholder="0.00" min="0" step="any"
+        inputmode="decimal" oninput="_facturaRecalc()"></div>
+    <div id="fac-calc" style="background:var(--gray-50); border-radius:10px; padding:12px 14px; margin-bottom:8px;"></div>
+
+    ${sec('3', 'Forma de pago')}
+    <div style="display:flex; gap:6px; margin-bottom:10px;">
+      ${pagoBtn('efectivo', '💵', 'Efectivo')}
+      ${pagoBtn('tarjeta', '💳', 'Tarjeta')}
+      ${pagoBtn('transferencia', '🏦', 'Transferencia')}
+    </div>
+    <div class="form-group"><label class="form-label">Cuenta (de dónde salió el dinero)</label>
+      <select id="fac-cuenta" class="form-control">${accOpts}</select></div>
+    <div id="fac-efectivo-box">
+      <div class="form-group"><label class="form-label">¿Con cuánto pagaste?</label>
+        <input type="number" id="fac-pagocon" class="form-control" placeholder="Ej: 20.00" min="0"
+          step="any" inputmode="decimal" oninput="_facturaRecalc()"></div>
+      <div id="fac-vuelto" style="margin-bottom:8px;"></div>
+    </div>
+
+    ${sec('4', 'Deducible (opcional)')}
+    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px;
+      background:var(--gray-50); border-radius:8px; margin-bottom:8px;">
+      <input type="checkbox" id="fac-deducible-on" onchange="toggleFacturaDeducible()"
+        style="width:18px; height:18px; accent-color:var(--primary);">
+      <div><div style="font-weight:600; font-size:14px;">📋 ¿Cuenta como gasto personal deducible?</div>
+      <div style="font-size:12px; color:var(--gray-500);">Para tu declaración de Impuesto a la Renta — no es dinero</div></div>
+    </label>
+    <div id="fac-deducible-box" style="display:none;">
+      <div class="form-group"><label class="form-label">Tipo de deducible</label>
+        <select id="fac-deducible-tipo" class="form-control">
+          ${dedTipos.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Monto deducible</label>
+        <input type="number" id="fac-deducible-monto" class="form-control"
+          placeholder="Lo que dice tu factura en DEDUCIBLES" min="0" step="any" inputmode="decimal"></div>
+    </div>
+
+    ${sec('5', 'Foto de la factura (opcional)')}
+    <input type="file" id="fac-photo-input" accept="image/*"
+      onchange="onFacturaPhotoSelected(event)" style="display:none;">
+    <div id="fac-photo-area" style="margin-bottom:8px;"></div>
+
+    <button class="btn btn-primary btn-block mt-16" onclick="saveFactura()">✅ Guardar factura</button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+  _renderFacturaPhotoArea();
+  _facturaRecalc();
+}
+
+// Cuando cambia la tarifa gravada, recalcula el IVA automáticamente
+function _facturaOnT15() {
+  const t15   = parseFloat(document.getElementById('fac-t15')?.value) || 0;
+  const pct   = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+  const ivaEl = document.getElementById('fac-iva');
+  if (ivaEl) ivaEl.value = t15 > 0 ? (Math.round(t15 * pct / 100 * 100) / 100) : '';
+  _facturaRecalc();
+}
+
+// Recalcula subtotal, total, verificación de cuadre y vuelto en vivo
+function _facturaRecalc() {
+  const num = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const t0 = num('fac-t0'), t15 = num('fac-t15'), iva = num('fac-iva');
+  const totalImpreso = num('fac-total');
+  const subtotal  = t0 + t15;
+  const totalCalc = subtotal + iva;
+  const sym = DB.getSettings().currencySymbol || '$';
+  const pct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+
+  let verif;
+  if (totalImpreso <= 0) {
+    verif = `<div style="color:var(--gray-400); font-size:12px;">✍️ Escribe el TOTAL impreso para verificar el cuadre</div>`;
+  } else if (Math.abs(totalCalc - totalImpreso) < 0.02) {
+    verif = `<div style="color:#16a34a; font-weight:700; font-size:13px;">✅ Cuadra con tu factura</div>`;
+  } else {
+    verif = `<div style="color:#dc2626; font-weight:700; font-size:13px;">⚠️ No cuadra: tú sumas ${sym} ${fmt(totalCalc)} pero la factura dice ${sym} ${fmt(totalImpreso)}. Revisa los valores.</div>`;
+  }
+  let ivaNote = '';
+  if (t15 > 0 && iva > 0 && Math.abs(iva - t15 * pct / 100) > 0.10) {
+    ivaNote = `<div style="color:#d97706; font-size:11px; margin-top:3px;">⚠️ El IVA no parece el ${pct}% de la tarifa gravada (sugerido: ${sym} ${fmt(t15 * pct / 100)})</div>`;
+  }
+  const calcEl = document.getElementById('fac-calc');
+  if (calcEl) calcEl.innerHTML = `
+    <div style="display:flex; justify-content:space-between; font-size:13px; padding:3px 0;">
+      <span style="color:var(--gray-500);">Subtotal sin IVA</span>
+      <span style="font-weight:700;">${sym} ${fmt(subtotal)}</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:14px; padding:5px 0 3px;
+      border-top:1px solid var(--gray-200); margin-top:2px;">
+      <span style="font-weight:800;">Total calculado</span>
+      <span style="font-weight:800; color:var(--primary);">${sym} ${fmt(totalCalc)}</span></div>
+    <div style="margin-top:6px;">${verif}${ivaNote}</div>`;
+
+  const vEl = document.getElementById('fac-vuelto');
+  if (vEl && _facturaPago === 'efectivo') {
+    const pagoCon  = num('fac-pagocon');
+    const totalRef = totalImpreso > 0 ? totalImpreso : totalCalc;
+    if (pagoCon > 0 && totalRef > 0) {
+      const vuelto = pagoCon - totalRef;
+      vEl.innerHTML = vuelto >= 0
+        ? `<div style="color:#16a34a; font-weight:700; font-size:13px;">💵 Tu vuelto: ${sym} ${fmt(vuelto)}</div>`
+        : `<div style="color:#dc2626; font-weight:700; font-size:13px;">⚠️ Falta ${sym} ${fmt(-vuelto)} para cubrir el total</div>`;
+    } else { vEl.innerHTML = ''; }
+  }
+}
+
+function selectFacturaPago(metodo) {
+  _facturaPago = metodo;
+  ['efectivo', 'tarjeta', 'transferencia'].forEach(m => {
+    const btn = document.getElementById('fac-pago-' + m);
+    if (!btn) return;
+    const on = m === metodo;
+    btn.style.borderColor = on ? 'var(--primary)' : 'var(--gray-200)';
+    btn.style.background  = on ? 'var(--primary-light)' : 'var(--white)';
+    btn.style.color       = on ? 'var(--primary)' : 'var(--gray-400)';
+    btn.style.fontWeight  = on ? '800' : '600';
+  });
+  const box = document.getElementById('fac-efectivo-box');
+  if (box) box.style.display = metodo === 'efectivo' ? 'block' : 'none';
+  _facturaRecalc();
+}
+
+function toggleFacturaDeducible() {
+  const on  = document.getElementById('fac-deducible-on')?.checked;
+  const box = document.getElementById('fac-deducible-box');
+  if (box) box.style.display = on ? 'block' : 'none';
+}
+
+function onFacturaPhotoSelected(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) { showToast('⚠️ Selecciona una imagen'); return; }
+  showToast('🖼️ Procesando foto…', 1200);
+  _compressImage(file, 1280, 0.7)
+    .then(dataUrl => { _facturaPhoto = dataUrl; _renderFacturaPhotoArea(); showToast('✅ Foto adjuntada', 1500); })
+    .catch(() => showToast('❌ No se pudo procesar la imagen', 2500));
+}
+
+function _renderFacturaPhotoArea() {
+  const area = document.getElementById('fac-photo-area');
+  if (!area) return;
+  if (_facturaPhoto) {
+    area.innerHTML = `
+      <div style="display:flex; gap:10px; align-items:center; background:#f0fdf4;
+        border:1.5px solid #86efac; border-radius:10px; padding:10px;">
+        <img src="${_facturaPhoto}" onclick="_openPhotoViewer(_facturaPhoto)"
+          style="width:58px; height:58px; object-fit:cover; border-radius:8px; cursor:pointer; flex-shrink:0;">
+        <div style="flex:1; font-size:12px; color:#166534; font-weight:700;">✅ Foto de factura adjuntada
+          <div style="font-weight:400; color:var(--gray-500); font-size:11px;">Toca para ampliarla</div></div>
+        <button type="button" onclick="_removeFacturaPhoto()" style="background:none; border:none;
+          color:var(--danger); font-size:13px; font-weight:700; cursor:pointer;">Quitar</button>
+      </div>`;
+  } else {
+    area.innerHTML = `
+      <button type="button" onclick="document.getElementById('fac-photo-input').click()"
+        style="width:100%; padding:14px; border:1.5px dashed var(--gray-300); border-radius:10px;
+          background:var(--gray-50); color:var(--gray-500); font-size:13px; font-weight:600; cursor:pointer;">
+        📷 Tomar foto o elegir de la galería
+      </button>`;
+  }
+}
+
+function _removeFacturaPhoto() { _facturaPhoto = null; _renderFacturaPhotoArea(); }
+
+function saveFactura() {
+  const val = id => document.getElementById(id)?.value;
+  const num = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const fecha     = val('fac-fecha');
+  const proveedor = (val('fac-proveedor') || '').trim();
+  const concepto  = (val('fac-concepto')  || '').trim();
+  const categoria = val('fac-categoria') || '';
+  const t0    = num('fac-t0');
+  const t15   = num('fac-t15');
+  const iva   = num('fac-iva');
+  const total = num('fac-total');
+  const cuenta = val('fac-cuenta') || '';
+  const base = t0 + t15;
+
+  if (!fecha)    { showToast('⚠️ Selecciona la fecha de la factura'); return; }
+  if (base <= 0) { showToast('⚠️ Ingresa los valores (tarifa 0% o tarifa gravada)'); return; }
+  if (!cuenta)   { showToast('⚠️ Selecciona la cuenta de donde salió el dinero'); return; }
+
+  let deducible = null;
+  if (document.getElementById('fac-deducible-on')?.checked) {
+    const monto = num('fac-deducible-monto');
+    if (monto <= 0) { showToast('⚠️ Ingresa el monto del deducible'); return; }
+    deducible = { tipo: val('fac-deducible-tipo') || 'alimentacion', amount: monto };
+  }
+
+  const totalCalc = base + iva;
+  if (total > 0 && Math.abs(totalCalc - total) >= 0.02) {
+    if (!confirm(`Los valores no cuadran con el total de la factura.\nTú sumas ${fmt(totalCalc)}, la factura dice ${fmt(total)}.\n\n¿Guardar de todos modos?`)) return;
+  }
+
+  const tx = DB.addFacturaCompra({
+    date: fecha, proveedor, concepto, category: categoria,
+    tarifa0: t0, tarifa15: t15, iva, total: total > 0 ? total : totalCalc,
+    formaPago: _facturaPago, account: cuenta,
+    hasReceipt: !!_facturaPhoto, deducible,
+  });
+  if (_facturaPhoto && tx) DB.savePhoto(tx.id, _facturaPhoto);
+
+  closeSettingsSheet();
+  showToast('✅ Factura registrada' + (deducible ? ' (con deducible)' : ''), 3000);
+  navigate('dashboard');
+}
+
+// ── Reporte: Mis Deducibles del año ──────────────────────────────────────────
+let _deducibleYear = new Date().getFullYear();
+
+function openDeduciblesReport() {
+  _deducibleYear = new Date().getFullYear();
+  _renderDeduciblesReport();
+}
+
+function _changeDeducibleYear(delta) {
+  _deducibleYear += delta;
+  _renderDeduciblesReport();
+}
+
+function _renderDeduciblesReport() {
+  const sum = DB.getDeducibleSummary(_deducibleYear);
+  const sym = DB.getSettings().currencySymbol || '$';
+  const TIPO = {
+    alimentacion: '🍽️ Alimentación', salud: '⚕️ Salud', vivienda: '🏠 Vivienda',
+    educacion: '📚 Educación', vestimenta: '👕 Vestimenta', turismo: '✈️ Turismo',
+  };
+  const byTipoHTML = Object.keys(sum.byTipo).length
+    ? Object.entries(sum.byTipo).map(([t, v]) => `
+        <div style="display:flex; justify-content:space-between; padding:9px 0;
+          border-bottom:1px solid var(--gray-100); font-size:14px;">
+          <span>${TIPO[t] || t}</span><span style="font-weight:700;">${sym} ${fmt(v)}</span></div>`).join('')
+    : `<div style="text-align:center; color:var(--gray-400); padding:16px; font-size:13px;">
+        Sin deducibles registrados este año</div>`;
+
+  const itemsHTML = sum.items.map(d => `
+    <div style="display:flex; justify-content:space-between; padding:9px 0;
+      border-bottom:1px solid var(--gray-50); font-size:13px;">
+      <div><div style="font-weight:600;">${TIPO[d.tipo] || d.tipo}</div>
+        <div style="font-size:11px; color:var(--gray-400);">${fmtDate(d.date)}${d.description ? ' · ' + d.description : ''}</div></div>
+      <span style="font-weight:700;">${sym} ${fmt(d.amount)}</span></div>`).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">📋 Mis Deducibles</h3>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <button onclick="_changeDeducibleYear(-1)" style="width:38px; height:38px; border-radius:8px;
+        background:var(--gray-100); border:none; cursor:pointer; font-size:18px;">‹</button>
+      <span style="font-weight:800; font-size:18px;">${_deducibleYear}</span>
+      <button onclick="_changeDeducibleYear(1)" style="width:38px; height:38px; border-radius:8px;
+        background:var(--gray-100); border:none; cursor:pointer; font-size:18px;">›</button>
+    </div>
+    <div style="background:linear-gradient(135deg,#2563eb,#1d4ed8); border-radius:14px;
+      padding:18px; color:#fff; margin-bottom:14px; text-align:center;">
+      <div style="font-size:12px; opacity:.85;">Total deducible ${_deducibleYear}</div>
+      <div style="font-size:30px; font-weight:900; margin-top:4px;">${sym} ${fmt(sum.total)}</div>
+      <div style="font-size:11px; opacity:.8; margin-top:6px;">No es dinero — es el monto que llevas a tu declaración de renta</div>
+    </div>
+    <div style="font-size:11px; font-weight:800; color:var(--gray-500); text-transform:uppercase;
+      letter-spacing:.5px; margin-bottom:2px;">Por tipo</div>
+    <div style="margin-bottom:16px;">${byTipoHTML}</div>
+    ${sum.items.length ? `
+      <div style="font-size:11px; font-weight:800; color:var(--gray-500); text-transform:uppercase;
+        letter-spacing:.5px; margin-bottom:2px;">Detalle (${sum.items.length})</div>
+      <div>${itemsHTML}</div>` : ''}
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 function renderForm(editId = null) {
@@ -2114,6 +2443,21 @@ function openTxDetail(id) {
           : 'IVA pagado en una compra. Es un <strong>crédito tributario</strong> (activo): se descuenta del IVA que debes.'}
       </div>
     `;
+  } else if (tx.isFactura) {
+    const acc = DB.getAccountById(tx.account);
+    const pagoLabel = { efectivo:'💵 Efectivo', tarjeta:'💳 Tarjeta', transferencia:'🏦 Transferencia' }[tx.formaPago] || tx.formaPago || '—';
+    mainDetail = `
+      <div style="background:var(--gray-50); border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.8;">
+        <div style="font-weight:800; margin-bottom:6px;">🧾 Desglose de la factura${tx.proveedor ? ' — ' + tx.proveedor : ''}</div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500);">Tarifa 0%</span><span>${fmt(tx.facturaTarifa0 || 0)}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500);">Tarifa gravada (base)</span><span>${fmt(tx.facturaTarifa15 || 0)}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500);">IVA</span><span>${fmt(tx.facturaIva || 0)}</span></div>
+        <div style="display:flex; justify-content:space-between; border-top:1px solid var(--gray-200); margin-top:4px; padding-top:4px; font-weight:800;"><span>Total factura</span><span>${fmt(tx.facturaTotal || 0)}</span></div>
+      </div>
+      ${cat ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Categoría</span><span style="font-weight:600;">${cat.emoji} ${cat.name}</span></div>` : ''}
+      ${acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : ''}
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Forma de pago</span><span style="font-weight:600;">${pagoLabel}</span></div>
+    `;
   } else if (tx.type === 'liability') {
     const status = tx.liabilityStatus === 'paid' ? '✅ Pagada' : '🔴 Pendiente';
     mainDetail = `
@@ -2144,9 +2488,9 @@ function openTxDetail(id) {
       ${tx.hasReceipt ? `<div id="detail-receipt"></div>` : ''}
     </div>
     <div style="display:flex; gap:10px; margin-top:24px;">
-      ${(tx.isCogs || tx.isIva)
+      ${(tx.isCogs || tx.isIva || tx.isFactura)
         ? `<button class="btn btn-secondary btn-block" style="opacity:.5; cursor:not-allowed;"
-            onclick="showToast('⚙️ Asiento automático: edita la transacción original', 3000)">✏️ Editar</button>`
+            onclick="showToast('${tx.isFactura ? '🧾 Para cambiar una factura: bórrala y regístrala de nuevo' : '⚙️ Asiento automático: edita la transacción original'}', 3200)">✏️ Editar</button>`
         : !isCurrentUserReadOnly()
           ? `<button class="btn btn-secondary btn-block" onclick="closeDetail(); navigate('form', {id:'${tx.id}'})">✏️ Editar</button>`
           : `<button class="btn btn-secondary btn-block" style="opacity:.4; cursor:not-allowed;"
@@ -4193,6 +4537,7 @@ function openAuditLog() {
   const ACTION_LABELS = {
     login:             { icon:'🔓', label:'Inicio de sesión',  color:'#2563eb' },
     create_tx:         { icon:'➕', label:'Registro creado',    color:'#16a34a' },
+    create_factura:    { icon:'🧾', label:'Factura registrada', color:'#16a34a' },
     edit_tx:           { icon:'✏️', label:'Registro editado',   color:'#d97706' },
     delete_tx:         { icon:'🗑️', label:'Registro eliminado', color:'#dc2626' },
     create_product:    { icon:'📦', label:'Producto creado',    color:'#16a34a' },

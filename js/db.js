@@ -409,6 +409,110 @@ const DB = (() => {
 
     // Borrar la foto del comprobante asociada (si existe)
     if (tx.hasReceipt) deletePhoto(id);
+    // Borrar memorandos de deducible vinculados (si era una factura)
+    deleteDeduciblesByTx(id);
+  }
+
+  // ── Gastos personales deducibles (Impuesto a la Renta — Ecuador) ─────────────
+  // Memorandos informativos: NO afectan caja, ingresos, gastos ni utilidad.
+  // Solo se acumulan por año para la declaración de renta de personas naturales.
+  function getDeducibles() { return load('cf_deducibles') || []; }
+
+  function addDeducible(data) {
+    const list = getDeducibles();
+    const d = {
+      id:          uuid(),
+      createdAt:   new Date().toISOString(),
+      userName:    getSettings().userName || 'Principal',
+      date:        data.date,
+      tipo:        data.tipo || 'alimentacion',
+      amount:      parseFloat(data.amount) || 0,
+      description: data.description || '',
+      linkedTxId:  data.linkedTxId || null,
+    };
+    list.push(d);
+    save('cf_deducibles', list);
+    return d;
+  }
+
+  function deleteDeduciblesByTx(txId) {
+    const list     = getDeducibles();
+    const filtered = list.filter(d => d.linkedTxId !== txId);
+    if (filtered.length !== list.length) save('cf_deducibles', filtered);
+  }
+
+  // Resumen de deducibles de un año: total + desglose por tipo
+  function getDeducibleSummary(year) {
+    const items = getDeducibles().filter(d => {
+      const y = new Date((d.date || '') + 'T12:00:00').getFullYear();
+      return y === year;
+    });
+    const byTipo = {};
+    let total = 0;
+    items.forEach(d => { byTipo[d.tipo] = (byTipo[d.tipo] || 0) + d.amount; total += d.amount; });
+    items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return { year, total, byTipo, items };
+  }
+
+  // ── Registrar factura de compra ──────────────────────────────────────────────
+  // Genera de un solo golpe: el gasto (base sin IVA), el asiento de IVA crédito
+  // tributario y, opcionalmente, el memorando de deducible. Maneja IVA mixto
+  // (parte a 0% + parte a 15%, como las facturas de supermercado).
+  function addFacturaCompra(data) {
+    const txs  = load(KEYS.transactions) || [];
+    const s    = getSettings();
+    const t0   = parseFloat(data.tarifa0)  || 0;
+    const t15  = parseFloat(data.tarifa15) || 0;
+    const iva  = parseFloat(data.iva)      || 0;
+    const base = t0 + t15;
+    const pct  = parseFloat(data.porcentajeIva) || s.porcentajeIva || IVA_DEFAULT;
+
+    const expenseTx = {
+      id:          uuid(),
+      createdAt:   new Date().toISOString(),
+      userName:    s.userName || 'Principal',
+      type:        'expense',
+      description: data.concepto ||
+                   (data.proveedor ? 'Compra · ' + data.proveedor : 'Factura de compra'),
+      amount:      base,
+      date:        data.date,
+      account:     data.account  || '',
+      category:    data.category || '',
+      notes:       data.notes    || '',
+      // Metadatos de la factura
+      isFactura:       true,
+      proveedor:       data.proveedor || '',
+      facturaTarifa0:  t0,
+      facturaTarifa15: t15,
+      facturaIva:      iva,
+      facturaTotal:    parseFloat(data.total) || (base + iva),
+      formaPago:       data.formaPago || 'efectivo',
+      hasReceipt:      !!data.hasReceipt,
+    };
+
+    // Asiento de IVA crédito tributario (solo si la factura tiene IVA)
+    if (iva > 0) {
+      expenseTx.porcentajeIva = pct;
+      const ivaEntry = _buildIvaEntry(expenseTx, iva);
+      expenseTx.linkedIvaId = ivaEntry.id;
+      txs.push(ivaEntry);
+    }
+    txs.push(expenseTx);
+    save(KEYS.transactions, txs);
+
+    // Memorando de deducible (opcional) — NO afecta las finanzas
+    if (data.deducible && parseFloat(data.deducible.amount) > 0) {
+      addDeducible({
+        date:        data.date,
+        tipo:        data.deducible.tipo,
+        amount:      data.deducible.amount,
+        description: expenseTx.description,
+        linkedTxId:  expenseTx.id,
+      });
+    }
+
+    _logAudit('create_factura', `🧾 Factura ${data.proveedor || ''} · $${expenseTx.amount}`);
+    return expenseTx;
   }
 
   function _applyInventory(tx, action) {
@@ -1559,6 +1663,7 @@ const DB = (() => {
       accounts:     load(KEYS.accounts),
       inventory:    load(KEYS.inventory),
       settings:     load(KEYS.settings),
+      deducibles:   getDeducibles(),
       photos,   // { idTransaccion: dataURL }
     }, null, 2);
   }
@@ -1570,6 +1675,7 @@ const DB = (() => {
     if (d.accounts)     save(KEYS.accounts,      d.accounts);
     if (d.inventory)    save(KEYS.inventory,     d.inventory);
     if (d.settings)     save(KEYS.settings,      d.settings);
+    if (d.deducibles)   save('cf_deducibles',    d.deducibles);
     if (d.photos)       await savePhotosMap(d.photos);
   }
 
@@ -1748,5 +1854,6 @@ const DB = (() => {
     calcIva, getIvaSuggestion, recordIvaMemory, IVA_DEFAULT,
     saveSmartDescEntry, getSmartDescSuggestions,
     savePhoto, getPhoto, deletePhoto,
+    addFacturaCompra, getDeducibles, getDeducibleSummary,
   };
 })();
