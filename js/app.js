@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15s';
+const APP_VERSION = '2026.05.15t';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1479,9 +1479,9 @@ function txItemHTML(tx) {
     emoji = '🧾';
     const cobrado = tx.ivaDirection === 'cobrado';
     amountText  = (cobrado ? '+' : '-') + fmt(tx.amount);
-    amountClass = cobrado ? 'liability' : 'expense';
+    amountClass = cobrado ? 'income' : 'expense';
     metaText    = fmtDate(tx.date) + ' · ' +
-      (cobrado ? 'IVA por pagar al SRI' : 'IVA crédito tributario') + ' · Auto';
+      (cobrado ? 'IVA cobrado en venta' : 'IVA pagado en compra') + ' · Auto';
     extraStyle  = 'opacity:.85; background:#fffbeb;';
   } else if (tx.type === 'income') {
     emoji = cat ? cat.emoji : '💰';
@@ -1518,7 +1518,7 @@ function txItemHTML(tx) {
 
   return `
     <li class="tx-item" data-tx-id="${tx.id}" style="${extraStyle}">
-      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.isIva ? 'liability' : tx.type}"><span>${emoji}</span></div>
+      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
       <div class="tx-info">
         <div class="tx-desc">${tx.description}${tx.hasReceipt ? ' 📎' : ''}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
         <div class="tx-meta">${metaText}${userTag}</div>
@@ -2739,8 +2739,8 @@ function openTxDetail(id) {
       <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px; font-size:13px; color:#92400e; line-height:1.6;">
         🧾 <strong>Asiento de IVA automático</strong><br>
         ${cobrado
-          ? 'IVA cobrado en una venta. Es un <strong>pasivo</strong>: lo debes declarar y pagar al SRI.'
-          : 'IVA pagado en una compra. Es un <strong>crédito tributario</strong> (activo): se descuenta del IVA que debes.'}
+          ? 'IVA cobrado en una venta — cuenta como parte de tu <strong>ingreso</strong> real. Su detalle tributario lo ves en <strong>Reportes → IVA</strong>.'
+          : 'IVA pagado en una compra — cuenta como parte de tu <strong>gasto</strong> real. Su crédito tributario lo ves en <strong>Reportes → IVA</strong>.'}
       </div>
     `;
   } else if (tx.isFactura) {
@@ -2949,12 +2949,12 @@ function renderReports() {
           typeLabel = 'CMV';
           catLabel  = '📦 Costo de Ventas';
         } else if (t.isIva) {
-          // IVA cobrado → Haber (pasivo); IVA crédito → Debe (activo)
+          // El IVA cuenta como dinero real: cobrado = ingreso, crédito = gasto
           const cobrado = t.ivaDirection === 'cobrado';
-          if (cobrado) { debit = '';            credit = fmt(t.amount); }
-          else         { debit = fmt(t.amount); credit = '';            }
+          if (cobrado) { debit = fmt(t.amount); credit = '';            }
+          else         { debit = '';            credit = fmt(t.amount); }
           typeLabel = 'IVA';
-          catLabel  = cobrado ? '🧾 IVA por pagar (SRI)' : '🧾 IVA crédito tributario';
+          catLabel  = cobrado ? '🧾 IVA cobrado en venta' : '🧾 IVA pagado en compra';
         } else if (t.type === 'income') {
           debit = fmt(t.amount); credit = '';
           typeLabel = 'Ingreso';
@@ -3193,10 +3193,6 @@ function renderBalanceSheet() {
     activosHTML += row('📦 Inventarios (al costo)', bs.totalInventory, '#7c3aed');
   }
 
-  if (bs.ivaCreditoFiscal > 0) {
-    activosHTML += row('🧾 Crédito Tributario IVA (SRI)', bs.ivaCreditoFiscal, '#0891b2');
-  }
-
   if (bs.totalAssets === 0) {
     activosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">Sin activos registrados aún</div>`;
   }
@@ -3205,24 +3201,14 @@ function renderBalanceSheet() {
   // ── Pasivos ────────────────────────────────────────────
   let pasivosHTML = sectionTitle('🔴 PASIVOS CORRIENTES', 'var(--danger)');
 
-  // Separar deudas reales del IVA por pagar (obligación tributaria, distinta naturaleza)
-  const realDebts = bs.pendingLiabs.filter(t => !t.isIva);
-  const ivaTotal  = bs.pendingLiabs.filter(t => t.isIva)
-                      .reduce((s, t) => s + t.amount, 0);
-
-  if (realDebts.length > 0) {
-    pasivosHTML += realDebts.map(t => {
+  if (bs.pendingLiabs.length > 0) {
+    pasivosHTML += bs.pendingLiabs.map(t => {
       const cat      = DB.getCategoryById(t.category);
       const creditor = t.creditor || (cat ? cat.name : 'Deuda');
       return row(`${creditor} <span style="font-size:10px; color:var(--gray-400);">(${fmtDate(t.date)})</span>`, t.amount, 'var(--danger)');
     }).join('');
-  }
-  if (ivaTotal > 0) {
-    // El IVA por pagar va en su propio renglón, agrupado y claramente etiquetado
-    pasivosHTML += row('🧾 IVA por pagar al SRI', ivaTotal, '#1d4ed8');
-  }
-  if (realDebts.length === 0 && ivaTotal === 0) {
-    pasivosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">✅ Sin pasivos pendientes</div>`;
+  } else {
+    pasivosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">✅ Sin deudas pendientes</div>`;
   }
   pasivosHTML += subtotal('TOTAL PASIVOS', bs.totalLiabilities, bs.totalLiabilities > 0 ? 'var(--danger)' : 'var(--gray-400)');
 

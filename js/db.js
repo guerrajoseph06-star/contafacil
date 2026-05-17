@@ -145,6 +145,7 @@ const DB = (() => {
     if (!load(KEYS.inventory))    save(KEYS.inventory,    []);
     _migrateCategorias();
     _migrateUserNames();
+    _migrateIvaTypes();
     _repairOwnerState();
   }
 
@@ -203,6 +204,23 @@ const DB = (() => {
     if (missing.length) save(KEYS.categories, [...existing, ...missing]);
   }
 
+  // Migración: los asientos de IVA antes eran type 'liability'; ahora cuentan
+  // como dinero real (income/expense) para que el saldo cuadre con la utilidad.
+  function _migrateIvaTypes() {
+    const txs = load(KEYS.transactions);
+    if (!Array.isArray(txs)) return;
+    let changed = false;
+    const fixed = txs.map(t => {
+      if (t.isIva && t.type === 'liability') {
+        changed = true;
+        const { liabilityStatus, ...rest } = t;
+        return { ...rest, type: t.ivaDirection === 'cobrado' ? 'income' : 'expense' };
+      }
+      return t;
+    });
+    if (changed) save(KEYS.transactions, fixed);
+  }
+
   // ── COGS helper ────────────────────────────────────────────
   // Construye la entrada de CMV vinculada a una venta
   function _buildCogsEntry(saleTx, product) {
@@ -238,24 +256,25 @@ const DB = (() => {
   }
 
   // Construye el asiento de IVA vinculado a una venta o compra.
-  // Ventas  → IVA cobrado  = PASIVO   (lo debes al SRI)
-  // Compras → IVA pagado   = CRÉDITO TRIBUTARIO (activo recuperable)
+  // El IVA cuenta como DINERO REAL (ingreso/gasto) para que el saldo siempre
+  // cuadre con la utilidad. Su detalle tributario se ve en Reportes → IVA.
+  //   Ventas  → IVA cobrado  → cuenta como ingreso
+  //   Compras → IVA pagado   → cuenta como gasto
   function _buildIvaEntry(parentTx, ivaValue) {
     const isIncome = parentTx.type === 'income';
     return {
-      id:              uuid(),
-      createdAt:       parentTx.createdAt,
-      userName:        parentTx.userName,
-      type:            'liability',
-      isIva:           true,
-      ivaDirection:    isIncome ? 'cobrado' : 'credito',
-      linkedParentId:  parentTx.id,
-      description:     'IVA ' + (parentTx.porcentajeIva || IVA_DEFAULT) + '% · ' + parentTx.description,
-      amount:          ivaValue,
-      date:            parentTx.date,
-      account:         parentTx.account || '',
-      category:        isIncome ? 'c-iva-ventas' : 'c-iva-compras',
-      liabilityStatus: 'pending',
+      id:             uuid(),
+      createdAt:      parentTx.createdAt,
+      userName:       parentTx.userName,
+      type:           isIncome ? 'income' : 'expense',
+      isIva:          true,
+      ivaDirection:   isIncome ? 'cobrado' : 'credito',
+      linkedParentId: parentTx.id,
+      description:    'IVA ' + (parentTx.porcentajeIva || IVA_DEFAULT) + '% · ' + parentTx.description,
+      amount:         ivaValue,
+      date:           parentTx.date,
+      account:        parentTx.account || '',
+      category:       isIncome ? 'c-iva-ventas' : 'c-iva-compras',
     };
   }
 
@@ -533,10 +552,11 @@ const DB = (() => {
     let income = 0, cogs = 0, opExpenses = 0, liabilities = 0;
     let ivaCobrado = 0, ivaCredito = 0;
     txs.forEach(t => {
+      // El IVA se contabiliza también por separado para el reporte tributario,
+      // pero SÍ cuenta como ingreso/gasto real (el saldo debe cuadrar).
       if (t.isIva) {
         if (t.ivaDirection === 'cobrado') ivaCobrado += t.amount;
         else                              ivaCredito += t.amount;
-        return; // los asientos de IVA no son ingreso/gasto/deuda genérica
       }
       if (t.type === 'income')    income     += t.amount;
       if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
@@ -552,7 +572,7 @@ const DB = (() => {
     const txs = getTransactions();
     let income = 0, cogs = 0, opExpenses = 0, liabilities = 0;
     txs.forEach(t => {
-      if (t.isIva) return; // los asientos de IVA no afectan ingreso/gasto
+      // El IVA cuenta como ingreso/gasto real (el saldo debe cuadrar con la utilidad)
       if (t.type === 'income')    income     += t.amount;
       if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
       if (t.type === 'liability') liabilities += t.amount;
@@ -574,10 +594,11 @@ const DB = (() => {
     const expByCat    = {}; // desglose por categoría
 
     txs.forEach(t => {
+      // El IVA se totaliza para el reporte tributario y además cuenta como
+      // ingreso/gasto real (el saldo debe cuadrar con la utilidad).
       if (t.isIva) {
         if (t.ivaDirection === 'cobrado') ivaCobrado += t.amount;
         else                              ivaCredito += t.amount;
-        return; // los asientos de IVA no son ingreso ni gasto
       }
       if (t.type === 'income') {
         if (t.affectsInventory) salesRevenue += t.amount;
@@ -614,10 +635,9 @@ const DB = (() => {
   }
 
   function getPendingLiabilities() {
+    // Solo deudas reales. Los asientos de IVA ya no son type 'liability'.
     return getTransactions().filter(t =>
       t.type === 'liability' && t.liabilityStatus !== 'paid'
-      // El IVA crédito tributario es un ACTIVO (recuperable), no una deuda
-      && !(t.isIva && t.ivaDirection === 'credito')
     );
   }
 
@@ -1220,14 +1240,8 @@ const DB = (() => {
 
     txs.forEach(t => {
       if (t.isCogs) return;
-      // Asiento de IVA: mueve efectivo real (el cliente paga IVA / tú lo pagas)
-      if (t.isIva) {
-        if (t.account) {
-          bal[t.account] = (bal[t.account] || 0) +
-            (t.ivaDirection === 'cobrado' ? t.amount : -t.amount);
-        }
-        return;
-      }
+      // Los asientos de IVA ya son type income/expense → se manejan abajo igual
+      // que cualquier movimiento normal (mueven efectivo real).
       // Pago dividido: el dinero entró/salió por 2 cuentas
       const split = Array.isArray(t.splitPayments) && t.splitPayments.length
         ? t.splitPayments : null;
@@ -1633,12 +1647,7 @@ const DB = (() => {
     const inventory      = getInventory();
     const totalInventory = inventory.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
 
-    // Crédito tributario IVA — IVA pagado en compras, recuperable ante el SRI (activo)
-    const ivaCreditoFiscal = getTransactions()
-      .filter(t => t.isIva && t.ivaDirection === 'credito')
-      .reduce((s, t) => s + t.amount, 0);
-
-    const totalCurrentAssets = totalCash + totalCxC + totalInventory + ivaCreditoFiscal;
+    const totalCurrentAssets = totalCash + totalCxC + totalInventory;
     const totalAssets        = totalCurrentAssets; // Activos fijos: próxima versión
 
     // ── Pasivos Corrientes ──────────────────────────────
@@ -1653,7 +1662,6 @@ const DB = (() => {
       cashAccounts, totalCash,
       totalCxC,
       inventory, totalInventory,
-      ivaCreditoFiscal,
       totalCurrentAssets, totalAssets,
       pendingLiabs, totalLiabilities,
       equity,
@@ -1720,6 +1728,7 @@ const DB = (() => {
     if (!getCompanyList().find(c => c.id === id)) return false;
     saveG(GKEYS.active, id);
     _prefix = id + '_';
+    _migrateIvaTypes(); // asegurar que esta empresa tenga el IVA migrado
     return true;
   }
 
