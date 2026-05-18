@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515t">
+  <link rel="stylesheet" href="css/style.css?v=20260515u">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -282,8 +282,6 @@
     </div>
     <!-- Alerta presupuesto excedido -->
     <div id="dash-budget-alert" style="display:none;"></div>
-    <!-- Alerta cartera vencida -->
-    <div id="dash-cartera-alert" style="display:none;"></div>
 
     <!-- Balance Hero -->
     <div class="balance-hero" style="position:relative;">
@@ -294,6 +292,14 @@
           border-radius:14px; font-size:13px; font-weight:800; cursor:pointer;
           align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(0,0,0,.3);">
         🔴 <span id="dash-debt-count" style="margin-left:3px;">0</span>
+      </button>
+      <!-- Insignia de cobros (cartera) — justo debajo de la de deudas -->
+      <button id="dash-cartera-badge" onclick="openCarteraPanel()" title="Ver cuentas por cobrar"
+        style="display:none; position:absolute; top:46px; right:12px; z-index:3; min-width:28px; height:28px;
+          padding:0 8px; background:#0891b2; color:#fff; border:2px solid rgba(255,255,255,.55);
+          border-radius:14px; font-size:13px; font-weight:800; cursor:pointer;
+          align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(0,0,0,.3);">
+        🧾 <span id="dash-cartera-count" style="margin-left:3px;">0</span>
       </button>
       <div class="balance-label">🎯 Utilidad Neta Acumulada</div>
       <div class="balance-amount" id="dash-balance">$ 0</div>
@@ -1131,7 +1137,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515t"></script>
-<script src="js/app.js?v=20260515t"></script>
+<script src="js/db.js?v=20260515u"></script>
+<script src="js/app.js?v=20260515u"></script>
 </body>
 </html>

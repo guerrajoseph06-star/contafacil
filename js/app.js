@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15t';
+const APP_VERSION = '2026.05.15u';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1085,13 +1085,29 @@ function renderDashboard() {
   // Insignia de deudas en la esquina del rectángulo de Utilidad Neta
   // (toca para ver el desglose — sin banner que estrese al usuario)
   const debtBadge = document.getElementById('dash-debt-badge');
+  const debtShown = pending.length > 0;
   if (debtBadge) {
-    if (pending.length) {
-      debtBadge.style.display = 'flex';
+    debtBadge.style.display = debtShown ? 'flex' : 'none';
+    if (debtShown) {
       const cEl = document.getElementById('dash-debt-count');
       if (cEl) cEl.textContent = pending.length;
+    }
+  }
+
+  // Insignia de cobros (cartera) — justo debajo de la de deudas
+  const cobros = DB.getReceivables().filter(r => {
+    const paid = (r.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    return (r.totalAmount || 0) - paid > 0.005;
+  });
+  const carteraBadge = document.getElementById('dash-cartera-badge');
+  if (carteraBadge) {
+    if (cobros.length) {
+      carteraBadge.style.display = 'flex';
+      carteraBadge.style.top = debtShown ? '46px' : '12px'; // debajo de deudas, o arriba si no hay
+      const cEl = document.getElementById('dash-cartera-count');
+      if (cEl) cEl.textContent = cobros.length;
     } else {
-      debtBadge.style.display = 'none';
+      carteraBadge.style.display = 'none';
     }
   }
 
@@ -1107,9 +1123,6 @@ function renderDashboard() {
 
   // Alertas de presupuesto excedido
   renderBudgetAlerts();
-
-  // Alerta cartera vencida
-  renderCarteraAlert();
 
   // Chip de cartera con monto pendiente
   const carteraStats = DB.getReceivableStats();
@@ -6023,38 +6036,70 @@ function saveReceivablePayment(receivableId) {
 }
 
 // Alerta cartera vencida en dashboard
-function renderCarteraAlert() {
-  const el = document.getElementById('dash-cartera-alert');
-  if (!el) return;
-  const stats = DB.getReceivableStats();
-  if (!stats.overdueCount && !stats.pendingCount) { el.style.display = 'none'; return; }
+// Panel de Cuentas por Cobrar — se abre desde la insignia de cartera del tablero
+function openCarteraPanel() {
+  const sym = DB.getSettings().currencySymbol || '$';
+  const hoy = new Date().toISOString().slice(0, 10);
+  const list = DB.getReceivables().map(r => {
+    const paid = (r.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    return { ...r, _pend: Math.max((r.totalAmount || 0) - paid, 0) };
+  }).filter(r => r._pend > 0.005)
+    .sort((a, b) => (a.dueDate || '9999-99-99').localeCompare(b.dueDate || '9999-99-99'));
 
-  const { d30, d60, d90, d90plus } = stats.aging;
-  const totalVencida = d30 + d60 + d90 + d90plus;
+  const total    = list.reduce((s, r) => s + r._pend, 0);
+  const vencidas = list.filter(r => r.dueDate && r.dueDate < hoy);
+  const ESTADO   = {
+    overdue: { txt: '🔴 Vencida',        col: '#dc2626' },
+    partial: { txt: '🔵 Abono parcial',  col: '#0891b2' },
+    pending: { txt: '⏳ Pendiente',      col: '#d97706' },
+  };
 
-  if (totalVencida > 0) {
-    el.style.cssText = `display:flex;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:var(--radius);padding:12px 14px;gap:10px;align-items:center;margin-bottom:12px;color:#991b1b;`;
-    el.innerHTML = `
-      <span style="font-size:20px;">🧾</span>
-      <div style="flex:1;">
-        <div style="font-weight:700;font-size:14px;">${stats.overdueCount} cuenta(s) por cobrar vencida(s)</div>
-        <div style="font-size:12px;opacity:.8;margin-top:2px;">Cartera vencida: ${fmt(totalVencida)}</div>
+  const rows = list.map(r => {
+    const venc = r.dueDate && r.dueDate < hoy;
+    const est  = venc ? ESTADO.overdue : (ESTADO[r.status] || ESTADO.pending);
+    const fechas = [];
+    if (r.issueDate) fechas.push('Emitida: ' + fmtDate(r.issueDate));
+    if (r.dueDate)   fechas.push('Vence: ' + fmtDate(r.dueDate));
+    return `
+      <div onclick="closeSettingsSheet(); setTimeout(()=>navigate('cartera'),220);"
+        style="background:var(--white); border:1.5px solid var(--gray-100); border-radius:12px;
+          padding:12px 14px; margin-bottom:8px; cursor:pointer; display:flex;
+          justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:800;">🧾 ${_xmlEsc(r.clientName || 'Cliente')}</div>
+          ${r.description ? `<div style="font-size:11px; color:var(--gray-500); margin-top:1px;">${_xmlEsc(r.description)}</div>` : ''}
+          ${fechas.length ? `<div style="font-size:11px; color:var(--gray-400); margin-top:2px;">${fechas.join(' · ')}</div>` : ''}
+          <div style="font-size:11px; font-weight:700; color:${est.col}; margin-top:2px;">${est.txt}</div>
+        </div>
+        <div style="font-size:16px; font-weight:900; color:#0891b2; white-space:nowrap;">${sym} ${fmt(r._pend)}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🧾 Cuentas por Cobrar</h3>
+    ${list.length === 0 ? `
+      <div style="text-align:center; padding:36px 0; color:var(--gray-400);">
+        <div style="font-size:44px; margin-bottom:10px;">✅</div>
+        <div style="font-weight:700;">No tienes cobros pendientes</div>
       </div>
-      <button onclick="navigate('cartera')" style="font-size:12px;font-weight:700;background:none;color:inherit;white-space:nowrap;">Ver →</button>
-    `;
-  } else if (stats.pendingCount > 0) {
-    el.style.cssText = `display:flex;background:#e0f2fe;border:1.5px solid #7dd3fc;border-radius:var(--radius);padding:12px 14px;gap:10px;align-items:center;margin-bottom:12px;color:#0c4a6e;`;
-    el.innerHTML = `
-      <span style="font-size:20px;">🧾</span>
-      <div style="flex:1;">
-        <div style="font-weight:700;font-size:14px;">${stats.pendingCount} cobro(s) por recibir</div>
-        <div style="font-size:12px;opacity:.8;margin-top:2px;">Pendiente: ${fmt(stats.totalPendiente)}</div>
+    ` : `
+      <div style="background:linear-gradient(135deg,#0891b2,#0e7490); border-radius:14px;
+        padding:16px; color:#fff; margin-bottom:14px; text-align:center;">
+        <div style="font-size:12px; opacity:.85;">Total por cobrar</div>
+        <div style="font-size:28px; font-weight:900; margin-top:2px;">${sym} ${fmt(total)}</div>
+        <div style="font-size:11px; opacity:.85; margin-top:4px;">
+          ${list.length} cuenta${list.length !== 1 ? 's' : ''} por cobrar${vencidas.length ? ` · ${vencidas.length} vencida${vencidas.length !== 1 ? 's' : ''}` : ''}
+        </div>
       </div>
-      <button onclick="navigate('cartera')" style="font-size:12px;font-weight:700;background:none;color:inherit;white-space:nowrap;">Ver →</button>
-    `;
-  } else {
-    el.style.display = 'none';
-  }
+      ${rows}
+      <button class="btn btn-outline btn-block mt-8" onclick="closeSettingsSheet(); navigate('cartera');">
+        Ver cartera completa
+      </button>
+    `}
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
 }
 
 // ── Escáner de código de barras (BarcodeDetector API — nativo Chrome) ─────────
