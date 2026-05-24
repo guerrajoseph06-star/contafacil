@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23g';
+const APP_VERSION = '2026.05.23h';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1039,6 +1039,100 @@ async function doDecryptImport() {
   }
 }
 
+// ── Resumen de hoy ────────────────────────────────────────────────────────────
+function renderTodaySummary() {
+  const el = document.getElementById('dash-today');
+  if (!el) return;
+
+  const todayStr = today();
+  const txs = DB.getTransactions().filter(t => !t.isCogs && !t.isIva && t.date === todayStr);
+
+  if (!txs.length) { el.style.display = 'none'; return; }
+
+  const income  = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const liab    = txs.filter(t => t.type === 'liability').reduce((s, t) => s + t.amount, 0);
+  const net     = income - expense;
+  const netColor = net >= 0 ? 'var(--success)' : 'var(--danger)';
+  const netSign  = net >= 0 ? '+' : '';
+
+  const dateLabel = new Date().toLocaleDateString('es-CO', {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+
+  const preview = txs.slice(0, 4);
+  const hasMore = txs.length > 4;
+
+  // Fila compacta por transacción
+  const txRow = t => {
+    const cat   = DB.getCategoryById(t.category);
+    const emoji = cat ? cat.emoji : { income:'💰', expense:'💸', liability:'🔴', transfer:'↔️' }[t.type] || '💰';
+    const color = { income:'var(--success)', expense:'var(--danger)', liability:'var(--warning)', transfer:'var(--primary)' }[t.type] || 'var(--gray-700)';
+    const sign  = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+    return `
+      <div class="today-tx-row" data-tx-id="${t.id}">
+        <span style="font-size:19px; flex-shrink:0;">${emoji}</span>
+        <span class="today-tx-desc">${escHtml(t.description)}</span>
+        <span style="font-size:13px; font-weight:700; color:${color}; flex-shrink:0;">${sign}${fmt(t.amount)}</span>
+      </div>`;
+  };
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px; padding:14px 16px 8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:800; color:var(--gray-700); text-transform:capitalize;">
+          📅 ${escHtml(dateLabel)}
+        </div>
+        <button onclick="journalDateFilter='today'; navigate('journal');"
+          style="font-size:12px; color:var(--primary); font-weight:600; background:none;">
+          Ver todo →
+        </button>
+      </div>
+
+      <!-- KPIs del día -->
+      <div style="display:flex; gap:6px; margin-bottom:12px;">
+        ${income > 0 ? `
+        <div style="flex:1; background:var(--success-light); border-radius:8px; padding:8px 6px; text-align:center;">
+          <div style="font-size:10px; color:var(--success); font-weight:700; text-transform:uppercase; margin-bottom:2px;">💰 Ingresos</div>
+          <div style="font-size:14px; font-weight:800; color:var(--success);">+${fmt(income)}</div>
+        </div>` : ''}
+        ${expense > 0 ? `
+        <div style="flex:1; background:var(--danger-light); border-radius:8px; padding:8px 6px; text-align:center;">
+          <div style="font-size:10px; color:var(--danger); font-weight:700; text-transform:uppercase; margin-bottom:2px;">💸 Gastos</div>
+          <div style="font-size:14px; font-weight:800; color:var(--danger);">−${fmt(expense)}</div>
+        </div>` : ''}
+        ${liab > 0 ? `
+        <div style="flex:1; background:#fff7ed; border-radius:8px; padding:8px 6px; text-align:center;">
+          <div style="font-size:10px; color:var(--warning); font-weight:700; text-transform:uppercase; margin-bottom:2px;">🔴 Deudas</div>
+          <div style="font-size:14px; font-weight:800; color:var(--warning);">${fmt(liab)}</div>
+        </div>` : ''}
+        ${income > 0 && expense > 0 ? `
+        <div style="flex:1; background:var(--gray-50); border-radius:8px; padding:8px 6px; text-align:center;">
+          <div style="font-size:10px; color:var(--gray-500); font-weight:700; text-transform:uppercase; margin-bottom:2px;">📊 Neto</div>
+          <div style="font-size:14px; font-weight:800; color:${netColor};">${netSign}${fmt(net)}</div>
+        </div>` : ''}
+      </div>
+
+      <!-- Lista de transacciones del día -->
+      <div style="border-top:1px solid var(--gray-100); margin:0 -16px; padding:0 16px;">
+        ${preview.map(txRow).join('')}
+        ${hasMore ? `
+          <button onclick="journalDateFilter='today'; navigate('journal');"
+            style="display:block; width:100%; text-align:center; padding:9px 0; font-size:13px;
+              color:var(--primary); font-weight:600; background:none; border-top:1px solid var(--gray-100);">
+            +${txs.length - 4} movimientos más →
+          </button>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Click en fila → abre detalle
+  el.querySelectorAll('[data-tx-id]').forEach(row =>
+    row.addEventListener('click', () => openTxDetail(row.dataset.txId))
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function renderDashboard() {
   const now = new Date();
@@ -1148,6 +1242,9 @@ function renderDashboard() {
     const at = DB.getFixedAssetsTotals();
     assetsChip.textContent = at.count > 0 ? at.count + (at.count === 1 ? ' activo' : ' activos') : '+ Añadir';
   }
+
+  // Resumen del día (visible solo si hay actividad hoy)
+  renderTodaySummary();
 
   // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
   renderUpcomingAlerts();
