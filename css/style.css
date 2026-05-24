@@ -302,14 +302,33 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ===== STAT CHIPS ===== */
-.stat-chips { display: flex; gap: 10px; margin-bottom: 16px; }
+/* Carrusel deslizable de accesos rápidos */
+.stat-chips {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch; /* scroll suave en iOS */
+  scrollbar-width: none;             /* ocultar scrollbar Firefox */
+  padding-bottom: 4px;               /* espacio para sombra */
+  /* Padding lateral para que el primer y último chip no queden pegados al borde */
+  padding-left: 2px;
+  padding-right: 16px;
+  margin-left: -2px;
+}
+.stat-chips::-webkit-scrollbar { display: none; } /* ocultar scrollbar Chrome/Safari */
+
 .stat-chip {
-  flex: 1;
+  flex: 0 0 80px;      /* ancho fijo, no crece ni encoge */
+  min-width: 80px;
   background: var(--white);
   border-radius: var(--radius);
-  padding: 14px 12px;
+  padding: 14px 8px;
   text-align: center;
   box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .stat-chip-icon { font-size: 22px; margin-bottom: 4px; }
 .stat-chip-val { font-size: 15px; font-weight: 700; color: var(--gray-900); }
