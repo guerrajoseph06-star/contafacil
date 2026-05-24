@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523h">
+  <link rel="stylesheet" href="css/style.css?v=20260523i">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -1276,6 +1276,15 @@
 <!-- ═══════════════════════════════════════════════════
      MODALES
 ═══════════════════════════════════════════════════ -->
+<!-- Popup menú ⋯ de acciones por transacción -->
+<div id="tx-action-menu" style="display:none; position:fixed; z-index:600; background:#fff;
+  border-radius:12px; box-shadow:0 6px 28px rgba(0,0,0,.18); border:1px solid var(--gray-200);
+  min-width:164px; overflow:hidden;">
+  <button id="tx-menu-edit" class="tx-popup-btn" style="color:var(--gray-800);">✏️ Editar</button>
+  <div id="tx-menu-divider" style="height:1px; background:var(--gray-100);"></div>
+  <button id="tx-menu-del"  class="tx-popup-btn" style="color:var(--danger);">🗑️ Eliminar</button>
+</div>
+
 <!-- Detalle transacción -->
 <div class="modal-overlay" id="detail-overlay">
   <div class="sheet">
@@ -1295,7 +1304,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523h"></script>
-<script src="js/app.js?v=20260523h"></script>
+<script src="js/db.js?v=20260523i"></script>
+<script src="js/app.js?v=20260523i"></script>
 </body>
 </html>

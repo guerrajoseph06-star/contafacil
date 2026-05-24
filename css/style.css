@@ -380,58 +380,44 @@ a { text-decoration: none; color: inherit; }
 .tx-amount.expense { color: var(--danger); }
 .tx-amount.transfer { color: var(--primary); }
 
-/* ── Swipe-to-reveal actions (Diario) ────────────────────────────────────────*/
-.tx-item.tx-swipeable {
-  display: block;
-  position: relative;
-  overflow: hidden;
-  padding: 0;
-  cursor: default;
-  -webkit-tap-highlight-color: transparent;
-}
-.tx-swipeable .tx-slide-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  background: var(--white);
-  transform: translateX(0);
-  transition: transform .25s ease;
-  will-change: transform;
+/* ── Botón ⋯ de acciones en fila de transacción ─────────────────────────────*/
+.tx-menu-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  color: var(--gray-300);
+  font-size: 18px;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.tx-slide-actions {
-  position: absolute;
-  right: 0; top: 0; bottom: 0;
+  border-radius: 50%;
   display: flex;
-  align-items: stretch;
-}
-.tx-act-edit, .tx-act-del {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 68px;
-  border: none;
-  cursor: pointer;
-  color: #fff;
-  font-size: 20px;
-  padding: 0 10px;
-  gap: 3px;
   -webkit-tap-highlight-color: transparent;
-  transition: filter .15s;
+  padding: 0;
+  margin-left: -4px;
+  letter-spacing: -1px;
 }
-.tx-act-edit:active { filter: brightness(.85); }
-.tx-act-del:active  { filter: brightness(.85); }
-.tx-act-edit { background: var(--primary); }
-.tx-act-del  { background: var(--danger);  }
-.tx-act-edit small, .tx-act-del small {
-  font-size: 10px;
-  font-weight: 700;
-  display: block;
-  letter-spacing: .3px;
+.tx-menu-btn:active { background: var(--gray-100); color: var(--gray-600); }
+
+/* ── Popup menú de acciones ──────────────────────────────────────────────────*/
+.tx-popup-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 18px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s;
 }
+.tx-popup-btn:active { background: var(--gray-50); }
 
 /* ── Resumen de hoy ──────────────────────────────────────────────────────────*/
 .today-tx-row {
