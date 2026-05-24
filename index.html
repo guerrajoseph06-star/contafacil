@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523q">
+  <link rel="stylesheet" href="css/style.css?v=20260523r">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -478,6 +478,13 @@
     <div id="journal-cat-wrap" style="display:none; margin-bottom:8px;">
       <select id="journal-cat-filter" class="form-control" style="background:var(--white);"
         onchange="setJournalCatFilter(this.value)">
+      </select>
+    </div>
+
+    <!-- Filtro por banco (solo cuando hay transacciones con banco específico registrado) -->
+    <div id="journal-bank-wrap" style="display:none; margin-bottom:8px;">
+      <select id="journal-bank-filter" class="form-control" style="background:var(--white);"
+        onchange="setJournalBankFilter(this.value)">
       </select>
     </div>
 
@@ -1369,7 +1376,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523q"></script>
-<script src="js/app.js?v=20260523q"></script>
+<script src="js/db.js?v=20260523r"></script>
+<script src="js/app.js?v=20260523r"></script>
 </body>
 </html>

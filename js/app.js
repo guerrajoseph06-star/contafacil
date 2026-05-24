@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23q';
+const APP_VERSION = '2026.05.23r';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -107,6 +107,7 @@ let formType         = 'expense';
 let _pendingTemplate = null;    // plantilla pendiente de aplicar al abrir el formulario
 let journalFilter     = 'all';
 let journalCatFilter  = '';      // filtro de categoría en el diario
+let journalBankFilter = '';      // filtro de banco específico en el diario
 let journalUserFilter = '';      // filtro de usuario en el diario
 let journalSearch     = '';
 let journalDateFilter = 'all';   // 'all'|'today'|'yesterday'|'week'|'month'|'custom'
@@ -1766,6 +1767,36 @@ function renderJournal() {
     txs = txs.filter(t => t.category === journalCatFilter);
   }
 
+  // ── Selector de banco (visible cuando hay transacciones con banco específico) ──
+  const bankWrap   = document.getElementById('journal-bank-wrap');
+  const bankSelect = document.getElementById('journal-bank-filter');
+  const allBankNames = [...new Set(
+    DB.getTransactions()
+      .flatMap(t => [t.bankName, t.bankName2, t.fromBankName, t.toBankName])
+      .filter(Boolean)
+  )].sort();
+  const showBanks = allBankNames.length > 0;
+  if (bankWrap) bankWrap.style.display = showBanks ? 'block' : 'none';
+  if (showBanks && bankSelect) {
+    const prevBank = bankSelect.value;
+    bankSelect.innerHTML =
+      '<option value="">🏦 Todos los bancos</option>' +
+      allBankNames.map(n =>
+        `<option value="${escHtml(n)}" ${(prevBank === n || journalBankFilter === n) ? 'selected' : ''}>🏦 ${escHtml(n)}</option>`
+      ).join('');
+    if (journalBankFilter) bankSelect.value = journalBankFilter;
+  }
+
+  // ── Filtro por banco ──────────────────────────────────────
+  if (journalBankFilter) {
+    txs = txs.filter(t =>
+      t.bankName      === journalBankFilter ||
+      t.bankName2     === journalBankFilter ||
+      t.fromBankName  === journalBankFilter ||
+      t.toBankName    === journalBankFilter
+    );
+  }
+
   // ── Filtro por fecha ──────────────────────────────────────
   const customWrap = document.getElementById('journal-date-custom');
   if (customWrap) customWrap.style.display = journalDateFilter === 'custom' ? 'block' : 'none';
@@ -1825,7 +1856,7 @@ function renderJournal() {
   // ── Barra de resumen ──────────────────────────────────────
   const summaryEl = document.getElementById('journal-summary');
   if (summaryEl) {
-    const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter || journalDateFilter !== 'all';
+    const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter || journalDateFilter !== 'all' || journalUserFilter || journalBankFilter;
     if (hasFilter && txs.length > 0) {
       const totalInc = txs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
       const totalExp = txs.filter(t => t.type === 'expense' && !t.isCogs).reduce((s,t) => s+t.amount, 0);
@@ -1842,6 +1873,7 @@ function renderJournal() {
         <div style="background:var(--primary-light); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px; color:var(--primary); line-height:1.8;">
           ${dateLabel ? `<div style="font-size:11px; font-weight:700; opacity:.75; margin-bottom:2px;">📅 ${dateLabel}</div>` : ''}
           ${catName ? `<div style="font-weight:700; margin-bottom:4px;">📂 ${catName}</div>` : ''}
+          ${journalBankFilter ? `<div style="font-weight:700; margin-bottom:4px;">🏦 ${escHtml(journalBankFilter)}</div>` : ''}
           ${parts.join(' &nbsp;·&nbsp; ')}
           ${journalCatFilter ? `<button onclick="openCategoryReport('${journalCatFilter}')" style="float:right;font-size:12px;font-weight:700;background:none;color:var(--primary);">Ver reporte →</button>` : ''}
         </div>
@@ -1894,6 +1926,7 @@ function renderJournal() {
 function setJournalFilter(f) {
   journalFilter    = f;
   journalCatFilter = ''; // reset categoría al cambiar tipo
+  // no reseteamos journalBankFilter: el banco es independiente del tipo
   document.querySelectorAll('.filter-chip[data-filter]').forEach(c =>
     c.classList.toggle('active', c.dataset.filter === f)
   );
@@ -1920,6 +1953,11 @@ function setJournalCatFilter(catId) {
 
 function setJournalUserFilter(name) {
   journalUserFilter = name;
+  renderJournal();
+}
+
+function setJournalBankFilter(name) {
+  journalBankFilter = name;
   renderJournal();
 }
 
