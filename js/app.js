@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23o';
+const APP_VERSION = '2026.05.23p';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -104,6 +104,7 @@ let _inactivityTimer  = null;    // temporizador de auto-bloqueo
 
 let editingTxId      = null;
 let formType         = 'expense';
+let _pendingTemplate = null;    // plantilla pendiente de aplicar al abrir el formulario
 let journalFilter     = 'all';
 let journalCatFilter  = '';      // filtro de categoría en el diario
 let journalUserFilter = '';      // filtro de usuario en el diario
@@ -1246,6 +1247,9 @@ function renderDashboard() {
 
   // Alertas de stock mínimo
   renderStockAlerts();
+
+  // Plantillas rápidas de acceso directo
+  renderTemplates();
 
   // Chip de cartera con monto pendiente
   const carteraStats = DB.getReceivableStats();
@@ -3173,12 +3177,24 @@ function renderForm(editId = null) {
   editingTxId = editId || null;
   const isEdit = !!editId;
   let tx = isEdit ? DB.getTransactionById(editId) : null;
+
+  // Plantilla rápida: si viene de applyTemplate, usar sus datos para pre-llenar
+  if (!isEdit && _pendingTemplate) {
+    tx = _pendingTemplate;
+    formType = tx.type || formType;
+    _pendingTemplate = null;
+  }
+
   if (tx) formType = tx.type;
 
   document.getElementById('form-title').textContent = isEdit ? 'Editar Transacción' : 'Nueva Transacción';
   document.getElementById('btn-delete-tx').style.display = isEdit ? 'flex' : 'none';
 
-  // Poblar campos estáticos desde la transacción (editar) o limpiarlos (nuevo)
+  // Botón "Guardar como plantilla" solo en modo nueva transacción
+  const saveTplBtn = document.getElementById('btn-save-template');
+  if (saveTplBtn) saveTplBtn.style.display = isEdit ? 'none' : 'block';
+
+  // Poblar campos estáticos desde la transacción/plantilla (editar/aplicar) o limpiarlos (nuevo)
   const amountEl = document.getElementById('f-amount');
   const descEl   = document.getElementById('f-desc');
   const dateEl   = document.getElementById('f-date');
@@ -3186,15 +3202,16 @@ function renderForm(editId = null) {
   if (tx) {
     // Al editar: si el IVA está incluido, mostrar el TOTAL que el usuario tecleó
     // (la transacción guarda solo la base); si es +IVA o sin IVA, mostrar el monto tal cual.
+    // Para plantillas: usar tx.amount directamente (no hay ivaTotal guardado).
     if (amountEl) amountEl.value = (tx.ivaType === 'IVA_INCLUIDO' && tx.ivaTotal)
-      ? tx.ivaTotal : tx.amount;
-    if (descEl)   descEl.value   = tx.description;
-    if (dateEl)   dateEl.value   = tx.date;
-    if (notesEl)  notesEl.value  = tx.notes || '';
-    _formIvaType = tx.ivaType || 'IVA_INCLUIDO'; // cargar IVA guardado
-    // Cargar la foto del comprobante (si tiene) desde IndexedDB — asíncrono
+      ? tx.ivaTotal : (tx.amount || '');
+    if (descEl)   descEl.value   = tx.description || '';
+    if (dateEl)   dateEl.value   = isEdit ? tx.date : today(); // plantilla: siempre hoy
+    if (notesEl)  notesEl.value  = isEdit ? (tx.notes || '') : ''; // plantilla: notas limpias
+    _formIvaType = tx.ivaType || 'IVA_INCLUIDO';
+    // Cargar la foto del comprobante solo al editar (no en plantillas)
     _formPhoto = null;
-    if (tx.hasReceipt) {
+    if (isEdit && tx.hasReceipt) {
       DB.getPhoto(tx.id).then(p => { _formPhoto = p; _renderReceiptArea(); });
     }
   } else {
@@ -6796,6 +6813,154 @@ function renderStockAlerts() {
     </div>
     <button onclick="navigate('inventory')" style="font-size:12px; font-weight:700; background:none; color:inherit; white-space:nowrap; border:none; cursor:pointer;">Ver →</button>
   `;
+}
+
+// ── Plantillas rápidas ────────────────────────────────────────────────────────
+
+// Renderiza las píldoras de plantillas en el Dashboard (oculto si no hay ninguna)
+function renderTemplates() {
+  const el = document.getElementById('dash-templates');
+  if (!el) return;
+  const tmpls = DB.getTemplates();
+  if (!tmpls.length || isCurrentUserReadOnly()) { el.style.display = 'none'; return; }
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="padding:0 16px 4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-size:11px; font-weight:700; color:var(--gray-500);
+          text-transform:uppercase; letter-spacing:.05em;">⭐ Acceso rápido</div>
+        <button onclick="openTemplateManager()"
+          style="background:none; border:none; font-size:12px; color:var(--primary);
+            cursor:pointer; padding:2px 0; font-weight:600;">Gestionar</button>
+      </div>
+      <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; scrollbar-width:none;
+        -webkit-overflow-scrolling:touch;">
+        ${tmpls.map(t => {
+          const typeColor = t.type === 'income' ? 'var(--success)'
+                          : t.type === 'expense' ? 'var(--danger)'
+                          : 'var(--warning)';
+          return `
+            <button onclick="applyTemplate('${escHtml(t.id)}')"
+              style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;
+                background:var(--card-bg); border:1.5px solid var(--gray-200); border-radius:16px;
+                padding:10px 10px 8px; cursor:pointer; min-width:70px; max-width:90px;
+                text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.06);
+                -webkit-tap-highlight-color:transparent;">
+              <span style="font-size:24px; line-height:1;">${escHtml(t.emoji || '⭐')}</span>
+              <span style="font-size:11px; font-weight:700; color:var(--gray-800); line-height:1.2;
+                display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+                overflow:hidden; word-break:break-word; width:100%;">${escHtml(t.name)}</span>
+              ${t.amount > 0
+                ? `<span style="font-size:11px; font-weight:700; color:${typeColor};">${fmt(t.amount)}</span>`
+                : ''}
+            </button>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Aplica una plantilla: carga sus datos en el formulario de nueva transacción
+function applyTemplate(id) {
+  const tpl = DB.getTemplates().find(t => t.id === id);
+  if (!tpl) return;
+  _pendingTemplate = { ...tpl };
+  formType = tpl.type || 'expense';
+  navigate('form');
+}
+
+// Guarda el estado actual del formulario como nueva plantilla
+function saveAsTemplate() {
+  if (formType === 'transfer') {
+    showToast('⚠️ Las plantillas no aplican para traslados', 2500);
+    return;
+  }
+  const desc    = document.getElementById('f-desc')?.value.trim() || '';
+  const amount  = parseFloat(document.getElementById('f-amount')?.value) || 0;
+  const cat     = document.getElementById('f-category')?.value || '';
+  const acc     = document.getElementById('f-account')?.value || '';
+  const bank    = acc === 'a-banco'
+    ? (document.getElementById('bank-name-main')?.value.trim() || '') : '';
+
+  const catObj  = cat ? DB.getCategoryById(cat) : null;
+  const emoji   = catObj ? catObj.emoji
+                : formType === 'income'  ? '💰'
+                : formType === 'expense' ? '💸' : '🔴';
+
+  const suggested = desc || (catObj ? catObj.name : 'Plantilla');
+  const name = prompt('Nombre de la plantilla:', suggested);
+  if (name === null) return; // el usuario canceló
+
+  DB.saveTemplate({
+    name:        (name.trim() || suggested),
+    emoji,
+    type:        formType,
+    amount,
+    description: desc,
+    category:    cat,
+    account:     acc,
+    bankName:    bank,
+    ivaType:     _formIvaType || 'IVA_INCLUIDO',
+  });
+
+  showToast('⭐ Plantilla guardada');
+  renderTemplates();
+}
+
+// Gestor de plantillas (sheet con lista y botones de borrar)
+function openTemplateManager() {
+  const tmpls   = DB.getTemplates();
+  const sheet   = document.getElementById('settings-sheet');
+  const content = document.getElementById('settings-sheet-content');
+  if (!content || !sheet) return;
+
+  content.innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">⭐ Plantillas rápidas</h3>
+    ${!tmpls.length
+      ? `<div style="text-align:center; color:var(--gray-400); padding:28px 0;">
+           <div style="font-size:40px; margin-bottom:8px;">🗂️</div>
+           <div style="font-weight:600;">Sin plantillas guardadas</div>
+           <div style="font-size:12px; margin-top:6px; line-height:1.5;">
+             Abre el formulario, rellena los datos<br>y toca "⭐ Guardar como plantilla".
+           </div>
+         </div>`
+      : tmpls.map(t => {
+          const typeLabel = t.type === 'income' ? 'Ingreso'
+                          : t.type === 'expense' ? 'Gasto' : 'Deuda';
+          const typeColor = t.type === 'income' ? 'var(--success)'
+                          : t.type === 'expense' ? 'var(--danger)' : 'var(--warning)';
+          return `
+            <div style="display:flex; align-items:center; gap:12px; padding:12px 0;
+              border-bottom:1px solid var(--gray-100);">
+              <span style="font-size:26px; flex-shrink:0; line-height:1;">${escHtml(t.emoji || '⭐')}</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:700; font-size:14px; color:var(--gray-800);">
+                  ${escHtml(t.name)}</div>
+                <div style="font-size:12px; color:var(--gray-500); margin-top:2px;">
+                  <span style="color:${typeColor}; font-weight:600;">${typeLabel}</span>
+                  ${t.amount > 0 ? ' · ' + fmt(t.amount) : ''}
+                  ${t.description && t.description !== t.name ? ' · ' + escHtml(t.description) : ''}
+                </div>
+              </div>
+              <button onclick="deleteTemplateAndRefresh('${escHtml(t.id)}')"
+                style="background:#fee2e2; border:none; border-radius:8px; padding:7px 10px;
+                  color:var(--danger); font-size:14px; cursor:pointer; flex-shrink:0;
+                  line-height:1;">🗑️</button>
+            </div>`;
+        }).join('')
+    }
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  sheet.classList.add('open');
+}
+
+// Borra una plantilla y refresca tanto el manager como el dashboard
+function deleteTemplateAndRefresh(id) {
+  DB.deleteTemplate(id);
+  renderTemplates();
+  openTemplateManager(); // re-abre con lista actualizada
 }
 
 // ── Gráficas (Chart.js) ───────────────────────────────────────────────────────

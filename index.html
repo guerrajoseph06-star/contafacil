@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523o">
+  <link rel="stylesheet" href="css/style.css?v=20260523p">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -369,6 +369,9 @@
     <!-- Resumen de hoy (visible solo si hay actividad hoy) -->
     <div id="dash-today" style="display:none;"></div>
 
+    <!-- Plantillas rápidas (visible solo si hay plantillas guardadas) -->
+    <div id="dash-templates" style="display:none;"></div>
+
     <!-- Accesos rápidos -->
     <div class="stat-chips">
       <button class="stat-chip" onclick="setFormType('income'); navigate('form')">
@@ -551,6 +554,11 @@
 
     <button class="btn btn-primary btn-block mt-8" onclick="submitForm()">
       ✅ Guardar
+    </button>
+    <button id="btn-save-template" class="btn btn-secondary btn-block mt-8"
+      onclick="saveAsTemplate()"
+      style="font-size:13px; padding:10px 16px; color:var(--gray-600);">
+      ⭐ Guardar como plantilla
     </button>
     <button id="btn-delete-tx" class="btn btn-danger btn-block mt-8"
       onclick="deleteCurrentTx()" style="display:none;">
@@ -1361,7 +1369,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523o"></script>
-<script src="js/app.js?v=20260523o"></script>
+<script src="js/db.js?v=20260523p"></script>
+<script src="js/app.js?v=20260523p"></script>
 </body>
 </html>

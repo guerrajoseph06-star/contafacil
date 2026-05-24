@@ -25,6 +25,7 @@ const DB = (() => {
     fixedAssets:  'cf_fixed_assets',
     onboarded:    'cf_onboarded',
     auditLog:     'cf_audit_log',
+    templates:    'cf_templates',
   };
 
   // ── Claves globales (no pertenecen a ninguna empresa) ─────────────────────────
@@ -1757,6 +1758,38 @@ const DB = (() => {
     };
   }
 
+  // ── Plantillas rápidas ─────────────────────────────────────
+  // Guardan configuraciones de transacciones frecuentes para registrar de 1 toque.
+  // Estructura: { id, name, emoji, type, amount, description, category, account,
+  //               bankName, ivaType, createdAt }
+
+  function getTemplates() { return load(KEYS.templates) || []; }
+
+  function saveTemplate(data) {
+    const list = getTemplates();
+    const tpl = {
+      id:          uuid(),
+      createdAt:   new Date().toISOString(),
+      name:        '',
+      emoji:       '⭐',
+      type:        'expense',
+      amount:      0,
+      description: '',
+      category:    '',
+      account:     '',
+      bankName:    '',
+      ivaType:     'IVA_INCLUIDO',
+      ...data,
+    };
+    list.push(tpl);
+    save(KEYS.templates, list);
+    return tpl;
+  }
+
+  function deleteTemplate(id) {
+    save(KEYS.templates, getTemplates().filter(t => t.id !== id));
+  }
+
   // ── Onboarding ─────────────────────────────────────────────
   function isOnboarded() { return !!localStorage.getItem(KEYS.onboarded); }
   function markOnboarded() { localStorage.setItem(KEYS.onboarded, '1'); }
@@ -1968,5 +2001,6 @@ const DB = (() => {
     saveSmartDescEntry, getSmartDescSuggestions,
     savePhoto, getPhoto, deletePhoto,
     addFacturaCompra, getDeducibles, getDeducibleSummary,
+    getTemplates, saveTemplate, deleteTemplate,
   };
 })();
