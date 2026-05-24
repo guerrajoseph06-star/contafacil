@@ -419,6 +419,39 @@ a { text-decoration: none; color: inherit; }
 }
 .tx-popup-btn:active { background: var(--gray-50); }
 
+/* ── Gráfico categorías (Reportes) ──────────────────────────────────────────*/
+.cat-tab-btn {
+  flex: 1;
+  padding: 7px 4px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.cat-tab-active {
+  background: #fff;
+  color: var(--gray-900);
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}
+.cat-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s;
+  border-radius: 6px;
+}
+.cat-legend-row:last-child { border-bottom: none; }
+.cat-legend-row:active { background: var(--gray-50); }
+
 /* ── Resumen de hoy ──────────────────────────────────────────────────────────*/
 .today-tx-row {
   display: flex;

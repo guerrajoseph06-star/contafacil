@@ -15,9 +15,9 @@ const SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './css/style.css?v=20260523i',
-  './js/db.js?v=20260523i',
-  './js/app.js?v=20260523i',
+  './css/style.css?v=20260523j',
+  './js/db.js?v=20260523j',
+  './js/app.js?v=20260523j',
 ];
 
 // ── Instalación: precachear el app shell ──────────────────────────────────────

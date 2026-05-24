@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523i">
+  <link rel="stylesheet" href="css/style.css?v=20260523j">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -843,6 +843,34 @@
       </div>
     </div>
 
+    <!-- ══ GRÁFICA: Desglose por Categoría ══ -->
+    <div class="card no-print" style="margin-bottom:12px;" id="chart-category-card">
+      <div class="card-header" style="margin-bottom:10px;">
+        <div class="card-title">🍩 Desglose por Categoría</div>
+        <div id="cat-chart-month-label" style="font-size:11px; color:var(--gray-400);"></div>
+      </div>
+      <!-- Tabs Gastos / Ingresos -->
+      <div style="display:flex; background:var(--gray-100); border-radius:8px; padding:3px; margin-bottom:14px; gap:3px;">
+        <button id="cat-tab-expense" class="cat-tab-btn cat-tab-active" onclick="setCatChartTab('expense')">💸 Gastos</button>
+        <button id="cat-tab-income"  class="cat-tab-btn"                onclick="setCatChartTab('income')">💰 Ingresos</button>
+      </div>
+      <!-- Gráfico doughnut con total en el centro -->
+      <div style="position:relative; height:210px; margin-bottom:14px;">
+        <canvas id="chart-category"></canvas>
+        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+          text-align:center; pointer-events:none; min-width:80px;">
+          <div style="font-size:10px; color:var(--gray-400); font-weight:700; text-transform:uppercase; letter-spacing:.5px;">Total</div>
+          <div id="cat-chart-total" style="font-size:15px; font-weight:800; color:var(--gray-800); margin-top:2px;">$0</div>
+        </div>
+      </div>
+      <!-- Mensaje vacío -->
+      <div id="cat-chart-empty" style="display:none; text-align:center; padding:20px; color:var(--gray-400); font-size:14px;">
+        📭 Sin datos para este período
+      </div>
+      <!-- Leyenda personalizada -->
+      <div id="cat-chart-legend" style="margin:0 -4px;"></div>
+    </div>
+
     <!-- ══ ESTADO DE RESULTADOS (P&L) ══ -->
     <div class="card" style="margin-bottom:12px; padding:16px 20px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -1304,7 +1332,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523i"></script>
-<script src="js/app.js?v=20260523i"></script>
+<script src="js/db.js?v=20260523j"></script>
+<script src="js/app.js?v=20260523j"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23i';
+const APP_VERSION = '2026.05.23j';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -3580,6 +3580,136 @@ function openTxDetail(id) {
 
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }
 
+// ── Gráfico de desglose por categoría ────────────────────────────────────────
+const CAT_CHART_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
+  '#06b6d4','#f97316','#84cc16','#ec4899','#6366f1',
+];
+let _catChartInst = null;
+let _catChartTab  = 'expense';
+
+function setCatChartTab(type) {
+  _catChartTab = type;
+  document.getElementById('cat-tab-expense')?.classList.toggle('cat-tab-active', type === 'expense');
+  document.getElementById('cat-tab-income') ?.classList.toggle('cat-tab-active', type === 'income');
+  renderCategoryChart();
+}
+
+function renderCategoryChart() {
+  const canvas   = document.getElementById('chart-category');
+  const legendEl = document.getElementById('cat-chart-legend');
+  const emptyEl  = document.getElementById('cat-chart-empty');
+  const totalEl  = document.getElementById('cat-chart-total');
+  const lblEl    = document.getElementById('cat-chart-month-label');
+  if (!canvas) return;
+
+  const monthLabel = new Date(reportYear, reportMonth - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+  if (lblEl) lblEl.textContent = monthLabel;
+
+  // Agrupar transacciones del mes por categoría
+  const txs = DB.getTransactionsByMonth(reportYear, reportMonth)
+    .filter(t => t.type === _catChartTab && !t.isCogs && !t.isIva);
+
+  const grouped = {};
+  txs.forEach(t => {
+    const key = t.category || '__none__';
+    grouped[key] = (grouped[key] || 0) + t.amount;
+  });
+
+  const entries = Object.entries(grouped).sort((a, b) => b[1] - a[1]);
+
+  if (!entries.length) {
+    canvas.style.display  = 'none';
+    if (emptyEl)  emptyEl.style.display  = 'block';
+    if (legendEl) legendEl.innerHTML     = '';
+    if (totalEl)  totalEl.textContent    = fmt(0);
+    if (_catChartInst) { _catChartInst.destroy(); _catChartInst = null; }
+    return;
+  }
+  canvas.style.display = 'block';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Top 9 + "Otros"
+  const TOP = 9;
+  let chartEntries = entries.slice(0, TOP);
+  if (entries.length > TOP) {
+    const rest = entries.slice(TOP).reduce((s, [, v]) => s + v, 0);
+    chartEntries.push(['__otros__', rest]);
+  }
+
+  const total  = entries.reduce((s, [, v]) => s + v, 0);
+  if (totalEl) totalEl.textContent = fmt(total);
+
+  const getLabel = catId => {
+    if (catId === '__otros__') return '📁 Otros';
+    if (catId === '__none__')  return '— Sin categoría';
+    const c = DB.getCategoryById(catId);
+    return c ? c.emoji + ' ' + c.name : '— Sin categoría';
+  };
+
+  const labels = chartEntries.map(([id]) => getLabel(id));
+  const values = chartEntries.map(([, v]) => v);
+  const colors = chartEntries.map((_, i) => CAT_CHART_COLORS[i % CAT_CHART_COLORS.length]);
+
+  // Destruir instancia anterior
+  if (_catChartInst) { _catChartInst.destroy(); _catChartInst = null; }
+
+  _catChartInst = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 3,
+        borderColor: '#fff',
+        hoverOffset: 10,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${fmt(ctx.raw)} · ${Math.round(ctx.raw / total * 100)}%`
+          }
+        }
+      }
+    }
+  });
+
+  // Leyenda personalizada
+  if (legendEl) {
+    legendEl.innerHTML = chartEntries.map(([catId, val], i) => {
+      const pct = Math.round(val / total * 100);
+      const cat = DB.getCategoryById(catId);
+      const clickable = cat && catId !== '__otros__' && catId !== '__none__';
+      const onclick   = clickable
+        ? `onclick="journalFilter='${_catChartTab}'; journalCatFilter='${catId}'; navigate('journal');"`
+        : '';
+      return `
+        <div class="cat-legend-row" ${onclick} ${!clickable ? 'style="cursor:default;"' : ''}>
+          <div style="width:11px;height:11px;border-radius:3px;flex-shrink:0;background:${colors[i]};"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:var(--gray-800);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${getLabel(catId)}</div>
+            <div style="background:var(--gray-100);height:4px;border-radius:2px;margin-top:4px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${colors[i]};border-radius:2px;"></div>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:13px;font-weight:700;color:var(--gray-800);">${fmt(val)}</div>
+            <div style="font-size:11px;color:var(--gray-400);">${pct}%</div>
+          </div>
+          ${clickable ? '<div style="color:var(--gray-300);font-size:14px;">›</div>' : ''}
+        </div>`;
+    }).join('');
+  }
+}
+
 // ── Reportes ───────────────────────────────────────────────────────────────────
 function renderReports() {
   const pnl  = DB.getProfitStatement(reportYear, reportMonth);
@@ -3589,6 +3719,9 @@ function renderReports() {
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
 
   document.getElementById('report-month-name').textContent = monthLabel;
+
+  // ── Gráfico de desglose por categoría ────────────────────
+  renderCategoryChart();
 
   // ── Estado de Resultados (P&L) ────────────────────────────
   _renderPnL(pnl);
