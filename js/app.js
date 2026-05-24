@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23c';
+const APP_VERSION = '2026.05.23d';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1554,6 +1554,168 @@ function setJournalCatFilter(catId) {
 function setJournalUserFilter(name) {
   journalUserFilter = name;
   renderJournal();
+}
+
+// ── Exportar Diario filtrado a Excel ─────────────────────────────────────────
+// Exporta exactamente lo que el usuario ve en pantalla (con todos los filtros activos).
+function exportJournalExcel() {
+  // ── Reproducir los mismos filtros de renderJournal ──────────────────────────
+  let txs = DB.getTransactions();
+  if (journalFilter !== 'all')  txs = txs.filter(t => t.type === journalFilter);
+  if (journalSearch.trim()) {
+    const q = journalSearch.toLowerCase();
+    txs = txs.filter(t =>
+      t.description.toLowerCase().includes(q) ||
+      (t.notes || '').toLowerCase().includes(q)
+    );
+  }
+  if (journalUserFilter) txs = txs.filter(t => t.userName === journalUserFilter);
+  if (journalCatFilter)  txs = txs.filter(t => t.category === journalCatFilter);
+
+  // Filtro de fecha
+  if (journalDateFilter !== 'all') {
+    const todayD = new Date(); todayD.setHours(0,0,0,0);
+    let fromDate = null, toDate = null;
+    if (journalDateFilter === 'today') {
+      fromDate = toDate = todayD;
+    } else if (journalDateFilter === 'yesterday') {
+      const y = new Date(todayD); y.setDate(y.getDate()-1);
+      fromDate = toDate = y;
+    } else if (journalDateFilter === 'week') {
+      fromDate = new Date(todayD); fromDate.setDate(fromDate.getDate()-6);
+      toDate = todayD;
+    } else if (journalDateFilter === 'month') {
+      fromDate = new Date(todayD.getFullYear(), todayD.getMonth(), 1);
+      toDate = todayD;
+    } else if (journalDateFilter === 'custom') {
+      const fv = document.getElementById('journal-date-from')?.value;
+      const tv = document.getElementById('journal-date-to')?.value;
+      if (fv) fromDate = new Date(fv + 'T00:00:00');
+      if (tv) toDate   = new Date(tv + 'T23:59:59');
+    }
+    if (fromDate || toDate) {
+      txs = txs.filter(t => {
+        const d = new Date(t.date + 'T12:00:00');
+        if (fromDate && d < fromDate) return false;
+        if (toDate) { const te = new Date(toDate); te.setHours(23,59,59,999); if (d > te) return false; }
+        return true;
+      });
+    }
+  }
+
+  txs = txs.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  if (!txs.length) { showToast('⚠️ No hay registros para exportar con los filtros activos'); return; }
+
+  const s    = DB.getSettings();
+  const sym  = s.currencySymbol || '$';
+  const TYPE = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda' };
+
+  // ── Título descriptivo del filtro ──────────────────────────────────────────
+  const filterParts = [];
+  if (journalFilter !== 'all') filterParts.push(TYPE[journalFilter] || journalFilter);
+  if (journalCatFilter) {
+    const cn = DB.getCategoryById(journalCatFilter)?.name;
+    if (cn) filterParts.push(cn);
+  }
+  if (journalUserFilter) filterParts.push('👤 ' + journalUserFilter);
+  const dateLabels = { today:'Hoy', yesterday:'Ayer', week:'Últimos 7 días', month:'Este mes', custom:'Rango personalizado' };
+  if (journalDateFilter !== 'all') filterParts.push(dateLabels[journalDateFilter] || '');
+  if (journalSearch.trim()) filterParts.push('Búsqueda: "' + journalSearch.trim() + '"');
+  const filtroTitulo = filterParts.length ? filterParts.join(' · ') : 'Todos los registros';
+
+  const exportDate = new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' });
+
+  // ── Filas de datos ─────────────────────────────────────────────────────────
+  const header = [
+    { v:'Fecha',        s:'header' },
+    { v:'Descripción',  s:'header' },
+    { v:'Tipo',         s:'header' },
+    { v:'Categoría',    s:'header' },
+    { v:'Cuenta',       s:'header' },
+    { v:'Ingreso',      s:'header' },
+    { v:'Gasto',        s:'header' },
+    { v:'Traslado',     s:'header' },
+    { v:'Deuda',        s:'header' },
+    { v:'Notas',        s:'header' },
+    { v:'Usuario',      s:'header' },
+  ];
+
+  let totalInc = 0, totalExp = 0, totalTrf = 0, totalLib = 0;
+
+  const dataRows = txs.map(t => {
+    const cat     = DB.getCategoryById(t.category);
+    const acc     = DB.getAccountById(t.account);
+    const fAcc    = DB.getAccountById(t.fromAccount);
+    const tAcc    = DB.getAccountById(t.toAccount);
+    const catName = cat ? cat.name : '';
+    let accName   = acc ? acc.name : '';
+    if (t.type === 'transfer' && fAcc && tAcc) accName = fAcc.name + ' → ' + tAcc.name;
+
+    let inc = '', exp = '', trf = '', lib = '';
+    if (t.type === 'income')   { inc = t.amount; totalInc += t.amount; }
+    if (t.type === 'expense')  { exp = t.amount; totalExp += t.amount; }
+    if (t.type === 'transfer') { trf = t.amount; totalTrf += t.amount; }
+    if (t.type === 'liability'){ lib = t.amount; totalLib += t.amount; }
+
+    return [
+      { v: t.date,              s: 'label'  },
+      { v: t.description || '', s: 'text'   },
+      { v: TYPE[t.type] || '', s: 'text'   },
+      { v: catName,             s: 'text'   },
+      { v: accName,             s: 'text'   },
+      { v: inc !== '' ? inc : null, s: inc !== '' ? 'money' : 'text' },
+      { v: exp !== '' ? exp : null, s: exp !== '' ? 'money' : 'text' },
+      { v: trf !== '' ? trf : null, s: trf !== '' ? 'money' : 'text' },
+      { v: lib !== '' ? lib : null, s: lib !== '' ? 'money' : 'text' },
+      { v: t.notes || '',       s: 'text'   },
+      { v: t.userName || '',    s: 'text'   },
+    ];
+  });
+
+  // Fila de totales
+  const totalesRow = [
+    { v: 'TOTALES', s: 'totalLabel' },
+    { v: '', s: 'text' },
+    { v: txs.length + ' registros', s: 'text' },
+    { v: '', s: 'text' },
+    { v: '', s: 'text' },
+    { v: totalInc, s: 'moneyBold' },
+    { v: totalExp, s: 'moneyBold' },
+    { v: totalTrf, s: 'moneyBold' },
+    { v: totalLib, s: 'moneyBold' },
+    { v: '', s: 'text' },
+    { v: '', s: 'text' },
+  ];
+
+  const rows = [
+    // Título del reporte
+    [{ v: s.companyName || 'Mi Negocio', s: 'title', merge: 10 }],
+    [{ v: 'Diario Contable — ' + filtroTitulo, s: 'subtitle', merge: 10 }],
+    [{ v: 'Exportado el ' + exportDate + ' · ' + txs.length + ' registro(s)', merge: 10 }],
+    [], // fila vacía
+    header,
+    ...dataRows,
+    [], // fila vacía
+    totalesRow,
+  ];
+
+  const today = new Date().toISOString().slice(0,10);
+  const companySlug = (s.companyName || 'Negocio').replace(/\s+/g,'-');
+  const filename = 'Diario_' + companySlug + '_' + today + '.xlsx';
+
+  try {
+    const bytes = _buildXlsx([{
+      name: 'Diario',
+      cols: [100, 220, 85, 130, 130, 105, 105, 105, 105, 160, 90],
+      rows,
+    }], sym);
+    _downloadXlsx(bytes, filename);
+    DB.logAudit('export_excel', '📒 Diario exportado: ' + filename + ' (' + txs.length + ' registros)');
+    showToast('📥 Excel descargado · ' + txs.length + ' registro(s)', 3000);
+  } catch (err) {
+    showToast('❌ Error al generar Excel: ' + err.message, 4000);
+  }
 }
 
 // ── Ítem de transacción (display correcto por tipo) ───────────────────────────
