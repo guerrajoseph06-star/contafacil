@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23j';
+const APP_VERSION = '2026.05.23k';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1168,6 +1168,20 @@ function renderDashboard() {
   netEl.textContent = (stats.netProfit >= 0 ? '+' : '') + fmt(stats.netProfit);
   netEl.style.color = 'white';
 
+  // Comparativa vs mes anterior
+  const prevM    = m === 1 ? 12 : m - 1;
+  const prevY    = m === 1 ? y - 1 : y;
+  const prevStats = DB.getMonthStats(prevY, prevM);
+  const prevLbl  = new Date(prevY, prevM - 1, 1).toLocaleDateString('es-CO', { month: 'short' });
+  const _setCmp  = (id, cur, prev, inv = false) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = _cmpHeroBadge(cur, prev, inv) +
+      (prev > 0 || cur > 0 ? `<span style="opacity:.45;"> vs ${prevLbl}.</span>` : '');
+  };
+  _setCmp('dash-net-cmp',     stats.netProfit,  prevStats.netProfit);
+  _setCmp('dash-income-cmp',  stats.income,     prevStats.income);
+  _setCmp('dash-expense-cmp', stats.opExpenses, prevStats.opExpenses, true);
+
   // Panel de CMV del mes (solo si hay COGS)
   const cogsPanel = document.getElementById('dash-cogs-panel');
   if (cogsPanel) {
@@ -1248,6 +1262,42 @@ function renderDashboard() {
 
   // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
   renderUpcomingAlerts();
+}
+
+// ── Comparativa mes anterior ──────────────────────────────────────────────────
+// Devuelve HTML para un badge de comparativa (fondo hero oscuro)
+function _cmpHeroBadge(cur, prev, lowerIsBetter = false) {
+  if (prev === 0 && cur === 0) return '';
+  if (prev === 0) return `<span style="opacity:.55;">—</span>`;
+  const pct  = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+  if (Math.abs(pct) < 1) return `<span style="opacity:.55;">≈ igual</span>`;
+  const up    = pct > 0;
+  const good  = lowerIsBetter ? !up : up;
+  const color = good ? 'rgba(134,239,172,.9)' : 'rgba(252,165,165,.9)';
+  return `<span style="color:${color};">${up ? '↑' : '↓'} ${up ? '+' : ''}${pct}%</span>`;
+}
+
+// Devuelve HTML de una píldora de comparativa para la tarjeta de Reportes
+function _cmpPill(label, cur, prev, lowerIsBetter = false, prevLbl = '') {
+  if (prev === 0 && cur === 0) return '';
+  const noData = prev === 0;
+  let arrow = '—', pctStr = '', color = 'var(--gray-400)';
+  if (!noData) {
+    const pct  = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+    const up   = pct > 0;
+    const good = lowerIsBetter ? !up : up;
+    const noChange = Math.abs(pct) < 1;
+    arrow   = noChange ? '≈' : (up ? '↑' : '↓');
+    pctStr  = noChange ? 'igual' : `${up ? '+' : ''}${pct}%`;
+    color   = noChange ? 'var(--gray-400)' : (good ? 'var(--success)' : 'var(--danger)');
+  }
+  return `
+    <div style="flex:1; background:var(--gray-50); border-radius:10px; padding:10px 8px; text-align:center;">
+      <div style="font-size:10px; color:var(--gray-500); font-weight:700; margin-bottom:5px;">${label}</div>
+      <div style="font-size:22px; color:${color}; line-height:1;">${arrow}</div>
+      <div style="font-size:13px; font-weight:800; color:${color}; margin-top:3px;">${pctStr || '—'}</div>
+      ${prevLbl ? `<div style="font-size:10px; color:var(--gray-400); margin-top:3px;">vs ${prevLbl}</div>` : ''}
+    </div>`;
 }
 
 // ── Búsqueda global ───────────────────────────────────────────────────────────
@@ -3580,6 +3630,31 @@ function openTxDetail(id) {
 
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }
 
+// ── Comparativa vs mes anterior (Reportes) ───────────────────────────────────
+function _renderReportComparison() {
+  const card = document.getElementById('report-cmp-card');
+  const pills = document.getElementById('report-cmp-pills');
+  if (!card || !pills) return;
+
+  const prevM   = reportMonth === 1 ? 12 : reportMonth - 1;
+  const prevY   = reportMonth === 1 ? reportYear - 1 : reportYear;
+  const cur     = DB.getMonthStats(reportYear, reportMonth);
+  const prev    = DB.getMonthStats(prevY, prevM);
+  const prevLbl = new Date(prevY, prevM - 1, 1).toLocaleDateString('es-CO', { month: 'long' });
+
+  // Ocultar si no hay datos en ninguno de los dos meses
+  if (!cur.income && !cur.opExpenses && !prev.income && !prev.opExpenses) {
+    card.style.display = 'none'; return;
+  }
+
+  pills.innerHTML =
+    _cmpPill('💰 Ingresos', cur.income,     prev.income,     false, prevLbl) +
+    _cmpPill('💸 Gastos',   cur.opExpenses, prev.opExpenses, true,  prevLbl) +
+    _cmpPill('📊 Utilidad', cur.netProfit,  prev.netProfit,  false, prevLbl);
+
+  card.style.display = pills.innerHTML.trim() ? 'block' : 'none';
+}
+
 // ── Gráfico de desglose por categoría ────────────────────────────────────────
 const CAT_CHART_COLORS = [
   '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
@@ -3719,6 +3794,9 @@ function renderReports() {
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
 
   document.getElementById('report-month-name').textContent = monthLabel;
+
+  // ── Comparativa vs mes anterior ───────────────────────────
+  _renderReportComparison();
 
   // ── Gráfico de desglose por categoría ────────────────────
   renderCategoryChart();

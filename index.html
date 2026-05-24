@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523j">
+  <link rel="stylesheet" href="css/style.css?v=20260523k">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -331,14 +331,17 @@
         <div class="balance-mini">
           <div class="balance-mini-label">📅 <span id="dash-month">Este mes</span></div>
           <div class="balance-mini-amount" id="dash-net">$ 0</div>
+          <div id="dash-net-cmp" class="bal-cmp"></div>
         </div>
         <div class="balance-mini">
           <div class="balance-mini-label">💰 Ingresos</div>
           <div class="balance-mini-amount" id="dash-income">$ 0</div>
+          <div id="dash-income-cmp" class="bal-cmp"></div>
         </div>
         <div class="balance-mini">
           <div class="balance-mini-label">💸 Gastos Op.</div>
           <div class="balance-mini-amount" id="dash-expense">$ 0</div>
+          <div id="dash-expense-cmp" class="bal-cmp"></div>
         </div>
       </div>
     </div>
@@ -782,6 +785,11 @@
       <button class="month-nav-btn" onclick="prevMonth()">‹</button>
       <div class="month-name" id="report-month-name">Mayo 2026</div>
       <button class="month-nav-btn" onclick="nextMonth()">›</button>
+    </div>
+
+    <!-- ══ COMPARATIVA VS MES ANTERIOR ══ -->
+    <div id="report-cmp-card" class="no-print" style="display:none; margin-bottom:12px;">
+      <div style="display:flex; gap:8px;" id="report-cmp-pills"></div>
     </div>
 
     <!-- ══ RESUMEN ANUAL (toggle) ══ -->
@@ -1332,7 +1340,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523j"></script>
-<script src="js/app.js?v=20260523j"></script>
+<script src="js/db.js?v=20260523k"></script>
+<script src="js/app.js?v=20260523k"></script>
 </body>
 </html>
