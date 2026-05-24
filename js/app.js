@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23d';
+const APP_VERSION = '2026.05.23e';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2527,6 +2527,163 @@ function _renderDeduciblesReport() {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
+// ── Liquidación IVA Anual ────────────────────────────────────────────────────
+let ivaTableOpen = false;
+let ivaTableYear = new Date().getFullYear();
+
+const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function toggleIvaTable() {
+  ivaTableOpen = !ivaTableOpen;
+  document.getElementById('iva-annual-view').style.display = ivaTableOpen ? 'block' : 'none';
+  document.getElementById('iva-table-toggle-icon').textContent = ivaTableOpen ? '▲' : '▼';
+  if (ivaTableOpen) renderIvaTable();
+}
+
+function renderIvaTable() {
+  const sym = DB.getSettings().currencySymbol || '$';
+  document.getElementById('iva-table-year-label').textContent = ivaTableYear;
+
+  let totCob = 0, totCred = 0, totNeto = 0;
+  const rows = Array.from({ length: 12 }, (_, i) => {
+    const m    = i + 1;
+    const st   = DB.getMonthStats(ivaTableYear, m);
+    const neto = st.ivaPorPagar; // cobrado - crédito
+    totCob  += st.ivaCobrado;
+    totCred += st.ivaCredito;
+    totNeto += neto;
+    const hasData   = st.ivaCobrado > 0 || st.ivaCredito > 0;
+    const netoColor = neto > 0 ? '#dc2626' : neto < 0 ? '#16a34a' : 'var(--gray-400)';
+    const netoLabel = neto > 0
+      ? `<span style="color:#dc2626;font-weight:800;">−${fmt(neto)}</span>`
+      : neto < 0
+        ? `<span style="color:#16a34a;font-weight:800;">+${fmt(Math.abs(neto))}</span>`
+        : `<span style="color:var(--gray-300);">—</span>`;
+
+    return `
+      <tr style="background:${i % 2 === 0 ? 'var(--gray-50)' : 'var(--white)'}; cursor:${hasData?'pointer':'default'};"
+          onclick="${hasData ? `_openIvaForMonth(${ivaTableYear},${m})` : ''}">
+        <td style="padding:7px 10px; font-weight:${hasData?'700':'400'}; color:${hasData?'var(--gray-900)':'var(--gray-400)'};">
+          ${MONTH_SHORT[i]} ${ivaTableYear}
+        </td>
+        <td style="padding:7px 8px; text-align:right; color:#2563eb; font-weight:${st.ivaCobrado>0?'700':'400'};">
+          ${st.ivaCobrado > 0 ? fmt(st.ivaCobrado) : '—'}
+        </td>
+        <td style="padding:7px 8px; text-align:right; color:#0891b2; font-weight:${st.ivaCredito>0?'700':'400'};">
+          ${st.ivaCredito > 0 ? fmt(st.ivaCredito) : '—'}
+        </td>
+        <td style="padding:7px 10px; text-align:right;">${netoLabel}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('iva-annual-tbody').innerHTML = rows;
+
+  // Pie con totales
+  const netoFinal     = totNeto;
+  const netoFinalColor = netoFinal >= 0 ? '#dc2626' : '#16a34a';
+  document.getElementById('iva-annual-tfoot').innerHTML = `
+    <tr style="background:var(--primary); color:white; font-weight:800;">
+      <td style="padding:8px 10px; border-radius:0 0 0 6px;">TOTAL ${ivaTableYear}</td>
+      <td style="padding:8px 8px; text-align:right;">${fmt(totCob)}</td>
+      <td style="padding:8px 8px; text-align:right;">${fmt(totCred)}</td>
+      <td style="padding:8px 10px; text-align:right; border-radius:0 0 6px 0;">${fmt(Math.abs(netoFinal))}</td>
+    </tr>`;
+
+  // KPIs anuales
+  const kpiData = [
+    { label:'IVA Cobrado', value: totCob,  color:'#2563eb', icon:'📈',
+      sub: 'Recibes de tus clientes' },
+    { label:'IVA Crédito', value: totCred, color:'#0891b2', icon:'📉',
+      sub: 'Pagas a proveedores' },
+    { label: netoFinal >= 0 ? 'A pagar SRI' : 'A favor',
+      value: Math.abs(netoFinal), color: netoFinalColor, icon: netoFinal >= 0 ? '🔴' : '✅',
+      sub: netoFinal >= 0 ? 'Debes declarar' : 'Crédito tributario' },
+  ];
+  document.getElementById('iva-annual-kpis').innerHTML = kpiData.map(k => `
+    <div style="background:var(--gray-50); border-radius:10px; padding:10px 8px; text-align:center;">
+      <div style="font-size:18px; margin-bottom:4px;">${k.icon}</div>
+      <div style="font-size:10px; color:var(--gray-500); font-weight:600; margin-bottom:3px;">${k.label}</div>
+      <div style="font-size:13px; font-weight:800; color:${k.color};">${fmt(k.value)}</div>
+      <div style="font-size:10px; color:var(--gray-400); margin-top:2px;">${k.sub}</div>
+    </div>`).join('');
+}
+
+function _openIvaForMonth(year, month) {
+  _ivaRepYear  = year;
+  _ivaRepMonth = month;
+  _renderIvaReport();
+}
+
+function exportIvaExcel() {
+  const s   = DB.getSettings();
+  const sym = s.currencySymbol || '$';
+  let totCob = 0, totCred = 0, totNeto = 0;
+
+  const header = [
+    { v: 'Mes',         s: 'header' },
+    { v: 'IVA Cobrado', s: 'header' },
+    { v: 'IVA Crédito', s: 'header' },
+    { v: 'IVA Neto',    s: 'header' },
+    { v: 'Estado',      s: 'header' },
+  ];
+
+  const dataRows = Array.from({ length: 12 }, (_, i) => {
+    const m    = i + 1;
+    const st   = DB.getMonthStats(ivaTableYear, m);
+    const neto = st.ivaPorPagar;
+    totCob  += st.ivaCobrado;
+    totCred += st.ivaCredito;
+    totNeto += neto;
+    return [
+      { v: MONTH_SHORT[i] + ' ' + ivaTableYear, s: 'label' },
+      { v: st.ivaCobrado > 0 ? st.ivaCobrado : null, s: 'money' },
+      { v: st.ivaCredito > 0 ? st.ivaCredito : null, s: 'money' },
+      { v: Math.abs(neto) > 0 ? Math.abs(neto) : null, s: 'money' },
+      { v: st.ivaCobrado === 0 && st.ivaCredito === 0
+            ? 'Sin IVA'
+            : neto > 0 ? 'A pagar SRI'
+            : neto < 0 ? 'Crédito tributario'
+            : 'Neutro',
+        s: 'text' },
+    ];
+  });
+
+  const totalesRow = [
+    { v: 'TOTALES ' + ivaTableYear, s: 'totalLabel' },
+    { v: totCob,               s: 'moneyBold' },
+    { v: totCred,              s: 'moneyBold' },
+    { v: Math.abs(totNeto),    s: 'moneyBold' },
+    { v: totNeto >= 0 ? 'A pagar SRI' : 'Crédito tributario', s: 'text' },
+  ];
+
+  const rows = [
+    [{ v: s.companyName || 'Mi Negocio', s: 'title', merge: 4 }],
+    [{ v: 'Liquidación IVA ' + ivaTableYear + ' — Declaración SRI Form 104', s: 'subtitle', merge: 4 }],
+    [{ v: 'Exportado el ' + new Date().toLocaleDateString('es-CO', {day:'2-digit',month:'long',year:'numeric'}), merge: 4 }],
+    [],
+    header,
+    ...dataRows,
+    [],
+    totalesRow,
+    [],
+    [{ v: 'NOTA: IVA Neto positivo = debes pagar al SRI. Negativo = crédito tributario que llevas al siguiente mes.' }],
+  ];
+
+  const filename = 'IVA_' + (s.companyName || 'Negocio').replace(/\s+/g,'-') + '_' + ivaTableYear + '.xlsx';
+  try {
+    const bytes = _buildXlsx([{
+      name: 'IVA ' + ivaTableYear,
+      cols: [110, 130, 130, 130, 160],
+      rows,
+    }], sym);
+    _downloadXlsx(bytes, filename);
+    DB.logAudit('export_excel', '🧾 IVA anual exportado: ' + filename);
+    showToast('📥 Excel IVA ' + ivaTableYear + ' descargado', 3000);
+  } catch (err) {
+    showToast('❌ Error al generar Excel: ' + err.message, 4000);
+  }
+}
+
 // ── Reporte: Detalle del IVA del mes (de dónde proviene cada asiento) ─────────
 let _ivaRepYear  = new Date().getFullYear();
 let _ivaRepMonth = new Date().getMonth() + 1;
@@ -3122,6 +3279,7 @@ function renderReports() {
   _renderPnL(pnl);
 
   // ── Panel de IVA del mes ──────────────────────────────────
+  ivaTableYear = reportYear; // sincronizar año de la tabla IVA con el reporte
   _renderIvaPanel(pnl);
 
   // ── Deudas del mes (los asientos de IVA se reportan aparte) ──
@@ -3264,6 +3422,17 @@ function renderReports() {
 function _renderIvaPanel(pnl) {
   const card = document.getElementById('iva-panel-card');
   if (!card) return;
+
+  // Mostrar también la tarjeta de IVA Anual si hay IVA en cualquier mes del año
+  const annualCard = document.getElementById('iva-annual-card');
+  if (annualCard) {
+    // Verificar si hay algún mes del año actual con IVA
+    const hasAnyIva = Array.from({length:12},(_,i) => DB.getMonthStats(ivaTableYear, i+1))
+      .some(st => st.ivaCobrado > 0 || st.ivaCredito > 0);
+    annualCard.style.display = (pnl.hasIva || hasAnyIva) ? 'block' : 'none';
+    if (ivaTableOpen) renderIvaTable(); // refrescar si estaba abierto
+  }
+
   if (!pnl.hasIva) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 

@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523d">
+  <link rel="stylesheet" href="css/style.css?v=20260523e">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -850,6 +850,53 @@
       <div id="iva-panel-content"></div>
     </div>
 
+    <!-- ══ LIQUIDACIÓN IVA ANUAL (toggle) ══ -->
+    <div class="card no-print" id="iva-annual-card" style="margin-bottom:12px; display:none;">
+      <div class="card-header" style="cursor:pointer;" onclick="toggleIvaTable()">
+        <div>
+          <div class="card-title">🧾 Liquidación IVA Anual</div>
+          <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">Declaración mensual SRI · Form 104</div>
+        </div>
+        <span id="iva-table-toggle-icon" style="font-size:16px; color:var(--primary);">▼</span>
+      </div>
+      <div id="iva-annual-view" style="display:none; margin-top:8px;">
+        <!-- Navegación de año -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <button onclick="ivaTableYear--; renderIvaTable()" style="font-size:20px; width:36px; height:36px; border-radius:8px; background:var(--gray-100); border:none; cursor:pointer;">‹</button>
+          <span id="iva-table-year-label" style="font-weight:800; font-size:16px; color:var(--gray-900);"></span>
+          <button onclick="ivaTableYear++; renderIvaTable()" style="font-size:20px; width:36px; height:36px; border-radius:8px; background:var(--gray-100); border:none; cursor:pointer;">›</button>
+        </div>
+        <!-- Totales anuales -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px;" id="iva-annual-kpis"></div>
+        <!-- Tabla 12 meses -->
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px;" id="iva-annual-table">
+            <thead>
+              <tr style="background:var(--primary); color:white;">
+                <th style="padding:7px 10px; text-align:left; border-radius:6px 0 0 0;">Mes</th>
+                <th style="padding:7px 8px; text-align:right;">IVA Cobrado</th>
+                <th style="padding:7px 8px; text-align:right;">IVA Crédito</th>
+                <th style="padding:7px 10px; text-align:right; border-radius:0 6px 0 0;">Neto SRI</th>
+              </tr>
+            </thead>
+            <tbody id="iva-annual-tbody"></tbody>
+            <tfoot id="iva-annual-tfoot"></tfoot>
+          </table>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn btn-outline" style="flex:1; font-size:13px;" onclick="exportIvaExcel()">
+            📊 Excel IVA
+          </button>
+          <button class="btn btn-outline" style="flex:1; font-size:13px;" onclick="openIvaReport()">
+            🧾 Ver mes actual
+          </button>
+        </div>
+        <div style="font-size:11px; color:var(--gray-400); margin-top:10px; line-height:1.5; text-align:center;">
+          Toca cualquier mes para ver el detalle de sus asientos de IVA
+        </div>
+      </div>
+    </div>
+
     <!-- Deudas del mes -->
     <div id="report-liabilities-section" style="display:none; margin-bottom:12px;">
       <div class="card" style="background:#fef3c7; border:none;">
@@ -1222,7 +1269,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523d"></script>
-<script src="js/app.js?v=20260523d"></script>
+<script src="js/db.js?v=20260523e"></script>
+<script src="js/app.js?v=20260523e"></script>
 </body>
 </html>
