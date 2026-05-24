@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23k';
+const APP_VERSION = '2026.05.23l';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1240,6 +1240,9 @@ function renderDashboard() {
 
   // Alertas de presupuesto excedido
   renderBudgetAlerts();
+
+  // Alertas de stock mínimo
+  renderStockAlerts();
 
   // Chip de cartera con monto pendiente
   const carteraStats = DB.getReceivableStats();
@@ -4363,6 +4366,19 @@ function renderInventory() {
           : `<div style="font-size:12px; color:var(--gray-500); margin-top:2px;">Precio: ${fmt(p.precioFinal)} (sin IVA)</div>`)
         : '';
 
+      // Stock color & badge con minStock
+      const minStk     = p.minStock || 0;
+      const stockColor = minStk > 0
+        ? (p.quantity <= minStk           ? 'var(--danger)'
+         : p.quantity <= minStk * 2       ? 'var(--warning)'
+         :                                  'var(--success)')
+        : (p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)');
+      const stockBadge = minStk > 0 && p.quantity <= minStk
+        ? `<div style="font-size:10px; font-weight:700; color:var(--danger); white-space:nowrap; margin-top:2px;">⚠️ Stock bajo</div>`
+        : minStk > 0 && p.quantity <= minStk * 2
+        ? `<div style="font-size:10px; font-weight:700; color:var(--warning); white-space:nowrap; margin-top:2px;">📉 Quedando poco</div>`
+        : '';
+
       return `
       <div class="card inv-card" style="margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:12px;">
@@ -4374,8 +4390,10 @@ function renderInventory() {
             ${p.unitCost ? `<div style="font-size:12px; color:var(--gray-400);">Costo compra: ${fmt(p.unitCost)} / ${p.unit}</div>` : `<div style="font-size:12px; color:var(--gray-400);">${p.unit}</div>`}
           </div>
           <div style="text-align:right; flex-shrink:0;">
-            <div style="font-size:24px; font-weight:800; color:${p.quantity <= 5 ? 'var(--danger)' : p.quantity <= 15 ? 'var(--warning)' : 'var(--success)'};">${p.quantity}</div>
+            <div style="font-size:24px; font-weight:800; color:${stockColor};">${p.quantity}</div>
             <div style="font-size:11px; color:var(--gray-500);">${p.unit}</div>
+            ${minStk > 0 ? `<div style="font-size:10px; color:var(--gray-400);">mín: ${minStk}</div>` : ''}
+            ${stockBadge}
           </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:12px;">
@@ -4524,6 +4542,18 @@ function openProductForm(editId = null) {
     </div>
 
     <div class="form-group">
+      <label class="form-label">
+        Stock mínimo
+        <span style="font-size:11px; color:var(--danger); font-weight:600; margin-left:4px;">⚠️ Alerta</span>
+      </label>
+      <input type="number" class="form-control" id="p-minstock" value="${p?.minStock ?? ''}"
+        min="0" step="1" placeholder="0 = sin alertas">
+      <div style="font-size:11px; color:var(--gray-400); margin-top:4px;">
+        Recibirás una alerta en el inicio cuando el stock baje de este número
+      </div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Costo unitario de compra (opcional)</label>
       <input type="number" class="form-control" id="p-cost" value="${p?.unitCost || ''}" min="0" step="any" placeholder="0">
     </div>
@@ -4666,6 +4696,7 @@ function saveProduct(editId) {
     emoji:        document.getElementById('p-emoji')?.value || '📦',
     sku:          document.getElementById('p-sku')?.value.trim() || '',
     quantity:     parseFloat(document.getElementById('p-qty')?.value) || 0,
+    minStock:     parseFloat(document.getElementById('p-minstock')?.value) || 0,
     unitCost:     parseFloat(document.getElementById('p-cost')?.value) || 0,
     unit:         document.getElementById('p-unit')?.value || 'unidades',
     // Campos IVA
@@ -6469,6 +6500,44 @@ function renderBudgetAlerts() {
       </div>
     </div>
     <button onclick="navigate('reports')" style="font-size:12px; font-weight:700; background:none; color:inherit; white-space:nowrap;">Ver →</button>
+  `;
+}
+
+function renderStockAlerts() {
+  const el = document.getElementById('dash-stock-alert');
+  if (!el) return;
+
+  const allProds  = DB.getInventory();
+  const critical  = allProds.filter(p => (p.minStock || 0) > 0 && p.quantity <= p.minStock);
+  const warning   = allProds.filter(p => (p.minStock || 0) > 0 && p.quantity > p.minStock && p.quantity <= p.minStock * 2);
+
+  if (!critical.length && !warning.length) { el.style.display = 'none'; return; }
+
+  const isRed   = critical.length > 0;
+  const shown   = isRed ? critical : warning;
+  const preview = shown.slice(0, 3)
+    .map(p => `${p.emoji || '📦'} ${escHtml(p.name)} (${p.quantity}/${p.minStock})`)
+    .join(' · ');
+
+  el.style.cssText = `
+    display:flex; background:${isRed ? '#fee2e2' : '#fef3c7'};
+    border:1.5px solid ${isRed ? '#fca5a5' : '#fcd34d'};
+    border-radius:var(--radius); padding:12px 14px; gap:10px;
+    align-items:center; margin-bottom:12px;
+    color:${isRed ? '#991b1b' : '#92400e'};
+  `;
+  el.innerHTML = `
+    <span style="font-size:20px;">${isRed ? '🔴' : '🟡'}</span>
+    <div style="flex:1;">
+      <div style="font-weight:700; font-size:14px;">
+        ${critical.length ? critical.length + ' producto(s) con stock bajo' : ''}
+        ${warning.length ? (critical.length ? ' · ' : '') + warning.length + ' quedando poco' : ''}
+      </div>
+      <div style="font-size:12px; opacity:.8; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+        ${preview}${shown.length > 3 ? ` +${shown.length - 3} más` : ''}
+      </div>
+    </div>
+    <button onclick="navigate('inventory')" style="font-size:12px; font-weight:700; background:none; color:inherit; white-space:nowrap; border:none; cursor:pointer;">Ver →</button>
   `;
 }
 
