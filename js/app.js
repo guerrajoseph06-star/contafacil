@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23e';
+const APP_VERSION = '2026.05.23f';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1345,6 +1345,126 @@ function openAccountDetail(accountId) {
   document.getElementById('settings-sheet').classList.add('open');
 }
 
+// ── Swipe-to-reveal helpers ───────────────────────────────────────────────────
+function _swipeEditTx(id) {
+  // Cierra el swipe y abre el formulario de edición
+  const li = document.querySelector(`.tx-swipeable[data-tx-id="${id}"]`);
+  if (li) {
+    const c = li.querySelector('.tx-slide-content');
+    if (c) { c.style.transition = 'transform .2s ease'; c.style.transform = 'translateX(0)'; }
+    li.classList.remove('tx-swiped-open');
+  }
+  navigate('form', { id });
+}
+
+function _swipeDeleteConfirm(id, btn) {
+  // Primera pulsación → pide confirmación; segunda → elimina
+  if (btn.dataset.confirming === '1') {
+    btn.dataset.confirming = '';
+    DB.deleteTransaction(id);
+    showToast('🗑️ Registro eliminado');
+    renderJournal();
+  } else {
+    btn.dataset.confirming = '1';
+    btn.innerHTML = '⚠️<small>¿Borrar?</small>';
+    btn.style.background = '#b91c1c';
+    setTimeout(() => {
+      if (btn.dataset.confirming === '1') {
+        btn.dataset.confirming = '';
+        btn.innerHTML = '🗑️<small>Borrar</small>';
+        btn.style.background = '';
+      }
+    }, 2500);
+  }
+}
+
+function _initSwipeActions(listEl) {
+  let activeLi       = null;  // <li> actualmente abierto
+  let dragging       = null;  // <li> en movimiento táctil
+  let startX = 0, startY = 0;
+  let direction      = null;  // 'h' | 'v' | null
+  let _suppressClick = false;
+
+  function getContent(li) { return li.querySelector('.tx-slide-content'); }
+  function getActionsW(li) {
+    const a = li.querySelector('.tx-slide-actions');
+    return a ? a.offsetWidth : 136;
+  }
+  function snapClose(li) {
+    const c = getContent(li); if (!c) return;
+    c.style.transition = 'transform .25s ease';
+    c.style.transform  = 'translateX(0)';
+    li.classList.remove('tx-swiped-open');
+    if (activeLi === li) activeLi = null;
+  }
+  function snapOpen(li) {
+    const c = getContent(li); if (!c) return;
+    c.style.transition = 'transform .25s ease';
+    c.style.transform  = `translateX(-${getActionsW(li)}px)`;
+    li.classList.add('tx-swiped-open');
+    activeLi = li;
+  }
+
+  listEl.addEventListener('touchstart', e => {
+    if (e.target.closest('.tx-slide-actions')) return; // action buttons handle themselves
+    const li = e.target.closest('.tx-swipeable');
+    if (activeLi && activeLi !== li) snapClose(activeLi); // cerrar otro abierto
+    if (!li) { dragging = null; return; }
+    dragging  = li;
+    startX    = e.touches[0].clientX;
+    startY    = e.touches[0].clientY;
+    direction = null;
+  }, { passive: true });
+
+  listEl.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (!direction) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      direction = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+    }
+    if (direction !== 'h') return;
+    e.preventDefault();
+    const isOpen = dragging.classList.contains('tx-swiped-open');
+    const w      = getActionsW(dragging);
+    const base   = isOpen ? -w : 0;
+    const newX   = Math.max(-w, Math.min(0, base + dx));
+    const c      = getContent(dragging);
+    if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${newX}px)`; }
+  }, { passive: false });
+
+  listEl.addEventListener('touchend', e => {
+    if (!dragging) return;
+    const dx     = e.changedTouches[0].clientX - startX;
+    const isOpen = dragging.classList.contains('tx-swiped-open');
+    const THRESH = 60;
+
+    if (!direction) {
+      // Tap simple sin movimiento
+      if (isOpen) { snapClose(dragging); _suppressClick = true; }
+    } else if (direction === 'h') {
+      // Snap: si estaba abierto cierra si deslizó derecha; si estaba cerrado abre si deslizó izquierda
+      const finalOpen = isOpen ? dx <= THRESH : dx < -THRESH;
+      if (finalOpen) snapOpen(dragging); else snapClose(dragging);
+    }
+    // direction === 'v' → no hacer nada (scroll vertical)
+    dragging  = null;
+    direction = null;
+  }, { passive: true });
+
+  listEl.addEventListener('click', e => {
+    const suppress = _suppressClick;
+    _suppressClick = false;
+    if (suppress) return;
+    if (e.target.closest('.tx-slide-actions')) return;
+    const li = e.target.closest('[data-tx-id]');
+    if (!li) return;
+    if (li.classList.contains('tx-swiped-open')) { snapClose(li); return; }
+    openTxDetail(li.dataset.txId);
+  });
+}
+
 // ── Diario ────────────────────────────────────────────────────────────────────
 function renderJournal() {
   let txs = DB.getTransactions();
@@ -1514,14 +1634,12 @@ function renderJournal() {
         </span>
       </div>
       <div class="card" style="margin-bottom:8px; padding:4px 12px;">
-        <ul class="tx-list">${items.map(txItemHTML).join('')}</ul>
+        <ul class="tx-list">${items.map(tx => txItemHTML(tx, {swipeable:true})).join('')}</ul>
       </div>
     `;
   }).join('');
 
-  list.querySelectorAll('[data-tx-id]').forEach(el =>
-    el.addEventListener('click', () => openTxDetail(el.dataset.txId))
-  );
+  _initSwipeActions(list); // swipe-to-reveal + click delegation
 }
 
 function setJournalFilter(f) {
@@ -1719,7 +1837,7 @@ function exportJournalExcel() {
 }
 
 // ── Ítem de transacción (display correcto por tipo) ───────────────────────────
-function txItemHTML(tx) {
+function txItemHTML(tx, opts = {}) {
   const cat       = DB.getCategoryById(tx.category);
   const multiUser = DB.getUserNames().length > 1;
   const userTag   = (multiUser && tx.userName) ? ` · <span style="font-size:10px;background:var(--primary-light);color:var(--primary);border-radius:4px;padding:1px 5px;vertical-align:middle;">👤 ${tx.userName}</span>` : '';
@@ -1774,14 +1892,35 @@ function txItemHTML(tx) {
     metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + status;
   }
 
+  const innerContent = `
+    <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
+    <div class="tx-info">
+      <div class="tx-desc">${tx.description}${tx.hasReceipt ? ' 📎' : ''}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
+      <div class="tx-meta">${metaText}${userTag}</div>
+    </div>
+    <div class="tx-amount ${amountClass}">${amountText}</div>
+  `;
+
+  // Swipeable variant: wraps content + adds action buttons
+  if (opts.swipeable && !tx.isCogs && !tx.isIva) {
+    const canEdit   = !tx.isFactura && !isCurrentUserReadOnly();
+    const canDelete = isCurrentUserOwner();
+    if (canEdit || canDelete) {
+      return `
+        <li class="tx-item tx-swipeable" data-tx-id="${tx.id}" style="${extraStyle}">
+          <div class="tx-slide-content">${innerContent}</div>
+          <div class="tx-slide-actions">
+            ${canEdit   ? `<button class="tx-act-edit" onclick="_swipeEditTx('${tx.id}')">✏️<small>Editar</small></button>` : ''}
+            ${canDelete ? `<button class="tx-act-del"  onclick="_swipeDeleteConfirm('${tx.id}',this)">🗑️<small>Borrar</small></button>` : ''}
+          </div>
+        </li>
+      `;
+    }
+  }
+
   return `
     <li class="tx-item" data-tx-id="${tx.id}" style="${extraStyle}">
-      <div class="tx-icon ${tx.isCogs ? 'cogs' : tx.type}"><span>${emoji}</span></div>
-      <div class="tx-info">
-        <div class="tx-desc">${tx.description}${tx.hasReceipt ? ' 📎' : ''}${(tx.isCogs || tx.isIva) ? ' <span style="font-size:10px;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:1px 5px;vertical-align:middle;">AUTO</span>' : ''}</div>
-        <div class="tx-meta">${metaText}${userTag}</div>
-      </div>
-      <div class="tx-amount ${amountClass}">${amountText}</div>
+      ${innerContent}
     </li>
   `;
 }
