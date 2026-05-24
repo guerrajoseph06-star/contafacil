@@ -1421,9 +1421,9 @@ const DB = (() => {
   }
 
   // Secciones permitidas por usuario (granular).
-  // allowedScreens: array de screens ['dashboard','journal','inventory','cartera','reports','settings']
+  // allowedScreens: array de screens permitidos
   // null = sin restricción (acceso completo)
-  const ALL_SCREENS = ['dashboard','journal','inventory','cartera','reports','settings'];
+  const ALL_SCREENS = ['dashboard','journal','inventory','cartera','assets','reports','settings'];
 
   function setUserAllowedScreens(userName, screens) {
     const list = getUserList().map(u =>
@@ -1436,7 +1436,7 @@ const DB = (() => {
     const e = getUserEntry(userName);
     if (!e || e.isOwner) return ALL_SCREENS; // propietario: todo
     if (e.allowedScreens) return e.allowedScreens;
-    // Retrocompatibilidad: si es readOnly, restringir reports y settings
+    // Retrocompatibilidad: si es readOnly, restringir reports, assets y settings
     if (e.isReadOnly) return ['dashboard','journal','inventory','cartera'];
     return ALL_SCREENS;
   }
@@ -1625,6 +1625,88 @@ const DB = (() => {
     return { addedTxs, addedRecs, sourceUser };
   }
 
+  // ── Activos Fijos (NIIF PYMES — depreciación línea recta) ───────────────────
+  // Categorías estándar Ecuador con vida útil sugerida
+  const ASSET_CATEGORIES = [
+    { id: 'eq-computo',    name: 'Equipos de Cómputo',   years: 3,  emoji: '💻' },
+    { id: 'eq-maquinaria', name: 'Maquinaria / Equipos', years: 10, emoji: '⚙️' },
+    { id: 'vehiculos',     name: 'Vehículos',             years: 5,  emoji: '🚗' },
+    { id: 'muebles',       name: 'Muebles y Enseres',     years: 10, emoji: '🪑' },
+    { id: 'edificios',     name: 'Edificios / Inmuebles', years: 20, emoji: '🏢' },
+    { id: 'otros',         name: 'Otros Activos',         years: 5,  emoji: '📦' },
+  ];
+
+  function getFixedAssets() {
+    return load(KEYS.fixedAssets) || [];
+  }
+
+  function saveFixedAsset(asset) {
+    const list = getFixedAssets();
+    if (asset.id) {
+      const idx = list.findIndex(a => a.id === asset.id);
+      if (idx >= 0) list[idx] = { ...asset };
+      else list.push({ ...asset, createdAt: new Date().toISOString() });
+    } else {
+      list.push({ ...asset, id: uuid(), createdAt: new Date().toISOString() });
+    }
+    save(KEYS.fixedAssets, list);
+    _logAudit('fixed_asset', `${asset.id ? 'Editó' : 'Registró'} activo: ${asset.name}`);
+  }
+
+  function deleteFixedAsset(id) {
+    const name = (getFixedAssets().find(a => a.id === id) || {}).name || id;
+    save(KEYS.fixedAssets, getFixedAssets().filter(a => a.id !== id));
+    _logAudit('fixed_asset', `Eliminó activo: ${name}`);
+  }
+
+  // Calcula depreciación línea recta para un activo fijo.
+  // Retorna: { monthlyDep, annualDep, accumulatedDep, bookValue, pctDepreciated,
+  //            isFullyDepreciated, remainingMonths, monthsElapsed }
+  function calcAssetDepreciation(asset) {
+    const cost    = asset.purchaseCost    || 0;
+    const resid   = asset.residualValue   || 0;
+    const years   = asset.usefulLifeYears || 5;
+    const depBase = Math.max(0, cost - resid);
+    const annualDep  = years > 0 ? depBase / years : 0;
+    const monthlyDep = annualDep / 12;
+
+    const purchDate    = new Date(asset.purchaseDate + 'T12:00:00');
+    const today        = new Date();
+    const monthsElapsed = Math.max(0,
+      (today.getFullYear() - purchDate.getFullYear()) * 12 +
+      (today.getMonth()    - purchDate.getMonth())
+    );
+
+    const accumulatedDep     = Math.min(depBase, monthlyDep * monthsElapsed);
+    const bookValue          = cost - accumulatedDep;
+    const pctDepreciated     = depBase > 0 ? (accumulatedDep / depBase) * 100 : 100;
+    const isFullyDepreciated = accumulatedDep >= depBase - 0.001;
+    const remainingMonths    = isFullyDepreciated
+      ? 0
+      : Math.ceil((depBase - accumulatedDep) / Math.max(monthlyDep, 0.001));
+
+    return {
+      monthlyDep, annualDep, accumulatedDep, bookValue,
+      pctDepreciated, isFullyDepreciated, remainingMonths, monthsElapsed,
+    };
+  }
+
+  // Suma los valores contables actuales de todos los activos fijos
+  function getFixedAssetsTotals() {
+    const assets = getFixedAssets();
+    let totalCost = 0, totalBookValue = 0, totalAccumDep = 0;
+    assets.forEach(a => {
+      const d = calcAssetDepreciation(a);
+      totalCost      += a.purchaseCost || 0;
+      totalBookValue += d.bookValue;
+      totalAccumDep  += d.accumulatedDep;
+    });
+    return { totalCost, totalBookValue, totalAccumDep, count: assets.length };
+  }
+
+  // Getter de categorías (para uso desde app.js)
+  function getAssetCategories() { return ASSET_CATEGORIES; }
+
   // ── Balance General (Estado de Situación Financiera) ─────────────────────────
   // NIIF PYMES Ecuador — snapshot del momento actual (no por período mensual)
   // Ecuación contable fundamental: Activos = Pasivos + Patrimonio
@@ -1648,7 +1730,12 @@ const DB = (() => {
     const totalInventory = inventory.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
 
     const totalCurrentAssets = totalCash + totalCxC + totalInventory;
-    const totalAssets        = totalCurrentAssets; // Activos fijos: próxima versión
+
+    // ── Activos No Corrientes (Activos Fijos) ───────────────
+    const fixedAssetsTotals = getFixedAssetsTotals();
+    const totalFixedAssets  = fixedAssetsTotals.totalBookValue; // valor neto en libros
+
+    const totalAssets = totalCurrentAssets + totalFixedAssets;
 
     // ── Pasivos Corrientes ──────────────────────────────
     const pendingLiabs     = getPendingLiabilities();
@@ -1662,7 +1749,9 @@ const DB = (() => {
       cashAccounts, totalCash,
       totalCxC,
       inventory, totalInventory,
-      totalCurrentAssets, totalAssets,
+      totalCurrentAssets,
+      fixedAssetsTotals, totalFixedAssets,
+      totalAssets,
       pendingLiabs, totalLiabilities,
       equity,
     };
@@ -1868,6 +1957,8 @@ const DB = (() => {
     getUsers, getUserNames, switchUser, exportForSync, importFromUser,
     getReceivables, getReceivableById, addReceivable, updateReceivable,
     deleteReceivable, addReceivablePayment, getReceivableStats,
+    getFixedAssets, saveFixedAsset, deleteFixedAsset, calcAssetDepreciation,
+    getFixedAssetsTotals, getAssetCategories,
     isOnboarded, markOnboarded,
     exportData, importData,
     exportSettings, importSettings,

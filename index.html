@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260515u">
+  <link rel="stylesheet" href="css/style.css?v=20260523a">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -108,7 +108,8 @@
     @media print {
       .bottom-nav, .fab, .topbar, .btn, .filter-bar,
       #screen-onboarding, #screen-journal, #screen-form,
-      #screen-settings, #screen-inventory, .no-print { display: none !important; }
+      #screen-settings, #screen-inventory, #screen-cartera,
+      #screen-assets, .no-print { display: none !important; }
 
       body { background: white; max-width: none; font-size: 12px; }
       #screen-reports { display: block !important; padding: 0; }
@@ -364,6 +365,11 @@
         <div class="stat-chip-val" style="color:#0891b2;" id="dash-cartera-chip-val">Cobrar</div>
         <div class="stat-chip-lbl">Cartera</div>
       </button>
+      <button class="stat-chip" onclick="navigate('assets')">
+        <div class="stat-chip-icon">🏭</div>
+        <div class="stat-chip-val" style="color:#4338ca;" id="dash-assets-chip-val">0</div>
+        <div class="stat-chip-lbl">Activos</div>
+      </button>
     </div>
 
     <!-- Próximos gastos automáticos (visible solo si hay recurrentes) -->
@@ -599,6 +605,58 @@
 
     <!-- Lista de documentos por cobrar -->
     <div id="cartera-list"></div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     ACTIVOS FIJOS
+═══════════════════════════════════════════════════ -->
+<div id="screen-assets" class="screen">
+  <div class="topbar">
+    <button class="topbar-action" onclick="navigate('dashboard')">←</button>
+    <div class="topbar-title">🏭 Activos Fijos</div>
+    <div style="width:36px;"></div>
+  </div>
+  <div class="content">
+
+    <!-- Hero resumen activos -->
+    <div class="card" style="background:linear-gradient(135deg,#1e1b4b,#4338ca);color:white;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+        <div>
+          <div style="font-size:12px;opacity:.8;margin-bottom:4px;font-weight:600;letter-spacing:.5px;">COSTO TOTAL</div>
+          <div style="font-size:28px;font-weight:800;" id="assets-total-cost">$ 0</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:12px;opacity:.8;margin-bottom:4px;">Valor en Libros</div>
+          <div style="font-size:20px;font-weight:700;" id="assets-book-value">$ 0</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div style="background:rgba(255,255,255,.15);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">DEPRECIADO</div>
+          <div style="font-size:14px;font-weight:700;" id="assets-accum-dep">$ 0</div>
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">DEP. MENSUAL</div>
+          <div style="font-size:14px;font-weight:700;" id="assets-monthly-dep">$ 0</div>
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:10px;opacity:.8;margin-bottom:2px;">ACTIVOS</div>
+          <div style="font-size:14px;font-weight:700;" id="assets-count">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de activos fijos -->
+    <div id="assets-list"></div>
+
+    <!-- Tip informativo -->
+    <div style="font-size:12px; color:var(--gray-400); line-height:1.6; padding:12px 4px 20px; text-align:center;">
+      💡 Depreciación <strong>línea recta NIIF PYMES</strong>.<br>
+      Toca un activo para ver el detalle o editarlo.
+    </div>
 
   </div>
 </div>
@@ -1137,7 +1195,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260515u"></script>
-<script src="js/app.js?v=20260515u"></script>
+<script src="js/db.js?v=20260523a"></script>
+<script src="js/app.js?v=20260523a"></script>
 </body>
 </html>

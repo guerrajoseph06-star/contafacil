@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.15u';
+const APP_VERSION = '2026.05.23a';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -169,7 +169,7 @@ function navigate(screen, params = {}) {
   // FAB: contexto dinámico según pantalla
   const fab = document.getElementById('fab');
   if (fab) {
-    const fabScreens = ['dashboard', 'journal', 'inventory', 'cartera'];
+    const fabScreens = ['dashboard', 'journal', 'inventory', 'cartera', 'assets'];
     fab.style.display = fabScreens.includes(screen) ? 'flex' : 'none';
     if (screen === 'inventory') {
       fab.title = 'Agregar producto';
@@ -177,6 +177,9 @@ function navigate(screen, params = {}) {
     } else if (screen === 'cartera') {
       fab.title = 'Nueva venta a crédito';
       fab.onclick = () => openReceivableForm();
+    } else if (screen === 'assets') {
+      fab.title = 'Registrar activo fijo';
+      fab.onclick = () => openAssetForm();
     } else {
       fab.title = 'Nueva transacción';
       fab.onclick = () => { setFormType('expense'); navigate('form'); };
@@ -190,6 +193,7 @@ function navigate(screen, params = {}) {
     case 'reports':    renderReports();    break;
     case 'inventory':  renderInventory();  break;
     case 'cartera':    renderCartera();    break;
+    case 'assets':     renderAssets();     break;
     case 'settings':   renderSettings();   break;
   }
   window.scrollTo(0, 0);
@@ -846,6 +850,7 @@ function openSecuritySettings() {
                 { key:'journal',   icon:'📒', label:'Diario'    },
                 { key:'inventory', icon:'📦', label:'Inventario'},
                 { key:'cartera',   icon:'💳', label:'Cartera'   },
+                { key:'assets',    icon:'🏭', label:'Activos'   },
                 { key:'reports',   icon:'📊', label:'Reportes'  },
                 { key:'settings',  icon:'⚙️', label:'Ajustes'   },
               ].map(sc => {
@@ -1131,6 +1136,13 @@ function renderDashboard() {
     chipVal.textContent = fmt(carteraStats.totalPendiente);
   } else if (chipVal) {
     chipVal.textContent = 'Cobrar';
+  }
+
+  // Chip de activos fijos con cantidad registrada
+  const assetsChip = document.getElementById('dash-assets-chip-val');
+  if (assetsChip) {
+    const at = DB.getFixedAssetsTotals();
+    assetsChip.textContent = at.count > 0 ? at.count + (at.count === 1 ? ' activo' : ' activos') : '+ Añadir';
   }
 
   // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
@@ -3188,7 +3200,7 @@ function renderBalanceSheet() {
       <span>${fmt(value)}</span>
     </div>`;
 
-  // ── Activos ────────────────────────────────────────────
+  // ── Activos Corrientes ─────────────────────────────────
   let activosHTML = sectionTitle('💚 ACTIVOS CORRIENTES', '#16a34a');
 
   if (bs.totalCash !== 0) {
@@ -3206,10 +3218,34 @@ function renderBalanceSheet() {
     activosHTML += row('📦 Inventarios (al costo)', bs.totalInventory, '#7c3aed');
   }
 
-  if (bs.totalAssets === 0) {
-    activosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">Sin activos registrados aún</div>`;
+  if (bs.totalCurrentAssets === 0) {
+    activosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">Sin activos corrientes aún</div>`;
   }
-  activosHTML += subtotal('TOTAL ACTIVOS', bs.totalAssets, '#16a34a');
+  activosHTML += subtotal('TOTAL ACTIVOS CORRIENTES', bs.totalCurrentAssets, '#16a34a');
+
+  // ── Activos No Corrientes (Fijos) ──────────────────────
+  let fijosHTML = '';
+  if (bs.totalFixedAssets > 0 || bs.fixedAssetsTotals.count > 0) {
+    fijosHTML += sectionTitle('🏭 ACTIVOS NO CORRIENTES', '#4338ca');
+    if (bs.fixedAssetsTotals.count > 0) {
+      fijosHTML += row('🏭 Propiedad, Planta y Equipo (costo)', bs.fixedAssetsTotals.totalCost, '#4338ca');
+      fijosHTML += row('− Depreciación Acumulada', -bs.fixedAssetsTotals.totalAccumDep, 'var(--danger)');
+      const netAssets = bs.fixedAssetsTotals.totalBookValue;
+      fijosHTML += subtotal('TOTAL ACTIVOS NO CORRIENTES (neto)', netAssets, '#4338ca');
+      fijosHTML += `
+        <div style="font-size:11px; color:var(--gray-400); padding:4px 0 8px; line-height:1.5;">
+          ${bs.fixedAssetsTotals.count} activo${bs.fixedAssetsTotals.count > 1 ? 's' : ''} registrado${bs.fixedAssetsTotals.count > 1 ? 's' : ''} ·
+          <span style="color:#4338ca; cursor:pointer;" onclick="closeSettingsSheet(); navigate('assets')">Ver detalle →</span>
+        </div>`;
+    } else {
+      fijosHTML += `<div style="color:var(--gray-400); font-size:13px; text-align:center; padding:10px 0;">Sin activos fijos registrados</div>`;
+    }
+  }
+
+  // Solo mostrar TOTAL ACTIVOS si hay activos fijos (para evitar línea duplicada)
+  const totalActivosHTML = bs.fixedAssetsTotals.count > 0
+    ? subtotal('═══ TOTAL ACTIVOS', bs.totalAssets, '#16a34a')
+    : '';
 
   // ── Pasivos ────────────────────────────────────────────
   let pasivosHTML = sectionTitle('🔴 PASIVOS CORRIENTES', 'var(--danger)');
@@ -3259,6 +3295,8 @@ function renderBalanceSheet() {
       📅 Al ${todayStr} · Acumulado total (independiente del mes seleccionado)
     </div>
     ${activosHTML}
+    ${fijosHTML}
+    ${totalActivosHTML}
     ${pasivosHTML}
     ${patrimonioHTML}
     ${ecuHTML}
@@ -5663,6 +5701,329 @@ function renderCharts() {
       });
     }
   }
+}
+
+// ── Activos Fijos (NIIF PYMES — Depreciación Línea Recta) ────────────────────
+// Equipos, vehículos, maquinaria, inmuebles con depreciación mensual automática.
+
+function renderAssets() {
+  const assets  = DB.getFixedAssets();
+  const totals  = DB.getFixedAssetsTotals();
+
+  // Hero resumen (fmt ya incluye el símbolo de moneda)
+  const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+  setEl('assets-total-cost',  fmt(totals.totalCost));
+  setEl('assets-book-value',  fmt(totals.totalBookValue));
+  setEl('assets-accum-dep',   fmt(totals.totalAccumDep));
+  setEl('assets-count',       totals.count);
+
+  // Depreciación mensual total
+  let totalMonthlyDep = 0;
+  assets.forEach(a => { totalMonthlyDep += DB.calcAssetDepreciation(a).monthlyDep; });
+  setEl('assets-monthly-dep', fmt(totalMonthlyDep));
+
+  // Lista de activos
+  const listEl = document.getElementById('assets-list');
+  if (!listEl) return;
+
+  if (assets.length === 0) {
+    listEl.innerHTML = `
+      <div style="text-align:center; padding:40px 20px; color:var(--gray-400);">
+        <div style="font-size:48px; margin-bottom:12px;">🏭</div>
+        <div style="font-size:16px; font-weight:700; margin-bottom:6px;">Sin activos fijos</div>
+        <div style="font-size:13px; line-height:1.5;">Registra equipos, vehículos, maquinaria<br>y la app calculará la depreciación automáticamente.</div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="openAssetForm()">+ Registrar primer activo</button>
+      </div>`;
+    return;
+  }
+
+  const cats = DB.getAssetCategories();
+  const catMap = {};
+  cats.forEach(c => { catMap[c.id] = c; });
+
+  listEl.innerHTML = assets.map(a => {
+    const dep  = DB.calcAssetDepreciation(a);
+    const cat  = catMap[a.categoryId] || { emoji: '📦', name: a.categoryId || 'Otro' };
+    const pct  = Math.round(dep.pctDepreciated);
+    const barW = Math.min(100, pct);
+    const barColor = pct >= 90 ? '#dc2626' : pct >= 60 ? '#f59e0b' : '#4338ca';
+    const statusLabel = dep.isFullyDepreciated
+      ? '<span style="color:#dc2626;font-size:11px;font-weight:700;">TOTALMENTE DEPRECIADO</span>'
+      : `<span style="font-size:11px;color:var(--gray-400);">${dep.remainingMonths} mes${dep.remainingMonths === 1 ? '' : 'es'} restante${dep.remainingMonths === 1 ? '' : 's'}</span>`;
+
+    return `
+    <div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openAssetDetail('${a.id}')">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="font-size:32px; flex-shrink:0;">${cat.emoji}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${a.name}</div>
+          <div style="font-size:12px; color:var(--gray-400); margin-top:1px;">${cat.name} · Comprado ${fmtDate(a.purchaseDate)}</div>
+          <!-- Barra de progreso depreciación -->
+          <div style="margin-top:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+              <span style="font-size:11px; color:var(--gray-500);">Depreciación: ${pct}%</span>
+              ${statusLabel}
+            </div>
+            <div style="background:var(--gray-100); border-radius:99px; height:5px; overflow:hidden;">
+              <div style="width:${barW}%; background:${barColor}; height:100%; border-radius:99px; transition:width .4s;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:right; flex-shrink:0;">
+          <div style="font-size:15px; font-weight:800; color:#4338ca;">${fmt(dep.bookValue)}</div>
+          <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">en libros</div>
+          <div style="font-size:11px; color:var(--gray-500); margin-top:4px;">−${fmt(dep.monthlyDep)}/mes</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAssetDetail(id) {
+  const a    = DB.getFixedAssets().find(x => x.id === id);
+  if (!a) return;
+  const dep  = DB.calcAssetDepreciation(a);
+  const cats = DB.getAssetCategories();
+  const cat  = cats.find(c => c.id === a.categoryId) || { emoji: '📦', name: 'Otro' };
+  const pct  = Math.round(dep.pctDepreciated);
+
+  const row = (label, val, valColor = 'var(--gray-700)') => `
+    <div style="display:flex; justify-content:space-between; align-items:center;
+      padding:9px 0; border-bottom:1px solid var(--gray-100);">
+      <span style="font-size:13px; color:var(--gray-500);">${label}</span>
+      <span style="font-size:14px; font-weight:700; color:${valColor};">${val}</span>
+    </div>`;
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+
+    <div style="text-align:center; padding:8px 0 16px;">
+      <div style="font-size:48px; margin-bottom:8px;">${cat.emoji}</div>
+      <div style="font-size:18px; font-weight:800;">${a.name}</div>
+      <div style="font-size:12px; color:var(--gray-400); margin-top:2px;">${cat.name}</div>
+    </div>
+
+    <!-- Barra depreciación -->
+    <div style="background:var(--gray-50); border-radius:12px; padding:14px; margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+        <span style="font-size:12px; font-weight:700; color:var(--gray-600);">Progreso de Depreciación</span>
+        <span style="font-size:12px; font-weight:800; color:#4338ca;">${pct}%</span>
+      </div>
+      <div style="background:var(--gray-200); border-radius:99px; height:10px; overflow:hidden;">
+        <div style="width:${Math.min(100,pct)}%; background:${pct>=90?'#dc2626':pct>=60?'#f59e0b':'#4338ca'}; height:100%; border-radius:99px;"></div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
+        <div style="text-align:center;">
+          <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">Valor en Libros</div>
+          <div style="font-size:18px; font-weight:800; color:#4338ca;">${fmt(dep.bookValue)}</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">Dep. Acumulada</div>
+          <div style="font-size:18px; font-weight:800; color:var(--danger);">${fmt(dep.accumulatedDep)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detalle contable -->
+    ${row('Costo de adquisición', fmt(a.purchaseCost), '#4338ca')}
+    ${row('Valor residual', fmt(a.residualValue || 0), 'var(--gray-700)')}
+    ${row('Depreciación anual', fmt(dep.annualDep), 'var(--danger)')}
+    ${row('Depreciación mensual', fmt(dep.monthlyDep), 'var(--danger)')}
+    ${row('Vida útil', a.usefulLifeYears + ' año' + (a.usefulLifeYears === 1 ? '' : 's'), 'var(--gray-700)')}
+    ${row('Fecha de compra', fmtDate(a.purchaseDate), 'var(--gray-700)')}
+    ${row('Meses en uso', dep.monthsElapsed + ' mes' + (dep.monthsElapsed === 1 ? '' : 'es'), 'var(--gray-700)')}
+    ${dep.isFullyDepreciated
+      ? `<div style="background:#fee2e2; border-radius:10px; padding:10px 14px; margin-top:10px; text-align:center; font-size:13px; color:#dc2626; font-weight:700;">⚠️ Activo totalmente depreciado</div>`
+      : row('Meses restantes', dep.remainingMonths + ' mes' + (dep.remainingMonths === 1 ? '' : 'es'), '#16a34a')
+    }
+    ${a.notes ? `<div style="font-size:13px; color:var(--gray-500); padding:10px 0 4px;">📝 ${a.notes}</div>` : ''}
+
+    <!-- Acciones -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px;">
+      <button class="btn btn-outline" onclick="closeSettingsSheet(); openAssetForm('${a.id}')">✏️ Editar</button>
+      <button class="btn btn-danger"  onclick="confirmDeleteAsset('${a.id}')">🗑️ Eliminar</button>
+    </div>
+  `;
+
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function openAssetForm(editId = null) {
+  const a    = editId ? DB.getFixedAssets().find(x => x.id === editId) : null;
+  const s    = DB.getSettings();
+  const sym  = s.currencySymbol || '$';
+  const cats = DB.getAssetCategories();
+  const accs = DB.getAccounts();
+
+  const val = (field, def = '') => a ? (a[field] ?? def) : def;
+  const esc = str => (str || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+  const catsOpts = cats.map(c =>
+    `<option value="${c.id}" data-years="${c.years}" ${val('categoryId') === c.id ? 'selected' : ''}>${c.emoji} ${c.name} (${c.years} años)</option>`
+  ).join('');
+
+  const accsOpts = accs.map(ac =>
+    `<option value="${ac.id}" ${val('accountId', 'a-banco') === ac.id ? 'selected' : ''}>${ac.emoji} ${ac.name}</option>`
+  ).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <div style="font-size:17px; font-weight:800; margin-bottom:18px; padding-top:4px;">
+      ${a ? '✏️ Editar activo fijo' : '🏭 Registrar activo fijo'}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Nombre del activo *</label>
+      <input type="text" id="asset-name" class="form-control" placeholder="Ej: Computadora Dell, Toyota Hilux 2022"
+        value="${esc(val('name'))}" oninput="updateAssetYears()">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Categoría *</label>
+      <select id="asset-category" class="form-control" onchange="updateAssetYears()">
+        ${catsOpts}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Fecha de compra *</label>
+      <input type="date" id="asset-date" class="form-control" value="${val('purchaseDate', new Date().toISOString().slice(0,10))}">
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group">
+        <label class="form-label">Costo de compra (${sym}) *</label>
+        <input type="number" id="asset-cost" class="form-control" placeholder="0.00"
+          min="0" step="any" value="${val('purchaseCost', '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor residual (${sym})</label>
+        <input type="number" id="asset-residual" class="form-control" placeholder="0.00"
+          min="0" step="any" value="${val('residualValue', '0')}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Vida útil (años) *
+        <span style="font-size:11px; color:var(--gray-400); font-weight:400;"> — NIIF PYMES Ecuador</span>
+      </label>
+      <input type="number" id="asset-years" class="form-control" placeholder="5"
+        min="1" max="50" step="1" value="${val('usefulLifeYears', '')}">
+      <div id="asset-dep-preview" style="font-size:12px; color:var(--gray-400); margin-top:4px;"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cuenta usada para la compra</label>
+      <select id="asset-account" class="form-control">
+        ${accsOpts}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <input type="text" id="asset-notes" class="form-control" placeholder="Modelo, serie, descripción..."
+        value="${esc(val('notes'))}">
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="saveAsset(${a ? `'${a.id}'` : 'null'})">
+      💾 ${a ? 'Guardar cambios' : 'Registrar activo'}
+    </button>
+    ${a ? `<button class="btn btn-danger btn-block mt-8" onclick="confirmDeleteAsset('${a.id}')">🗑️ Eliminar activo</button>` : ''}
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+  `;
+
+  document.getElementById('settings-sheet').classList.add('open');
+
+  // Pre-llenar años según categoría seleccionada si es nuevo
+  if (!a) updateAssetYears();
+  // Preview depreciación al cambiar costo/años
+  ['asset-cost', 'asset-years', 'asset-residual'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateAssetDepPreview);
+  });
+  updateAssetDepPreview();
+}
+
+function updateAssetYears() {
+  const sel     = document.getElementById('asset-category');
+  const yearsEl = document.getElementById('asset-years');
+  if (!sel || !yearsEl) return;
+  const opt = sel.options[sel.selectedIndex];
+  // Auto-llenar años según categoría (NIIF Ecuador)
+  if (opt) yearsEl.value = opt.dataset.years || '5';
+  updateAssetDepPreview();
+}
+
+function updateAssetDepPreview() {
+  const previewEl = document.getElementById('asset-dep-preview');
+  if (!previewEl) return;
+  const cost   = parseFloat(document.getElementById('asset-cost')?.value)   || 0;
+  const resid  = parseFloat(document.getElementById('asset-residual')?.value) || 0;
+  const years  = parseFloat(document.getElementById('asset-years')?.value)  || 0;
+
+  if (cost > 0 && years > 0) {
+    const annual  = (cost - resid) / years;
+    const monthly = annual / 12;
+    // fmt() ya incluye el símbolo de moneda
+    previewEl.textContent = `Depreciación: ${fmt(monthly)}/mes · ${fmt(annual)}/año`;
+  } else {
+    previewEl.textContent = '';
+  }
+}
+
+function saveAsset(editId) {
+  const name   = (document.getElementById('asset-name')?.value || '').trim();
+  const catId  = document.getElementById('asset-category')?.value;
+  const date   = document.getElementById('asset-date')?.value;
+  const cost   = parseFloat(document.getElementById('asset-cost')?.value);
+  const resid  = parseFloat(document.getElementById('asset-residual')?.value) || 0;
+  const years  = parseInt(document.getElementById('asset-years')?.value);
+  const accId  = document.getElementById('asset-account')?.value;
+  const notes  = (document.getElementById('asset-notes')?.value || '').trim();
+
+  if (!name)               { showToast('⚠️ Ingresa el nombre del activo'); return; }
+  if (!date)               { showToast('⚠️ Selecciona la fecha de compra'); return; }
+  if (!cost || cost <= 0)  { showToast('⚠️ El costo debe ser mayor a 0'); return; }
+  if (!years || years < 1) { showToast('⚠️ La vida útil debe ser al menos 1 año'); return; }
+  if (resid >= cost)       { showToast('⚠️ El valor residual no puede ser mayor al costo'); return; }
+
+  DB.saveFixedAsset({
+    id:              editId || undefined,
+    name,
+    categoryId:      catId,
+    purchaseDate:    date,
+    purchaseCost:    cost,
+    residualValue:   resid,
+    usefulLifeYears: years,
+    accountId:       accId,
+    notes,
+  });
+
+  closeSettingsSheet();
+  renderAssets();
+  showToast(editId ? '✅ Activo actualizado' : '✅ Activo registrado');
+  // Actualizar chip del dashboard si está visible
+  const chip = document.getElementById('dash-assets-chip-val');
+  if (chip) {
+    const at = DB.getFixedAssetsTotals();
+    chip.textContent = at.count > 0 ? at.count + (at.count === 1 ? ' activo' : ' activos') : '+ Añadir';
+  }
+  // Si el Balance General está abierto, re-renderizarlo
+  if (balanceSheetOpen) renderBalanceSheet();
+}
+
+function confirmDeleteAsset(id) {
+  const a = DB.getFixedAssets().find(x => x.id === id);
+  if (!a) return;
+  closeSettingsSheet();
+  setTimeout(() => {
+    if (confirm(`¿Eliminar el activo "${a.name}"? Esta acción no se puede deshacer.`)) {
+      DB.deleteFixedAsset(id);
+      renderAssets();
+      showToast('🗑️ Activo eliminado');
+      if (balanceSheetOpen) renderBalanceSheet();
+    }
+  }, 200);
 }
 
 // ── Cartera de Clientes (Cuentas por Cobrar) ──────────────────────────────────
