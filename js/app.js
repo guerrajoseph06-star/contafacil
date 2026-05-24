@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23l';
+const APP_VERSION = '2026.05.23m';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2106,7 +2106,8 @@ function txItemHTML(tx) {
     amountText = '+' + fmt(tx.amount);
     amountClass = 'income';
     const cogsTag = tx.cogsAmount ? ` · CMV: -${fmt(tx.cogsAmount)}` : '';
-    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + cogsTag;
+    const bnTag   = tx.bankName ? ` · 🏦 ${escHtml(tx.bankName)}` : '';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + cogsTag + bnTag;
 
   } else if (tx.type === 'expense') {
     emoji = tx.isFactura ? '🧾' : (cat ? cat.emoji : '💸');
@@ -2114,7 +2115,8 @@ function txItemHTML(tx) {
     amountClass = 'expense';
     const recTag = tx.isRecurring ? ' · 🔄 Auto' : '';
     const facTag = tx.isFactura ? ' · 🧾 Factura' : '';
-    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + facTag + recTag;
+    const bnTag  = tx.bankName ? ` · 🏦 ${escHtml(tx.bankName)}` : '';
+    metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + facTag + recTag + bnTag;
 
   } else if (tx.type === 'transfer') {
     const fromAcc = DB.getAccountById(tx.fromAccount);
@@ -2122,9 +2124,9 @@ function txItemHTML(tx) {
     emoji = '↔️';
     amountText = fmt(tx.amount);
     amountClass = 'transfer';
-    const from = fromAcc ? fromAcc.emoji + ' ' + fromAcc.name : 'Cuenta';
-    const to   = toAcc   ? toAcc.emoji   + ' ' + toAcc.name   : 'Cuenta';
-    metaText = fmtDate(tx.date) + ` · ${from} → ${to}`;
+    const fromName = (fromAcc ? fromAcc.emoji + ' ' + fromAcc.name : 'Cuenta') + (tx.fromBankName ? ` (${escHtml(tx.fromBankName)})` : '');
+    const toName   = (toAcc   ? toAcc.emoji   + ' ' + toAcc.name   : 'Cuenta') + (tx.toBankName   ? ` (${escHtml(tx.toBankName)})`   : '');
+    metaText = fmtDate(tx.date) + ` · ${fromName} → ${toName}`;
 
   } else if (tx.type === 'liability') {
     emoji = cat ? cat.emoji : '🔴';
@@ -2354,6 +2356,7 @@ function toggleSplitPayment() {
   const sec = document.getElementById('split-section');
   if (sec) sec.style.display = on ? 'block' : 'none';
   _updateSplitInfo();
+  _onAcctChange('split'); // mostrar/ocultar banco de la 2da cuenta si aplica
 }
 
 // Muestra en vivo cómo se reparte el total entre las 2 cuentas
@@ -3196,6 +3199,45 @@ function updateTypeTabs() {
 
 function setFormType(type) { formType = type; updateTypeTabs(); }
 
+// ── Sub-campo "banco específico" (solo visible cuando se selecciona Cuenta Bancaria) ──
+function _getBankNames() {
+  return [...new Set(
+    DB.getTransactions()
+      .flatMap(t => [t.bankName, t.bankName2, t.fromBankName, t.toBankName])
+      .filter(Boolean)
+  )].sort();
+}
+
+function _bankSubHtml(slot, value) {
+  const opts = _getBankNames().map(n => `<option value="${escHtml(n)}">`).join('');
+  return `
+    <div id="bank-sub-${slot}" style="display:none; margin:-4px 0 12px; padding:0 2px;">
+      <div style="display:flex; align-items:center; gap:8px; padding:7px 11px;
+        background:#eff6ff; border-radius:8px; border:1px solid #bfdbfe;">
+        <span style="font-size:15px; flex-shrink:0;">🏦</span>
+        <input id="bank-name-${slot}" type="text"
+          value="${escHtml(value || '')}"
+          placeholder="¿Cuál banco? Ej: Pichincha, Guayaquil… (opcional)"
+          list="bank-list-${slot}" autocomplete="off"
+          style="border:none; background:transparent; padding:0; flex:1;
+            font-size:13px; outline:none; color:var(--gray-800);">
+        <datalist id="bank-list-${slot}">${opts}</datalist>
+      </div>
+    </div>`;
+}
+
+function _onAcctChange(slot) {
+  const map  = { main: 'f-account', split: 'f-account2', from: 'f-from-account', to: 'f-to-account' };
+  const selEl = document.getElementById(map[slot]);
+  const subEl = document.getElementById('bank-sub-' + slot);
+  if (!selEl || !subEl) return;
+  subEl.style.display = selEl.value === 'a-banco' ? 'block' : 'none';
+}
+
+function _initBankSubs() {
+  ['main', 'split', 'from', 'to'].forEach(_onAcctChange);
+}
+
 // Renderiza los campos dinámicamente según el tipo
 function renderFormFields(tx) {
   const container = document.getElementById('form-dynamic-fields');
@@ -3231,12 +3273,14 @@ function renderFormFields(tx) {
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta Origen (de)</label>
-        <select id="f-from-account" class="form-control">${accOptions('fromAccount')}</select>
+        <select id="f-from-account" class="form-control" onchange="_onAcctChange('from')">${accOptions('fromAccount')}</select>
       </div>
+      ${_bankSubHtml('from', tx?.fromBankName || '')}
       <div class="form-group">
         <label class="form-label">Cuenta Destino (a)</label>
-        <select id="f-to-account" class="form-control">${accOptions('toAccount')}</select>
+        <select id="f-to-account" class="form-control" onchange="_onAcctChange('to')">${accOptions('toAccount')}</select>
       </div>
+      ${_bankSubHtml('to', tx?.toBankName || '')}
     `;
   } else if (isLiability) {
     // DEUDA: con categoría de pasivos y estado
@@ -3278,6 +3322,8 @@ function renderFormFields(tx) {
     const acc1Sel      = splitOn ? tx.splitPayments[0].account : (tx?.account || '');
     const acc2Sel      = splitOn ? tx.splitPayments[1].account : '';
     const split2Amount = splitOn ? tx.splitPayments[1].amount  : '';
+    const mainBankName  = tx?.bankName  || '';
+    const splitBankName = tx?.bankName2 || '';
     const accSel = sel => '<option value="">— Cuenta —</option>' +
       DB.getAccounts().map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
 
@@ -3288,8 +3334,9 @@ function renderFormFields(tx) {
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta</label>
-        <select id="f-account" class="form-control">${accSel(acc1Sel)}</select>
+        <select id="f-account" class="form-control" onchange="_onAcctChange('main')">${accSel(acc1Sel)}</select>
       </div>
+      ${_bankSubHtml('main', mainBankName)}
       <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:10px 12px;
         background:var(--gray-50); border-radius:8px; margin-bottom:12px;">
         <input type="checkbox" id="f-split-on" ${splitOn ? 'checked' : ''} onchange="toggleSplitPayment()"
@@ -3299,8 +3346,9 @@ function renderFormFields(tx) {
       <div id="split-section" style="display:${splitOn ? 'block' : 'none'};">
         <div class="form-group">
           <label class="form-label">Segunda cuenta</label>
-          <select id="f-account2" class="form-control">${accSel(acc2Sel)}</select>
+          <select id="f-account2" class="form-control" onchange="_onAcctChange('split')">${accSel(acc2Sel)}</select>
         </div>
+        ${_bankSubHtml('split', splitBankName)}
         <div class="form-group">
           <label class="form-label">¿Cuánto se recibió / pagó en la 2da cuenta?</label>
           <input type="number" id="f-split-amount" class="form-control" value="${split2Amount}"
@@ -3373,6 +3421,7 @@ function renderFormFields(tx) {
   if (!isTransfer) html += _receiptSectionHTML();
 
   container.innerHTML = html;
+  _initBankSubs();      // mostrar/ocultar sub-campo de banco según cuenta seleccionada
   _renderReceiptArea(); // pinta el estado actual de la foto
   _updateSplitInfo();   // pinta el reparto del pago dividido (si aplica)
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
@@ -3405,8 +3454,10 @@ function submitForm() {
     const to   = document.getElementById('f-to-account')?.value;
     if (!from || !to)         { showToast('⚠️ Selecciona cuenta origen y destino'); return; }
     if (from === to)          { showToast('⚠️ Las cuentas deben ser diferentes'); return; }
-    data.fromAccount = from;
-    data.toAccount   = to;
+    data.fromAccount  = from;
+    data.toAccount    = to;
+    data.fromBankName = from === 'a-banco' ? (document.getElementById('bank-name-from')?.value.trim() || '') : '';
+    data.toBankName   = to   === 'a-banco' ? (document.getElementById('bank-name-to')?.value.trim()   || '') : '';
 
   } else if (formType === 'liability') {
     data.category        = document.getElementById('f-category')?.value;
@@ -3433,10 +3484,13 @@ function submitForm() {
         { account: acc1, amount: Math.round((total - monto2) * 100) / 100 },
         { account: acc2, amount: monto2 },
       ];
-      data.account = ''; // el dinero se reparte vía splitPayments
+      data.account   = ''; // el dinero se reparte vía splitPayments
+      data.bankName  = acc1 === 'a-banco' ? (document.getElementById('bank-name-main')?.value.trim()  || '') : '';
+      data.bankName2 = acc2 === 'a-banco' ? (document.getElementById('bank-name-split')?.value.trim() || '') : '';
     } else {
       data.account       = document.getElementById('f-account')?.value;
       data.splitPayments = null;
+      data.bankName      = data.account === 'a-banco' ? (document.getElementById('bank-name-main')?.value.trim() || '') : '';
     }
 
     const affectsInv = document.getElementById('f-affects-inv')?.checked;
@@ -3513,8 +3567,8 @@ function openTxDetail(id) {
     const from = DB.getAccountById(tx.fromAccount);
     const to   = DB.getAccountById(tx.toAccount);
     mainDetail = `
-      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Origen</span><span style="font-weight:600;">${from ? from.emoji + ' ' + from.name : '—'}</span></div>
-      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Destino</span><span style="font-weight:600;">${to ? to.emoji + ' ' + to.name : '—'}</span></div>
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Origen</span><span style="font-weight:600;">${from ? from.emoji + ' ' + from.name : '—'}${tx.fromBankName ? ' <span style="font-size:12px;color:var(--primary);">· 🏦 ' + escHtml(tx.fromBankName) + '</span>' : ''}</span></div>
+      <div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Destino</span><span style="font-weight:600;">${to ? to.emoji + ' ' + to.name : '—'}${tx.toBankName ? ' <span style="font-size:12px;color:var(--primary);">· 🏦 ' + escHtml(tx.toBankName) + '</span>' : ''}</span></div>
     `;
   } else if (tx.isIva) {
     const cobrado = tx.ivaDirection === 'cobrado';
@@ -3557,16 +3611,21 @@ function openTxDetail(id) {
     const splitHTML = isSplit ? `
       <div style="background:var(--gray-50); border-radius:8px; padding:10px 12px; font-size:13px;">
         <div style="font-weight:700; margin-bottom:4px;">💳 Pago dividido en 2 cuentas</div>
-        ${tx.splitPayments.map(sp => {
-          const a = DB.getAccountById(sp.account);
+        ${tx.splitPayments.map((sp, i) => {
+          const a  = DB.getAccountById(sp.account);
+          const bn = i === 0 ? tx.bankName : tx.bankName2;
           return `<div style="display:flex; justify-content:space-between;">
-            <span style="color:var(--gray-500);">${a ? a.emoji + ' ' + a.name : 'Cuenta'}</span>
+            <span style="color:var(--gray-500);">${a ? a.emoji + ' ' + a.name : 'Cuenta'}${bn ? ' <span style="font-size:11px;color:var(--primary);">🏦 ' + escHtml(bn) + '</span>' : ''}</span>
             <span style="font-weight:700;">${fmt(sp.amount)}</span></div>`;
         }).join('')}
       </div>` : '';
+    const bnDetail = !isSplit && tx.bankName
+      ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Banco</span><span style="font-weight:600; color:var(--primary);">🏦 ${escHtml(tx.bankName)}</span></div>`
+      : '';
     mainDetail = `
       ${cat ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Categoría</span><span style="font-weight:600;">${cat.emoji} ${cat.name}</span></div>` : ''}
       ${isSplit ? splitHTML : (acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : '')}
+      ${bnDetail}
       ${tx.affectsInventory ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Inventario</span><span style="font-weight:600; color:var(--primary);">📦 -${tx.quantity} unidades</span></div>` : ''}
     `;
   }
