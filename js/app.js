@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23m';
+const APP_VERSION = '2026.05.23n';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1993,6 +1993,8 @@ function exportJournalExcel() {
     { v:'Tipo',         s:'header' },
     { v:'Categoría',    s:'header' },
     { v:'Cuenta',       s:'header' },
+    { v:'Banco',        s:'header' },
+    { v:'IVA ($)',       s:'header' },
     { v:'Ingreso',      s:'header' },
     { v:'Gasto',        s:'header' },
     { v:'Traslado',     s:'header' },
@@ -2010,20 +2012,34 @@ function exportJournalExcel() {
     const tAcc    = DB.getAccountById(t.toAccount);
     const catName = cat ? cat.name : '';
     let accName   = acc ? acc.name : '';
-    if (t.type === 'transfer' && fAcc && tAcc) accName = fAcc.name + ' → ' + tAcc.name;
+    let bankLabel = '';
+
+    if (t.type === 'transfer') {
+      if (fAcc && tAcc) accName = fAcc.name + ' → ' + tAcc.name;
+      const fb = t.fromBankName || '';
+      const tb = t.toBankName   || '';
+      if (fb || tb) bankLabel = (fb || '—') + ' → ' + (tb || '—');
+    } else {
+      if (t.bankName)  bankLabel = t.bankName;
+      if (t.bankName2) bankLabel += (bankLabel ? ' / ' : '') + t.bankName2;
+    }
+
+    const ivaAmt = (t.ivaAmount && t.ivaAmount > 0) ? t.ivaAmount : null;
 
     let inc = '', exp = '', trf = '', lib = '';
-    if (t.type === 'income')   { inc = t.amount; totalInc += t.amount; }
-    if (t.type === 'expense')  { exp = t.amount; totalExp += t.amount; }
-    if (t.type === 'transfer') { trf = t.amount; totalTrf += t.amount; }
-    if (t.type === 'liability'){ lib = t.amount; totalLib += t.amount; }
+    if (t.type === 'income')    { inc = t.amount; totalInc += t.amount; }
+    if (t.type === 'expense')   { exp = t.amount; totalExp += t.amount; }
+    if (t.type === 'transfer')  { trf = t.amount; totalTrf += t.amount; }
+    if (t.type === 'liability') { lib = t.amount; totalLib += t.amount; }
 
     return [
       { v: t.date,              s: 'label'  },
       { v: t.description || '', s: 'text'   },
-      { v: TYPE[t.type] || '', s: 'text'   },
+      { v: TYPE[t.type] || '',  s: 'text'   },
       { v: catName,             s: 'text'   },
       { v: accName,             s: 'text'   },
+      { v: bankLabel,           s: 'text'   },
+      ivaAmt !== null ? { v: ivaAmt, s: 'money' } : { v: '', s: 'text' },
       { v: inc !== '' ? inc : null, s: inc !== '' ? 'money' : 'text' },
       { v: exp !== '' ? exp : null, s: exp !== '' ? 'money' : 'text' },
       { v: trf !== '' ? trf : null, s: trf !== '' ? 'money' : 'text' },
@@ -2040,6 +2056,8 @@ function exportJournalExcel() {
     { v: txs.length + ' registros', s: 'text' },
     { v: '', s: 'text' },
     { v: '', s: 'text' },
+    { v: '', s: 'text' }, // Banco
+    { v: '', s: 'text' }, // IVA
     { v: totalInc, s: 'moneyBold' },
     { v: totalExp, s: 'moneyBold' },
     { v: totalTrf, s: 'moneyBold' },
@@ -2050,9 +2068,9 @@ function exportJournalExcel() {
 
   const rows = [
     // Título del reporte
-    [{ v: s.companyName || 'Mi Negocio', s: 'title', merge: 10 }],
-    [{ v: 'Diario Contable — ' + filtroTitulo, s: 'subtitle', merge: 10 }],
-    [{ v: 'Exportado el ' + exportDate + ' · ' + txs.length + ' registro(s)', merge: 10 }],
+    [{ v: s.companyName || 'Mi Negocio', s: 'title', merge: 12 }],
+    [{ v: 'Diario Contable — ' + filtroTitulo, s: 'subtitle', merge: 12 }],
+    [{ v: 'Exportado el ' + exportDate + ' · ' + txs.length + ' registro(s)', merge: 12 }],
     [], // fila vacía
     header,
     ...dataRows,
@@ -2067,7 +2085,7 @@ function exportJournalExcel() {
   try {
     const bytes = _buildXlsx([{
       name: 'Diario',
-      cols: [100, 220, 85, 130, 130, 105, 105, 105, 105, 160, 90],
+      cols: [90, 210, 80, 130, 120, 120, 80, 100, 100, 100, 100, 155, 85],
       rows,
     }], sym);
     _downloadXlsx(bytes, filename);
@@ -5943,62 +5961,80 @@ function _doExportToExcel() {
   const deudaTot = txs.filter(t => t.type === 'liability').reduce((a, t) => a + t.amount, 0);
 
   // ═══ HOJA «Transacciones» — datos crudos + fila TOTALES con fórmula SUM ═══
+  // Columnas: Fecha | Descripción | Tipo | Categoría | Cuenta | Banco | Ingreso | Gasto Op. | CMV | Deuda | IVA | Notas
   const txData = [];
   txs.forEach(t => {
     const cat  = DB.getCategoryById(t.category);
     const acc  = DB.getAccountById(t.account);
     const fAcc = DB.getAccountById(t.fromAccount);
     const tAcc = DB.getAccountById(t.toAccount);
-    let ingreso = '', gastoOp = '', cmv = '', deuda = '', catLabel = '', accLabel = '';
+    let ingreso = '', gastoOp = '', cmv = '', deuda = '', catLabel = '', accLabel = '', bankLabel = '';
     const splitAcc = (Array.isArray(t.splitPayments) && t.splitPayments.length)
       ? t.splitPayments.map(sp => { const a = DB.getAccountById(sp.account); return a ? a.name : '?'; }).join(' + ')
       : '';
+
     if (t.isCogs) {
       cmv = t.amount; catLabel = 'Costo de Ventas (CMV)';
     } else if (t.type === 'income') {
-      ingreso = t.amount; catLabel = cat ? cat.name : 'Ingresos'; accLabel = splitAcc || (acc ? acc.name : '');
+      ingreso = t.amount; catLabel = cat ? cat.name : 'Ingresos';
+      accLabel = splitAcc || (acc ? acc.name : '');
+      if (t.bankName)  bankLabel = t.bankName;
+      if (t.bankName2) bankLabel += (bankLabel ? ' / ' : '') + t.bankName2;
     } else if (t.type === 'expense') {
-      gastoOp = t.amount; catLabel = cat ? cat.name : 'Gastos'; accLabel = splitAcc || (acc ? acc.name : '');
+      gastoOp = t.amount; catLabel = cat ? cat.name : 'Gastos';
+      accLabel = splitAcc || (acc ? acc.name : '');
+      if (t.bankName)  bankLabel = t.bankName;
+      if (t.bankName2) bankLabel += (bankLabel ? ' / ' : '') + t.bankName2;
     } else if (t.type === 'transfer') {
       catLabel = (fAcc ? fAcc.name : '—') + ' → ' + (tAcc ? tAcc.name : '—');
+      const fb = t.fromBankName || '', tb = t.toBankName || '';
+      if (fb || tb) bankLabel = (fb || '—') + ' → ' + (tb || '—');
     } else if (t.type === 'liability') {
       deuda = t.amount; catLabel = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
     }
+
+    const ivaAmt = (t.ivaAmount && t.ivaAmount > 0) ? t.ivaAmount : null;
+
     txData.push([
       _xlsDate(t.date),
       t.description + (t.isCogs ? ' (auto-CMV)' : ''),
       t.isCogs ? 'CMV' : (TYPE_LABELS[t.type] || t.type),
-      catLabel, accLabel,
+      catLabel,
+      accLabel,
+      bankLabel,
       ingreso === '' ? '' : { v: ingreso, s: 'money' },
       gastoOp === '' ? '' : { v: gastoOp, s: 'money' },
       cmv     === '' ? '' : { v: cmv,     s: 'money' },
       deuda   === '' ? '' : { v: deuda,   s: 'money' },
+      ivaAmt !== null ? { v: ivaAmt, s: 'money' } : '',
       t.notes || '',
     ]);
   });
   if (txData.length === 0) {
-    txData.push(['—', 'Sin movimientos registrados este mes', '—', '', '', '', '', '', '', '']);
+    txData.push(['—', 'Sin movimientos registrados este mes', '—', '', '', '', '', '', '', '', '', '']);
   }
-  const txFirst = 5;                          // primera fila de datos
-  const txLast  = txFirst + txData.length - 1; // última fila de datos
-  const txTotal = txLast + 1;                  // fila TOTALES
+  const txFirst = 5;                            // primera fila de datos (header está en fila 4)
+  const txLast  = txFirst + txData.length - 1;  // última fila de datos
+  const txTotal = txLast + 1;                   // fila TOTALES
+  // Columnas: 1=Fecha 2=Desc 3=Tipo 4=Cat 5=Cuenta 6=Banco 7=Ingreso 8=GastoOp 9=CMV 10=Deuda 11=IVA 12=Notas
   const txSheet = {
     name: 'Transacciones',
-    cols: [80, 240, 70, 175, 135, 95, 95, 85, 95, 200],
+    cols: [80, 230, 70, 170, 130, 125, 95, 95, 80, 95, 80, 200],
     rows: [
-      [{ v: s.companyName, s: 'title', merge: 9 }],
-      [{ v: 'Transacciones — ' + monthLabel, s: 'subtitle', merge: 9 }],
+      [{ v: s.companyName, s: 'title', merge: 11 }],
+      [{ v: 'Transacciones — ' + monthLabel, s: 'subtitle', merge: 11 }],
       [],
-      ['Fecha','Descripción','Tipo','Categoría','Cuenta','Ingreso','Gasto Op.','CMV','Deuda','Notas']
+      ['Fecha','Descripción','Tipo','Categoría','Cuenta','Banco','Ingreso','Gasto Op.','CMV','Deuda','IVA','Notas']
         .map(h => ({ v: h, s: 'header' })),
       ...txData,
       [
         { v: 'TOTALES', s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
-        { s: 'totalLabel' }, { s: 'totalLabel' },
-        { f: '=SUM(R' + txFirst + 'C6:R' + txLast + 'C6)', v: pnl.totalRevenue, s: 'totalRow' },
-        { f: '=SUM(R' + txFirst + 'C7:R' + txLast + 'C7)', v: pnl.opExpenses,   s: 'totalRow' },
-        { f: '=SUM(R' + txFirst + 'C8:R' + txLast + 'C8)', v: pnl.cogs,         s: 'totalRow' },
-        { f: '=SUM(R' + txFirst + 'C9:R' + txLast + 'C9)', v: deudaTot,         s: 'totalRow' },
+        { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+        { f: '=SUM(R' + txFirst + 'C7:R' + txLast + 'C7)',  v: pnl.totalRevenue, s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C8:R' + txLast + 'C8)',  v: pnl.opExpenses,   s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C9:R' + txLast + 'C9)',  v: pnl.cogs,         s: 'totalRow' },
+        { f: '=SUM(R' + txFirst + 'C10:R' + txLast + 'C10)', v: deudaTot,        s: 'totalRow' },
+        { s: 'totalRow' },
         { s: 'totalRow' },
       ],
     ],
@@ -6081,7 +6117,7 @@ function _doExportToExcel() {
        { v: 'Utilidad bruta menos Gastos operativos', s: 'totalLabel' }],
       [],
       [{ v: 'Deudas registradas en el mes', s: 'label' },
-       { f: '=Transacciones!R' + txTotal + 'C9', v: deudaTot, s: 'moneyBold' },
+       { f: '=Transacciones!R' + txTotal + 'C10', v: deudaTot, s: 'moneyBold' },
        'Suma de la columna Deuda'],
       [{ v: 'Transacciones del mes', s: 'label' },
        { v: txs.length },
@@ -6129,6 +6165,101 @@ function _doExportToExcel() {
           { f: '=SUM(R' + cFirst + 'C6:R' + cLast + 'C6)', v: cC, s: 'totalRow' },
           { f: '=SUM(R' + cFirst + 'C7:R' + cLast + 'C7)', v: cP, s: 'totalRow' },
           { s: 'totalRow' },
+        ],
+      ],
+    });
+  }
+
+  // ═══ HOJA «Inventario» — si hay productos registrados ═══
+  const allProds = DB.getInventory();
+  if (allProds.length > 0) {
+    const iFirst = 5, iLast = iFirst + allProds.length - 1;
+    let totalValInv = 0;
+    const invData = allProds.map(p => {
+      const valInv = (p.quantity || 0) * (p.unitCost || 0);
+      totalValInv += valInv;
+      const minStkStr = (p.minStock || 0) > 0 ? p.minStock : '—';
+      const alertStr  = (p.minStock || 0) > 0 && p.quantity <= p.minStock ? '⚠️ STOCK BAJO'
+        : (p.minStock || 0) > 0 && p.quantity <= p.minStock * 2 ? '📉 Quedando poco'
+        : '';
+      const ivaLabel  = p.tipoIva === 'SIN_IVA' ? '0%'
+        : p.tipoIva === 'IVA_NO_INCLUIDO' ? '+IVA' : p.tipoIva === 'IVA_INCLUIDO' ? 'c/IVA' : '';
+      return [
+        (p.emoji || '📦') + ' ' + (p.name || ''),
+        p.sku || '',
+        p.quantity || 0,
+        minStkStr,
+        p.unit || '',
+        p.unitCost   ? { v: p.unitCost,   s: 'money' } : '',
+        p.precioFinal ? { v: p.precioFinal, s: 'money' } : '',
+        ivaLabel,
+        valInv > 0 ? { v: valInv, s: 'money' } : { v: 0, s: 'money' },
+        alertStr,
+      ];
+    });
+    sheets.push({
+      name: 'Inventario',
+      cols: [200, 120, 65, 75, 70, 110, 110, 55, 115, 110],
+      rows: [
+        [{ v: s.companyName, s: 'title', merge: 9 }],
+        [{ v: 'Inventario — al ' + new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' }), s: 'subtitle', merge: 9 }],
+        [],
+        ['Producto','SKU','Stock','Stk. Mín.','Unidad','Costo Compra','Precio Venta','IVA','Valor Inventario','Alerta']
+          .map(h => ({ v: h, s: 'header' })),
+        ...invData,
+        [
+          { v: 'TOTAL INVENTARIO', s: 'totalLabel' },
+          { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+          { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+          { f: '=SUM(R' + iFirst + 'C9:R' + iLast + 'C9)', v: totalValInv, s: 'totalRow' },
+          { s: 'totalLabel' },
+        ],
+      ],
+    });
+  }
+
+  // ═══ HOJA «Activos Fijos» — si hay activos registrados ═══
+  const allAssets = DB.getFixedAssets();
+  if (allAssets.length > 0) {
+    const assetCats = DB.getAssetCategories();
+    let totalCostAF = 0, totalBookAF = 0, totalDepAF = 0;
+    const afData = allAssets.map(a => {
+      const dep     = DB.calcAssetDepreciation(a);
+      const catObj  = assetCats.find(c => c.id === (a.categoryId || a.category)) || { name: a.categoryId || a.category || 'Otro' };
+      totalCostAF += a.purchaseCost || 0;
+      totalBookAF += dep.bookValue;
+      totalDepAF  += dep.accumulatedDep;
+      return [
+        (a.emoji || catObj.emoji || '📦') + ' ' + (a.name || ''),
+        catObj.name,
+        a.purchaseDate || '',
+        a.purchaseCost    ? { v: a.purchaseCost,    s: 'money'    } : '',
+        a.residualValue   ? { v: a.residualValue,   s: 'money'    } : '',
+        (a.usefulLifeYears || '') + (a.usefulLifeYears ? ' años' : ''),
+        { v: dep.monthlyDep,     s: 'money'    },
+        { v: dep.accumulatedDep, s: 'money'    },
+        { v: dep.bookValue,      s: 'moneyBold'},
+        { v: dep.pctDepreciated / 100, s: 'percent' },
+      ];
+    });
+    const afFirst = 5, afLast = afFirst + afData.length - 1;
+    sheets.push({
+      name: 'Activos Fijos',
+      cols: [180, 140, 95, 100, 95, 75, 100, 115, 120, 95],
+      rows: [
+        [{ v: s.companyName, s: 'title', merge: 9 }],
+        [{ v: 'Activos Fijos — al ' + new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' }), s: 'subtitle', merge: 9 }],
+        [],
+        ['Activo','Categoría','Fecha Compra','Costo','Valor Residual','Vida Útil','Dep. Mensual','Dep. Acumulada','Valor en Libros','% Deprec.']
+          .map(h => ({ v: h, s: 'header' })),
+        ...afData,
+        [
+          { v: 'TOTALES', s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+          { f: '=SUM(R' + afFirst + 'C4:R' + afLast + 'C4)', v: totalCostAF, s: 'totalRow' },
+          { s: 'totalLabel' }, { s: 'totalLabel' }, { s: 'totalLabel' },
+          { f: '=SUM(R' + afFirst + 'C8:R' + afLast + 'C8)', v: totalDepAF,  s: 'totalRow' },
+          { f: '=SUM(R' + afFirst + 'C9:R' + afLast + 'C9)', v: totalBookAF, s: 'totalRow' },
+          { s: 'totalLabel' },
         ],
       ],
     });
