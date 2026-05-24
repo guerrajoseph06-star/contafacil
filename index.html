@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523a">
+  <link rel="stylesheet" href="css/style.css?v=20260523b">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -406,8 +406,34 @@
       <button class="filter-chip"        data-filter="liability" onclick="setJournalFilter('liability')">🔴 Deudas</button>
     </div>
 
+    <!-- Filtro por fecha -->
+    <div class="filter-bar" id="journal-date-bar" style="margin-top:6px;">
+      <button class="filter-chip active" data-df="all"       onclick="setJournalDateFilter('all')">📅 Todo</button>
+      <button class="filter-chip"        data-df="today"     onclick="setJournalDateFilter('today')">Hoy</button>
+      <button class="filter-chip"        data-df="yesterday" onclick="setJournalDateFilter('yesterday')">Ayer</button>
+      <button class="filter-chip"        data-df="week"      onclick="setJournalDateFilter('week')">7 días</button>
+      <button class="filter-chip"        data-df="month"     onclick="setJournalDateFilter('month')">Este mes</button>
+      <button class="filter-chip"        data-df="custom"    onclick="setJournalDateFilter('custom')">📆 Rango</button>
+    </div>
+
+    <!-- Picker de rango personalizado (solo visible en modo 'custom') -->
+    <div id="journal-date-custom" style="display:none; margin-top:6px; display:none;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div>
+          <label style="font-size:11px; color:var(--gray-500); font-weight:600; margin-bottom:3px; display:block;">Desde</label>
+          <input type="date" id="journal-date-from" class="form-control"
+            style="background:var(--white);" onchange="renderJournal()">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--gray-500); font-weight:600; margin-bottom:3px; display:block;">Hasta</label>
+          <input type="date" id="journal-date-to" class="form-control"
+            style="background:var(--white);" onchange="renderJournal()">
+        </div>
+      </div>
+    </div>
+
     <!-- Filtro por usuario (solo visible si hay múltiples usuarios en los datos) -->
-    <div id="journal-user-wrap" style="display:none; margin-bottom:8px;">
+    <div id="journal-user-wrap" style="display:none; margin-bottom:8px; margin-top:6px;">
       <select id="journal-user-filter" class="form-control" style="background:var(--white);"
         onchange="setJournalUserFilter(this.value)">
       </select>
@@ -1195,7 +1221,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523a"></script>
-<script src="js/app.js?v=20260523a"></script>
+<script src="js/db.js?v=20260523b"></script>
+<script src="js/app.js?v=20260523b"></script>
 </body>
 </html>

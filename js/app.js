@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23a';
+const APP_VERSION = '2026.05.23b';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -104,10 +104,11 @@ let _inactivityTimer  = null;    // temporizador de auto-bloqueo
 
 let editingTxId      = null;
 let formType         = 'expense';
-let journalFilter    = 'all';
-let journalCatFilter = '';      // filtro de categoría en el diario
-let journalUserFilter = '';     // filtro de usuario en el diario
-let journalSearch    = '';
+let journalFilter     = 'all';
+let journalCatFilter  = '';      // filtro de categoría en el diario
+let journalUserFilter = '';      // filtro de usuario en el diario
+let journalSearch     = '';
+let journalDateFilter = 'all';   // 'all'|'today'|'yesterday'|'week'|'month'|'custom'
 let reportYear       = new Date().getFullYear();
 let reportMonth      = new Date().getMonth() + 1;
 
@@ -1398,10 +1399,66 @@ function renderJournal() {
     txs = txs.filter(t => t.category === journalCatFilter);
   }
 
+  // ── Filtro por fecha ──────────────────────────────────────
+  const customWrap = document.getElementById('journal-date-custom');
+  if (customWrap) customWrap.style.display = journalDateFilter === 'custom' ? 'block' : 'none';
+
+  let dateLabel = '';
+  if (journalDateFilter !== 'all') {
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    let fromDate = null, toDate = null;
+
+    if (journalDateFilter === 'today') {
+      fromDate = toDate = todayDate;
+      dateLabel = 'Hoy';
+    } else if (journalDateFilter === 'yesterday') {
+      const y = new Date(todayDate);
+      y.setDate(y.getDate() - 1);
+      fromDate = toDate = y;
+      dateLabel = 'Ayer';
+    } else if (journalDateFilter === 'week') {
+      fromDate = new Date(todayDate);
+      fromDate.setDate(fromDate.getDate() - 6);
+      toDate = todayDate;
+      dateLabel = 'Últimos 7 días';
+    } else if (journalDateFilter === 'month') {
+      fromDate = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+      toDate = todayDate;
+      dateLabel = 'Este mes';
+    } else if (journalDateFilter === 'custom') {
+      const fromVal = document.getElementById('journal-date-from')?.value;
+      const toVal   = document.getElementById('journal-date-to')?.value;
+      if (fromVal) fromDate = new Date(fromVal + 'T00:00:00');
+      if (toVal)   toDate   = new Date(toVal   + 'T23:59:59');
+      dateLabel = fromVal || toVal
+        ? (fromVal && toVal ? `${fromVal} → ${toVal}` : fromVal ? `Desde ${fromVal}` : `Hasta ${toVal}`)
+        : 'Rango personalizado';
+    }
+
+    if (fromDate || toDate) {
+      txs = txs.filter(t => {
+        const txDate = new Date(t.date + 'T12:00:00');
+        if (fromDate && txDate < fromDate) return false;
+        if (toDate) {
+          const toEnd = new Date(toDate);
+          toEnd.setHours(23, 59, 59, 999);
+          if (txDate > toEnd) return false;
+        }
+        return true;
+      });
+    }
+  }
+
+  // Sincronizar chips de fecha activos
+  document.querySelectorAll('#journal-date-bar .filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.df === journalDateFilter)
+  );
+
   // ── Barra de resumen ──────────────────────────────────────
   const summaryEl = document.getElementById('journal-summary');
   if (summaryEl) {
-    const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter;
+    const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter || journalDateFilter !== 'all';
     if (hasFilter && txs.length > 0) {
       const totalInc = txs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
       const totalExp = txs.filter(t => t.type === 'expense' && !t.isCogs).reduce((s,t) => s+t.amount, 0);
@@ -1416,6 +1473,7 @@ function renderJournal() {
       summaryEl.style.display = 'block';
       summaryEl.innerHTML = `
         <div style="background:var(--primary-light); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px; color:var(--primary); line-height:1.8;">
+          ${dateLabel ? `<div style="font-size:11px; font-weight:700; opacity:.75; margin-bottom:2px;">📅 ${dateLabel}</div>` : ''}
           ${catName ? `<div style="font-weight:700; margin-bottom:4px;">📂 ${catName}</div>` : ''}
           ${parts.join(' &nbsp;·&nbsp; ')}
           ${journalCatFilter ? `<button onclick="openCategoryReport('${journalCatFilter}')" style="float:right;font-size:12px;font-weight:700;background:none;color:var(--primary);">Ver reporte →</button>` : ''}
@@ -1469,9 +1527,22 @@ function renderJournal() {
 function setJournalFilter(f) {
   journalFilter    = f;
   journalCatFilter = ''; // reset categoría al cambiar tipo
-  document.querySelectorAll('.filter-chip').forEach(c =>
+  document.querySelectorAll('.filter-chip[data-filter]').forEach(c =>
     c.classList.toggle('active', c.dataset.filter === f)
   );
+  renderJournal();
+}
+
+function setJournalDateFilter(df) {
+  journalDateFilter = df;
+  // Si es custom, rellenar las fechas con hoy por defecto (si están vacías)
+  if (df === 'custom') {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const fromEl = document.getElementById('journal-date-from');
+    const toEl   = document.getElementById('journal-date-to');
+    if (fromEl && !fromEl.value) fromEl.value = todayStr;
+    if (toEl   && !toEl.value)   toEl.value   = todayStr;
+  }
   renderJournal();
 }
 
