@@ -13,8 +13,11 @@
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
   --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
   --gray-500: #6b7280;
+  --gray-600: #4b5563;
   --gray-700: #374151;
+  --gray-800: #1f2937;
   --gray-900: #111827;
   --white: #ffffff;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
@@ -441,7 +444,7 @@ a { text-decoration: none; color: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .cat-tab-active {
-  background: #fff;
+  background: var(--white);
   color: var(--gray-900);
   box-shadow: 0 1px 4px rgba(0,0,0,.1);
 }
@@ -574,9 +577,10 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   justify-content: center;
   gap: 5px;
 }
-.type-tab.active-income { background: var(--white); color: var(--success); box-shadow: var(--shadow-sm); }
-.type-tab.active-expense { background: var(--white); color: var(--danger); box-shadow: var(--shadow-sm); }
-.type-tab.active-transfer { background: var(--white); color: var(--primary); box-shadow: var(--shadow-sm); }
+.type-tab.active-income    { background: var(--white); color: var(--success); box-shadow: var(--shadow-sm); }
+.type-tab.active-expense   { background: var(--white); color: var(--danger);  box-shadow: var(--shadow-sm); }
+.type-tab.active-transfer  { background: var(--white); color: var(--primary); box-shadow: var(--shadow-sm); }
+.type-tab.active-liability { background: var(--white); color: var(--warning); box-shadow: var(--shadow-sm); }
 
 /* ===== BUTTONS ===== */
 .btn {
@@ -976,8 +980,11 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   --gray-100:      #1e2538;
   --gray-200:      #2d3a52;
   --gray-300:      #3d4f6e;
+  --gray-400:      #5d738f;
   --gray-500:      #8899b4;
+  --gray-600:      #a8b8d0;
   --gray-700:      #c8d5ea;
+  --gray-800:      #dce6f5;
   --gray-900:      #eef2fb;
   --white:         #1a2035;
   --shadow-sm:     0 1px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.25);
