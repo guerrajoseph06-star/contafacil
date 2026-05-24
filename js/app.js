@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23n';
+const APP_VERSION = '2026.05.23o';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -111,6 +111,9 @@ let journalSearch     = '';
 let journalDateFilter = 'all';   // 'all'|'today'|'yesterday'|'week'|'month'|'custom'
 let reportYear       = new Date().getFullYear();
 let reportMonth      = new Date().getMonth() + 1;
+let _cmpActive       = false;   // comparativa activa o no
+let _cmpM            = null;    // mes de comparación seleccionado (null = mes anterior)
+let _cmpY            = null;    // año de comparación seleccionado
 
 // ── Formatos ──────────────────────────────────────────────────────────────────
 function fmt(amount) {
@@ -3711,28 +3714,92 @@ function openTxDetail(id) {
 function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }
 
 // ── Comparativa vs mes anterior (Reportes) ───────────────────────────────────
-function _renderReportComparison() {
-  const card = document.getElementById('report-cmp-card');
-  const pills = document.getElementById('report-cmp-pills');
-  if (!card || !pills) return;
-
-  const prevM   = reportMonth === 1 ? 12 : reportMonth - 1;
-  const prevY   = reportMonth === 1 ? reportYear - 1 : reportYear;
-  const cur     = DB.getMonthStats(reportYear, reportMonth);
-  const prev    = DB.getMonthStats(prevY, prevM);
-  const prevLbl = new Date(prevY, prevM - 1, 1).toLocaleDateString('es-CO', { month: 'long' });
-
-  // Ocultar si no hay datos en ninguno de los dos meses
-  if (!cur.income && !cur.opExpenses && !prev.income && !prev.opExpenses) {
-    card.style.display = 'none'; return;
+// ── Comparativa de meses — activable y con mes seleccionable ─────────────────
+function toggleCmpCard() {
+  _cmpActive = !_cmpActive;
+  // Cuando se activa, establecer el mes de comparación si aún no está seleccionado
+  if (_cmpActive && _cmpM === null) {
+    _cmpM = reportMonth === 1 ? 12 : reportMonth - 1;
+    _cmpY = reportMonth === 1 ? reportYear - 1 : reportYear;
   }
+  _renderReportComparison();
+}
 
+function _closeCmp() {
+  _cmpActive = false;
+  _renderReportComparison();
+}
+
+function _onCmpMonthChange() {
+  const sel = document.getElementById('cmp-month-select');
+  if (!sel || !sel.value) return;
+  const parts = sel.value.split('-');
+  _cmpY = parseInt(parts[0], 10);
+  _cmpM = parseInt(parts[1], 10);
+  // Actualizar las píldoras sin reconstruir todo
+  const pills = document.getElementById('report-cmp-pills');
+  if (!pills) return;
+  const cur     = DB.getMonthStats(reportYear, reportMonth);
+  const prev    = DB.getMonthStats(_cmpY, _cmpM);
+  const prevLbl = new Date(_cmpY, _cmpM - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
   pills.innerHTML =
     _cmpPill('💰 Ingresos', cur.income,     prev.income,     false, prevLbl) +
     _cmpPill('💸 Gastos',   cur.opExpenses, prev.opExpenses, true,  prevLbl) +
     _cmpPill('📊 Utilidad', cur.netProfit,  prev.netProfit,  false, prevLbl);
+}
 
-  card.style.display = pills.innerHTML.trim() ? 'block' : 'none';
+function _buildCmpOptions() {
+  const sel = document.getElementById('cmp-month-select');
+  if (!sel) return;
+  const opts = [];
+  // Últimos 24 meses, del más reciente al más antiguo, excluyendo el mes actual
+  for (let i = 1; i <= 24; i++) {
+    let m = reportMonth - i, y = reportYear;
+    while (m < 1) { m += 12; y--; }
+    const lbl = new Date(y, m - 1, 1)
+      .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    const isSel = _cmpM === m && _cmpY === y;
+    const prefix = i === 1 ? '← ' : '';
+    opts.push(`<option value="${y}-${m}" ${isSel ? 'selected' : ''}>${prefix}${lbl}</option>`);
+  }
+  sel.innerHTML = opts.join('');
+}
+
+function _renderReportComparison() {
+  const card = document.getElementById('report-cmp-card');
+  const btn  = document.getElementById('cmp-toggle-btn');
+  if (!card) return;
+
+  // Actualizar estilo del botón toggle
+  if (btn) {
+    btn.style.background = _cmpActive ? 'var(--primary)' : 'var(--primary-light)';
+    btn.style.color      = _cmpActive ? 'white'          : 'var(--primary)';
+  }
+
+  if (!_cmpActive) { card.style.display = 'none'; return; }
+
+  // Si el mes seleccionado coincide con el mes actual, retroceder uno
+  if (_cmpM === reportMonth && _cmpY === reportYear) {
+    _cmpM = reportMonth === 1 ? 12 : reportMonth - 1;
+    _cmpY = reportMonth === 1 ? reportYear - 1 : reportYear;
+  }
+
+  const cur     = DB.getMonthStats(reportYear, reportMonth);
+  const prev    = DB.getMonthStats(_cmpY, _cmpM);
+  const prevLbl = new Date(_cmpY, _cmpM - 1, 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  // Construir opciones del select
+  _buildCmpOptions();
+
+  card.style.display = 'block';
+  const pills = document.getElementById('report-cmp-pills');
+  if (!pills) return;
+  pills.innerHTML =
+    _cmpPill('💰 Ingresos', cur.income,     prev.income,     false, prevLbl) +
+    _cmpPill('💸 Gastos',   cur.opExpenses, prev.opExpenses, true,  prevLbl) +
+    _cmpPill('📊 Utilidad', cur.netProfit,  prev.netProfit,  false, prevLbl);
 }
 
 // ── Gráfico de desglose por categoría ────────────────────────────────────────

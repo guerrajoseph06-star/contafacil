@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523n">
+  <link rel="stylesheet" href="css/style.css?v=20260523o">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -787,11 +787,30 @@
       <button class="month-nav-btn" onclick="prevMonth()">‹</button>
       <div class="month-name" id="report-month-name">Mayo 2026</div>
       <button class="month-nav-btn" onclick="nextMonth()">›</button>
+      <button id="cmp-toggle-btn" onclick="toggleCmpCard()"
+        style="font-size:11px; font-weight:700; padding:5px 11px; border-radius:8px;
+          background:var(--primary-light); color:var(--primary); border:none;
+          cursor:pointer; white-space:nowrap; margin-left:4px; transition:all .15s;">
+        📊 Comparar
+      </button>
     </div>
 
-    <!-- ══ COMPARATIVA VS MES ANTERIOR ══ -->
+    <!-- ══ COMPARATIVA — mes seleccionable, opcional ══ -->
     <div id="report-cmp-card" class="no-print" style="display:none; margin-bottom:12px;">
-      <div style="display:flex; gap:8px;" id="report-cmp-pills"></div>
+      <div class="card" style="padding:10px 14px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:700; color:var(--gray-600); flex-shrink:0;">📊 Comparar con</span>
+          <select id="cmp-month-select" onchange="_onCmpMonthChange()"
+            style="flex:1; font-size:12px; padding:5px 8px; border-radius:8px;
+              border:1.5px solid var(--gray-200); background:var(--gray-50);
+              color:var(--gray-800); outline:none; cursor:pointer;">
+          </select>
+          <button onclick="_closeCmp()"
+            style="font-size:18px; color:var(--gray-400); background:none; border:none;
+              cursor:pointer; padding:2px; line-height:1; flex-shrink:0;">✕</button>
+        </div>
+        <div style="display:flex; gap:8px;" id="report-cmp-pills"></div>
+      </div>
     </div>
 
     <!-- ══ RESUMEN ANUAL (toggle) ══ -->
@@ -1342,7 +1361,7 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523n"></script>
-<script src="js/app.js?v=20260523n"></script>
+<script src="js/db.js?v=20260523o"></script>
+<script src="js/app.js?v=20260523o"></script>
 </body>
 </html>
