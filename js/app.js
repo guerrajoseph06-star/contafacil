@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23f';
+const APP_VERSION = '2026.05.23g';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -125,6 +125,9 @@ function fmtDate(str) {
   });
 }
 function today() { return new Date().toISOString().split('T')[0]; }
+function escHtml(str) {
+  return (str || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function showToast(msg, ms = 2500) {
@@ -1148,6 +1151,150 @@ function renderDashboard() {
 
   // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
   renderUpcomingAlerts();
+}
+
+// ── Búsqueda global ───────────────────────────────────────────────────────────
+let _gsTimeout = null;
+
+function globalSearchInput(q) {
+  const clearBtn = document.getElementById('dash-search-clear');
+  if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+  clearTimeout(_gsTimeout);
+  if (!q.trim()) {
+    const res = document.getElementById('dash-search-results');
+    if (res) res.style.display = 'none';
+    return;
+  }
+  _gsTimeout = setTimeout(() => _runGlobalSearch(q.trim()), 200);
+}
+
+function clearGlobalSearch() {
+  const inp = document.getElementById('dash-search-input');
+  if (inp) inp.value = '';
+  const clearBtn = document.getElementById('dash-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const res = document.getElementById('dash-search-results');
+  if (res) res.style.display = 'none';
+}
+
+function _highlight(text, q) {
+  if (!q || !text) return escHtml(text || '');
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return escHtml(text);
+  return escHtml(text.slice(0, idx)) +
+    `<mark style="background:#fef08a;border-radius:3px;padding:0 2px;">${escHtml(text.slice(idx, idx + q.length))}</mark>` +
+    escHtml(text.slice(idx + q.length));
+}
+
+function _runGlobalSearch(q) {
+  const qLow = q.toLowerCase();
+  const sections = [];
+
+  // ── Transacciones ──────────────────────────────────────
+  const txs = DB.getTransactions()
+    .filter(t => !t.isCogs && !t.isIva)
+    .filter(t =>
+      t.description.toLowerCase().includes(qLow) ||
+      (t.notes     || '').toLowerCase().includes(qLow) ||
+      (t.creditor  || '').toLowerCase().includes(qLow) ||
+      (t.proveedor || '').toLowerCase().includes(qLow)
+    ).slice(0, 7);
+  if (txs.length) sections.push({ label: '📋 Transacciones', items: txs.map(t => {
+    const cat   = DB.getCategoryById(t.category);
+    const emoji = cat ? cat.emoji : { income:'💰', expense:'💸', liability:'🔴', transfer:'↔️' }[t.type] || '💰';
+    const color = { income:'var(--success)', expense:'var(--danger)', liability:'var(--warning)', transfer:'var(--primary)' }[t.type];
+    const sign  = t.type === 'income' ? '+' : t.type === 'expense' ? '-' : '';
+    return `<div class="gs-item" onclick="clearGlobalSearch(); openTxDetail('${t.id}')">
+      <span class="gs-icon">${emoji}</span>
+      <div class="gs-body">
+        <div class="gs-title">${_highlight(t.description, q)}</div>
+        <div class="gs-sub">${fmtDate(t.date)}${cat ? ' · ' + cat.name : ''}</div>
+      </div>
+      <span class="gs-amt" style="color:${color};">${sign}${fmt(t.amount)}</span>
+    </div>`;
+  })});
+
+  // ── Cartera (CxC) ──────────────────────────────────────
+  const cobros = DB.getReceivables()
+    .filter(r =>
+      (r.clientName  || '').toLowerCase().includes(qLow) ||
+      (r.description || '').toLowerCase().includes(qLow)
+    ).slice(0, 4);
+  if (cobros.length) sections.push({ label: '🧾 Cartera', items: cobros.map(r => {
+    const paid    = (r.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    const pending = (r.totalAmount || 0) - paid;
+    return `<div class="gs-item" onclick="clearGlobalSearch(); navigate('cartera')">
+      <span class="gs-icon">🧾</span>
+      <div class="gs-body">
+        <div class="gs-title">${_highlight(r.clientName || 'Cliente', q)}</div>
+        <div class="gs-sub">Pendiente: ${fmt(pending)}</div>
+      </div>
+      <span class="gs-amt" style="color:#0891b2;">${fmt(r.totalAmount || 0)}</span>
+    </div>`;
+  })});
+
+  // ── Inventario ─────────────────────────────────────────
+  const prods = DB.getInventory()
+    .filter(p =>
+      (p.name || '').toLowerCase().includes(qLow) ||
+      (p.sku  || '').toLowerCase().includes(qLow)
+    ).slice(0, 4);
+  if (prods.length) sections.push({ label: '📦 Inventario', items: prods.map(p =>
+    `<div class="gs-item" onclick="clearGlobalSearch(); navigate('inventory')">
+      <span class="gs-icon">📦</span>
+      <div class="gs-body">
+        <div class="gs-title">${_highlight(p.name || 'Producto', q)}</div>
+        <div class="gs-sub">${p.sku ? 'SKU: ' + escHtml(p.sku) + ' · ' : ''}Stock: ${p.stock || 0} uds</div>
+      </div>
+      <span class="gs-amt">${fmt(p.price || 0)}</span>
+    </div>`
+  )});
+
+  // ── Activos Fijos ──────────────────────────────────────
+  const assets = DB.getFixedAssets()
+    .filter(a =>
+      (a.name     || '').toLowerCase().includes(qLow) ||
+      (a.category || '').toLowerCase().includes(qLow)
+    ).slice(0, 3);
+  if (assets.length) sections.push({ label: '🏭 Activos Fijos', items: assets.map(a => {
+    const dep = DB.calcAssetDepreciation(a);
+    return `<div class="gs-item" onclick="clearGlobalSearch(); navigate('assets')">
+      <span class="gs-icon">🏭</span>
+      <div class="gs-body">
+        <div class="gs-title">${_highlight(a.name || 'Activo', q)}</div>
+        <div class="gs-sub">${escHtml(a.category || '')} · Valor libro: ${fmt(dep.bookValue)}</div>
+      </div>
+      <span class="gs-amt">${fmt(a.cost || 0)}</span>
+    </div>`;
+  })});
+
+  const el = document.getElementById('dash-search-results');
+  if (!el) return;
+
+  if (!sections.length) {
+    el.style.display = 'block';
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--gray-400);font-size:14px;">
+      🔍 Sin resultados para "<strong>${escHtml(q)}</strong>"
+    </div>`;
+    return;
+  }
+
+  const sectHTML = sections.map(s => `
+    <div class="gs-section-header">${s.label}</div>
+    ${s.items.join('')}
+  `).join('');
+
+  const safeQ = escHtml(q).replace(/'/g, "\\'");
+  el.style.display = 'block';
+  el.innerHTML = sectHTML + `
+    <div class="gs-footer">
+      <button onclick="clearGlobalSearch(); navigate('journal'); setTimeout(()=>{ journalSearch='${safeQ}';
+        const inp=document.getElementById('journal-search'); if(inp) inp.value='${safeQ}'; renderJournal(); }, 250);"
+        style="font-size:13px;color:var(--primary);font-weight:600;background:none;padding:6px 8px;">
+        Ver todas las transacciones con "${escHtml(q)}" →
+      </button>
+    </div>
+  `;
 }
 
 // ── Saldo por cuenta bancaria ─────────────────────────────────────────────────
@@ -7935,5 +8082,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dash-recent').addEventListener('click', e => {
     const li = e.target.closest('[data-tx-id]');
     if (li) openTxDetail(li.dataset.txId);
+  });
+
+  // Cierra resultados de búsqueda global al tocar fuera
+  document.addEventListener('click', e => {
+    const wrap = document.getElementById('dash-search-wrap');
+    if (wrap && !wrap.contains(e.target)) clearGlobalSearch();
   });
 });
