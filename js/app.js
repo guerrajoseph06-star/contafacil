@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23r';
+const APP_VERSION = '2026.05.23s';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2551,6 +2551,65 @@ function _openPhotoViewer(dataUrl) {
   document.body.appendChild(ov);
 }
 
+// ── Foto del producto (inventario) ────────────────────────────────────────────
+let _productPhoto = null; // dataURL de la foto del producto en el formulario actual
+
+// El usuario tomó/eligió una foto para el producto
+function onProductPhotoSelected(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = ''; // permitir reelegir el mismo archivo
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToast('⚠️ Selecciona una imagen'); return;
+  }
+  showToast('🖼️ Procesando foto…', 1200);
+  // Productos: 800px es suficiente para miniatura + visor; mantiene el almacenamiento liviano
+  _compressImage(file, 800, 0.72)
+    .then(dataUrl => {
+      _productPhoto = dataUrl;
+      _renderProductPhotoArea();
+      showToast('✅ Foto lista', 1200);
+    })
+    .catch(() => showToast('❌ No se pudo procesar la imagen', 2500));
+}
+
+// Dibuja el área de foto del producto según haya o no foto
+function _renderProductPhotoArea() {
+  const area = document.getElementById('product-photo-area');
+  if (!area) return;
+  if (_productPhoto) {
+    area.innerHTML = `
+      <div style="display:flex; gap:12px; align-items:center;">
+        <img src="${_productPhoto}" onclick="_openPhotoViewer(_productPhoto)"
+          style="width:76px; height:76px; object-fit:cover; border-radius:12px; cursor:pointer;
+            flex-shrink:0; border:1.5px solid var(--gray-200);">
+        <div style="flex:1;">
+          <button type="button" onclick="document.getElementById('p-photo-input').click()"
+            style="display:block; width:100%; background:var(--primary-light); color:var(--primary);
+              border:none; border-radius:8px; padding:9px 12px; font-size:13px; font-weight:700;
+              cursor:pointer; margin-bottom:6px;">🔄 Cambiar foto</button>
+          <button type="button" onclick="_removeProductPhoto()"
+            style="width:100%; background:none; border:none; color:var(--danger); font-size:13px;
+              font-weight:700; cursor:pointer; padding:4px;">Quitar foto</button>
+        </div>
+      </div>`;
+  } else {
+    area.innerHTML = `
+      <button type="button" onclick="document.getElementById('p-photo-input').click()"
+        style="width:100%; padding:18px; border:1.5px dashed var(--gray-300); border-radius:12px;
+          background:var(--gray-50); color:var(--gray-500); font-size:13px; font-weight:600;
+          cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <span style="font-size:30px;">📸</span>
+        Tomar foto o elegir de la galería
+      </button>`;
+  }
+}
+
+function _removeProductPhoto() {
+  _productPhoto = null;
+  _renderProductPhotoArea();
+}
+
 // ── Registrar factura de compra (IVA mixto + deducible) ───────────────────────
 let _facturaPhoto = null;
 let _facturaPago  = 'efectivo';
@@ -4581,7 +4640,9 @@ function renderInventory() {
       return `
       <div class="card inv-card" style="margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:12px;">
-          <div style="font-size:36px; width:48px; text-align:center;">${p.emoji || '📦'}</div>
+          <div id="inv-thumb-${p.id}" style="width:54px; height:54px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:34px;
+            border-radius:11px; overflow:hidden; background:var(--gray-50);">${p.emoji || '📦'}</div>
           <div style="flex:1; min-width:0;">
             <div style="font-size:16px; font-weight:700;">${p.name}${ivaBadge}</div>
             ${p.sku ? `<div style="font-size:11px; color:var(--primary); font-family:monospace; margin-top:2px; background:var(--primary-light); display:inline-block; padding:1px 7px; border-radius:5px;">📊 ${p.sku}</div>` : ''}
@@ -4603,6 +4664,21 @@ function renderInventory() {
       </div>
       `;
     }).join('');
+
+    // Cargar las miniaturas de foto (async desde IndexedDB) y reemplazar el emoji
+    products.filter(p => p.hasPhoto).forEach(p => {
+      DB.getPhoto('prod_' + p.id).then(ph => {
+        if (!ph) return;
+        const el = document.getElementById('inv-thumb-' + p.id);
+        if (!el) return;
+        const img = document.createElement('img');
+        img.src = ph;
+        img.style.cssText = 'width:100%; height:100%; object-fit:cover; cursor:pointer;';
+        img.onclick = (e) => { e.stopPropagation(); _openPhotoViewer(ph); };
+        el.innerHTML = '';
+        el.appendChild(img);
+      }).catch(() => {});
+    });
   }
 
   // Total valor inventario (siempre sobre todos los productos, no los filtrados)
@@ -4613,6 +4689,7 @@ function renderInventory() {
 
 function openProductForm(editId = null) {
   const p = editId ? DB.getProductById(editId) : null;
+  _productPhoto = null; // limpiar foto previa del formulario
   const EMOJIS = ['📦','👗','👕','👖','👟','👔','👜','🧴','💄','🍕','🧃','📱','🔧','📚','🪑','🖥️'];
   const hasBarcode = 'BarcodeDetector' in window;
   const ivaPct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
@@ -4628,7 +4705,17 @@ function openProductForm(editId = null) {
     <h3 class="sheet-title">${p ? 'Editar Producto' : 'Nuevo Producto'}</h3>
 
     <div class="form-group">
-      <label class="form-label">Emoji / Ícono</label>
+      <label class="form-label">📸 Foto del producto (opcional)</label>
+      <input type="file" id="p-photo-input" accept="image/*"
+        onchange="onProductPhotoSelected(event)" style="display:none;">
+      <div id="product-photo-area"></div>
+      <div style="font-size:11px; color:var(--gray-400); margin-top:6px;">
+        Si agregas una foto, se mostrará en la lista de inventario en lugar del ícono.
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Emoji / Ícono (respaldo)</label>
       <div id="emoji-picker" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
         ${EMOJIS.map(e => `<button onclick="selectEmoji('${e}')" style="font-size:24px; width:40px; height:40px; border-radius:8px; background:${(p?.emoji||'📦')===e?'var(--primary-light)':'var(--gray-100)'}; border:${(p?.emoji||'📦')===e?'2px solid var(--primary)':'2px solid transparent'};" data-emoji="${e}">${e}</button>`).join('')}
       </div>
@@ -4763,6 +4850,14 @@ function openProductForm(editId = null) {
     ${p ? `<button class="btn btn-danger btn-block mt-8" onclick="deleteProduct('${p.id}')">🗑️ Eliminar producto</button>` : ''}
   `;
   sheet.classList.add('open');
+
+  // Foto del producto: dibujar área vacía y cargar la existente (async) si edita
+  _renderProductPhotoArea();
+  if (p && p.hasPhoto) {
+    DB.getPhoto('prod_' + p.id).then(ph => {
+      if (ph) { _productPhoto = ph; _renderProductPhotoArea(); }
+    });
+  }
 
   // Si es nuevo producto y hay sugerencia, mostrar hint
   if (!p && ivaInicial.msg && ivaInicial.confianza !== 'baja') {
@@ -4905,9 +5000,21 @@ function saveProduct(editId) {
     precioFinal:  ivaCalc.precioFinal,
     valorIva:     ivaCalc.valorIva,
     porcentajeIva: ivaPct,
+    hasPhoto:     !!_productPhoto,
   };
-  if (editId) DB.updateProduct(editId, data);
-  else        DB.addProduct(data);
+
+  let pid = editId;
+  if (editId) {
+    DB.updateProduct(editId, data);
+  } else {
+    const np = DB.addProduct(data);
+    pid = np.id;
+  }
+
+  // Guardar la foto en IndexedDB (o borrarla si se quitó al editar)
+  if (_productPhoto)    DB.savePhoto('prod_' + pid, _productPhoto).catch(() => {});
+  else if (editId)      DB.deletePhoto('prod_' + pid).catch(() => {});
+
   closeSettingsSheet();
   renderInventory();
   showToast(editId ? '✅ Producto actualizado' : '✅ Producto agregado');

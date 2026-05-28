@@ -948,6 +948,7 @@ const DB = (() => {
     const p = getInventory().find(x => x.id === id);
     _logAudit('delete_product', `🗑️ ${p ? p.name : id}`);
     save(KEYS.inventory, getInventory().filter(p => p.id !== id));
+    deletePhoto('prod_' + id).catch(() => {}); // limpiar la foto del producto (IndexedDB)
   }
   function getProductById(id) { return getInventory().find(p => p.id === id) || null; }
 
@@ -1798,7 +1799,13 @@ const DB = (() => {
   // El respaldo completo incluye las fotos de comprobantes.
   async function exportData() {
     const txs    = load(KEYS.transactions) || [];
-    const photos = await getPhotosFor(txs.filter(t => t.hasReceipt).map(t => t.id));
+    const inv    = load(KEYS.inventory)    || [];
+    // Fotos de comprobantes (claves = id de transacción) + fotos de productos (prod_<id>)
+    const photoKeys = [
+      ...txs.filter(t => t.hasReceipt).map(t => t.id),
+      ...inv.filter(p => p.hasPhoto).map(p => 'prod_' + p.id),
+    ];
+    const photos = await getPhotosFor(photoKeys);
     return JSON.stringify({
       version: 4, exported: new Date().toISOString(),
       transactions: txs,
