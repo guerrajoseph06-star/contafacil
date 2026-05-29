@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23u';
+const APP_VERSION = '2026.05.23v';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1056,7 +1056,7 @@ function renderTodaySummary() {
   if (!txs.length) { el.style.display = 'none'; return; }
 
   const income  = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const expense = txs.filter(t => t.type === 'expense' && !t.inventoryAsset).reduce((s, t) => s + t.amount, 0); // F1: la compra de inventario no es gasto
   const liab    = txs.filter(t => t.type === 'liability').reduce((s, t) => s + t.amount, 0);
   const net     = income - expense;
   const netColor = net >= 0 ? 'var(--success)' : 'var(--danger)';
@@ -1860,7 +1860,7 @@ function renderJournal() {
     const hasFilter = journalFilter !== 'all' || journalSearch.trim() || journalCatFilter || journalDateFilter !== 'all' || journalUserFilter || journalBankFilter;
     if (hasFilter && txs.length > 0) {
       const totalInc = txs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
-      const totalExp = txs.filter(t => t.type === 'expense' && !t.isCogs).reduce((s,t) => s+t.amount, 0);
+      const totalExp = txs.filter(t => t.type === 'expense' && !t.isCogs && !t.inventoryAsset).reduce((s,t) => s+t.amount, 0); // F1
       const totalLib = txs.filter(t => t.type === 'liability').reduce((s,t) => s+t.amount, 0);
       const catName  = journalCatFilter ? DB.getCategoryById(journalCatFilter)?.name : null;
 
@@ -3578,9 +3578,10 @@ function renderFormFields(tx) {
           </label>
         </div>
         <div id="inv-section" style="display:${tx?.affectsInventory ? 'block' : 'none'}">
+          <div id="inv-f1-aviso" style="display:none;"></div>
           <div class="form-group">
             <label class="form-label">Producto</label>
-            <select id="f-product" class="form-control">${prodOptions}</select>
+            <select id="f-product" class="form-control" onchange="_renderInvAviso()">${prodOptions}</select>
           </div>
           <div class="form-group">
             <label class="form-label">Cantidad ${isExpense ? 'comprada' : 'vendida'}</label>
@@ -3606,6 +3607,7 @@ function renderFormFields(tx) {
   _updateSplitInfo();   // pinta el reparto del pago dividido (si aplica)
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
   if (isIncome || isExpense) _onCategoryChange(); // aviso tributario suave de la categoría preseleccionada
+  if (isIncome || isExpense) _renderInvAviso();   // F1: aviso de compra→inventario / costo 0 al vender
 
   // La etiqueta de "Fecha" cambia de significado en una deuda
   const dateLabel = document.getElementById('f-date-label');
@@ -3616,6 +3618,39 @@ function toggleInventorySection() {
   const cb  = document.getElementById('f-affects-inv');
   const sec = document.getElementById('inv-section');
   if (sec) sec.style.display = cb?.checked ? 'block' : 'none';
+  _renderInvAviso();
+}
+
+// F1 — Aviso suave NO bloqueante dentro de la sección de inventario:
+//   • Compra → explica que se registra como inventario (activo), no como gasto.
+//   • Venta  → advierte (visible) si el producto no tiene costo (CMV $0).
+function _renderInvAviso() {
+  const el = document.getElementById('inv-f1-aviso');
+  if (!el) return;
+  const on = document.getElementById('f-affects-inv')?.checked;
+  if (!on) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  if (formType === 'expense') {
+    el.style.display = 'block';
+    el.style.cssText = 'display:block; margin-bottom:12px; padding:10px 12px; border-radius:8px; ' +
+      'background:#eff6ff; border:1px solid #bfdbfe; font-size:12px; color:#1e40af; line-height:1.45;';
+    el.innerHTML = '📦 Esta compra se registrará como <strong>inventario</strong>. ' +
+      'Su costo se reconocerá automáticamente cuando vendas el producto, no ahora.';
+  } else if (formType === 'income') {
+    const pid  = document.getElementById('f-product')?.value;
+    const prod = pid ? DB.getProductById(pid) : null;
+    if (prod && !(prod.unitCost > 0)) {
+      el.style.display = 'block';
+      el.style.cssText = 'display:block; margin-bottom:12px; padding:10px 12px; border-radius:8px; ' +
+        'background:#fffbeb; border:1px solid #fde68a; font-size:12px; color:#92400e; line-height:1.45;';
+      el.innerHTML = '⚠️ <strong>' + escHtml(prod.name) + '</strong> no tiene costo registrado: ' +
+        'su CMV será $0 y la utilidad puede quedar inflada. Defínelo en Inventario o al registrar su compra.';
+    } else {
+      el.style.display = 'none'; el.innerHTML = '';
+    }
+  } else {
+    el.style.display = 'none'; el.innerHTML = '';
+  }
 }
 
 function submitForm() {
@@ -4153,7 +4188,7 @@ function renderReports() {
 
   // ── Gastos operativos por categoría (barra) ───────────────
   const catTotals = {};
-  txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+  txs.filter(t => t.type === 'expense' && !t.isCogs && !t.inventoryAsset).forEach(t => { // F1
     catTotals[t.category || 'otros'] = (catTotals[t.category || 'otros'] || 0) + t.amount;
   });
   const sorted = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -7242,7 +7277,7 @@ function renderCharts() {
   // ── Donut: gastos por categoría del mes seleccionado ─────
   const txs = DB.getTransactionsByMonth(reportYear, reportMonth);
   const catTotals = {};
-  txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+  txs.filter(t => t.type === 'expense' && !t.isCogs && !t.inventoryAsset).forEach(t => { // F1
     const k = t.category || '__otros__';
     catTotals[k] = (catTotals[k] || 0) + t.amount;
   });

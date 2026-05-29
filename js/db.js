@@ -222,6 +222,32 @@ const DB = (() => {
     if (changed) save(KEYS.transactions, fixed);
   }
 
+  // ── F1: compra capitalizada a inventario ───────────────────────────────────
+  // Una compra que repone inventario NO es gasto del P&L: es convertir efectivo en
+  // un activo (inventario). El gasto se reconoce solo vía CMV al vender.
+  // inventoryAsset es una MARCA CONTABLE DERIVADA (no un subsistema): se usa para
+  // excluir la compra de los cálculos de utilidad/gasto/presupuesto, conservando
+  // su efecto en caja, IVA e inventario.
+  function _isInventoryBuy(tx) {
+    return tx.type === 'expense' && tx.affectsInventory && !!tx.productId && (parseFloat(tx.quantity) || 0) > 0;
+  }
+
+  // Actualiza el costo unitario del producto con el ÚLTIMO costo de compra.
+  // Usa tx.amount, que tras _applyIvaToTransaction ya es la BASE sin IVA.
+  // Modelo simple "último costo": sin promedio, FIFO/LIFO ni kardex.
+  function _applyLastCost(tx) {
+    if (!_isInventoryBuy(tx)) return;
+    const qty  = parseFloat(tx.quantity) || 0;
+    const base = parseFloat(tx.amount)   || 0; // ya es base sin IVA
+    if (qty <= 0 || base <= 0) return;
+    const unit = Math.round((base / qty) * 100) / 100;
+    const inv  = getInventory();
+    const idx  = inv.findIndex(p => p.id === tx.productId);
+    if (idx < 0) return;
+    inv[idx].unitCost = unit;
+    save(KEYS.inventory, inv);
+  }
+
   // ── COGS helper ────────────────────────────────────────────
   // Construye la entrada de CMV vinculada a una venta
   function _buildCogsEntry(saleTx, product) {
@@ -322,6 +348,9 @@ const DB = (() => {
     // Auto-IVA: desglosa el IVA y crea el asiento vinculado (ajusta tx.amount a la base)
     _applyIvaToTransaction(tx, txs);
 
+    // F1: compra que repone inventario → marca contable (no gasta P&L, solo CMV al vender)
+    if (_isInventoryBuy(tx)) tx.inventoryAsset = true;
+
     // Auto-COGS: cuando es una venta con inventario
     if (_needsCogs(tx)) {
       const product = getProductById(tx.productId);
@@ -336,6 +365,7 @@ const DB = (() => {
     txs.push(tx);
     save(KEYS.transactions, txs);
     _applyInventory(tx, 'add');
+    _applyLastCost(tx); // último costo: alimenta product.unitCost (base sin IVA)
     _logAudit('create_tx', `${tx.type === 'income' ? '📈' : tx.type === 'expense' ? '📉' : '📋'} ${tx.description} · $${tx.amount}`);
     return tx;
   }
@@ -364,6 +394,10 @@ const DB = (() => {
     // Recalcular IVA si aplica (ajusta updated.amount a la base)
     _applyIvaToTransaction(updated, txs);
 
+    // F1: re-evaluar la marca según el estado FINAL (si destildan inventario, se quita)
+    if (_isInventoryBuy(updated)) updated.inventoryAsset = true;
+    else                          delete updated.inventoryAsset;
+
     // Recalcular CMV si aplica
     if (_needsCogs(updated)) {
       const product = getProductById(updated.productId);
@@ -382,6 +416,7 @@ const DB = (() => {
 
     save(KEYS.transactions, txs);
     _applyInventory(updated, 'add');
+    _applyLastCost(updated); // último costo (base sin IVA) si sigue siendo compra de inventario
     _logAudit('edit_tx', `✏️ ${updated.description} · $${updated.amount}`);
     return updated;
   }
@@ -560,7 +595,7 @@ const DB = (() => {
         else                              ivaCredito += t.amount;
       }
       if (t.type === 'income')    income     += t.amount;
-      if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
+      if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (!t.inventoryAsset && (opExpenses += t.amount)); // F1: compra de inventario no es gasto P&L
       if (t.type === 'liability') liabilities += t.amount;
     });
     const totalExpenses = cogs + opExpenses;
@@ -575,7 +610,7 @@ const DB = (() => {
     txs.forEach(t => {
       // El IVA cuenta como ingreso/gasto real (el saldo debe cuadrar con la utilidad)
       if (t.type === 'income')    income     += t.amount;
-      if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (opExpenses += t.amount);
+      if (t.type === 'expense')   t.isCogs ? (cogs += t.amount) : (!t.inventoryAsset && (opExpenses += t.amount)); // F1: compra de inventario no es gasto P&L
       if (t.type === 'liability') liabilities += t.amount;
     });
     return { income, cogs, opExpenses, liabilities,
@@ -608,7 +643,7 @@ const DB = (() => {
       if (t.type === 'expense') {
         if (t.isCogs) {
           cogs += t.amount;
-        } else {
+        } else if (!t.inventoryAsset) { // F1: la compra de inventario no es gasto operativo
           opExpenses += t.amount;
           const cat = t.category || 'otros';
           expByCat[cat] = (expByCat[cat] || 0) + t.amount;
@@ -1144,7 +1179,7 @@ const DB = (() => {
     if (!Object.keys(budgets).length) return [];
     const txs = getTransactionsByMonth(year, month);
     const spent = {};
-    txs.filter(t => t.type === 'expense' && !t.isCogs).forEach(t => {
+    txs.filter(t => t.type === 'expense' && !t.isCogs && !t.inventoryAsset).forEach(t => {
       const k = t.category || '__sin_cat__';
       spent[k] = (spent[k] || 0) + t.amount;
     });
