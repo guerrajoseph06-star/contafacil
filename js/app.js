@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23v';
+const APP_VERSION = '2026.05.23w';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2224,6 +2224,7 @@ function txItemHTML(tx) {
 // ── Sistema inteligente: autocompletar descripciones + selector IVA ───────────
 let _formIvaType      = 'IVA_INCLUIDO'; // tipo de IVA activo en el formulario
 let _ivaTouched       = false;          // ¿el usuario eligió el IVA manualmente? (evita que la sugerencia por categoría lo pise)
+let _moreOpen         = false;          // estado del bloque "Más detalles" (no persiste entre aperturas)
 let _smartSuggestions = [];              // lista de sugerencias actuales (por índice)
 
 // Normaliza texto a clave de aprendizaje: primeras 3 palabras ≥3 letras
@@ -2529,7 +2530,7 @@ function onReceiptPhotoSelected(ev) {
 // HTML estático de la sección de foto (input oculto + contenedor)
 function _receiptSectionHTML() {
   return `
-    <div class="form-group">
+    <div class="form-group" id="receipt-group" style="display:none;">
       <label class="form-label">📷 Foto de factura / comprobante (opcional)</label>
       <input type="file" id="f-receipt-input" accept="image/*"
         onchange="onReceiptPhotoSelected(event)" style="display:none;">
@@ -3359,6 +3360,9 @@ function renderForm(editId = null) {
   }
   _hideSuggestions(); // cerrar sugerencias al abrir el formulario
 
+  // "Más detalles": nunca persiste. Nueva → colapsado. Edición con notas o foto → expandido.
+  _moreOpen = !!(tx && (tx.notes || tx.hasReceipt));
+
   updateTypeTabs();
   renderFormFields(tx);
 }
@@ -3492,7 +3496,10 @@ function renderFormFields(tx) {
   } else {
     // INGRESO o GASTO: categoría + cuenta (con opción de pago dividido) + IVA + inventario
     const splitOn      = !!(tx && Array.isArray(tx.splitPayments) && tx.splitPayments.length === 2);
-    const acc1Sel      = splitOn ? tx.splitPayments[0].account : (tx?.account || '');
+    // En altas NUEVAS (sin tx ni plantilla) pre-seleccionamos la última cuenta usada
+    // para este tipo de movimiento. En edición/plantilla manda la cuenta de la tx.
+    const acc1Sel      = splitOn ? tx.splitPayments[0].account
+                       : (tx ? (tx.account || '') : (DB.getLastAccount(formType) || ''));
     const acc2Sel      = splitOn ? tx.splitPayments[1].account : '';
     const split2Amount = splitOn ? tx.splitPayments[1].amount  : '';
     const mainBankName  = tx?.bankName  || '';
@@ -3598,6 +3605,8 @@ function renderFormFields(tx) {
     }
   }
 
+  // Toggle "Más detalles" (controla la foto de abajo + el contenedor estático #form-more)
+  html += _moreToggleHTML();
   // Foto de comprobante / factura — disponible en ingreso, gasto y deuda
   if (!isTransfer) html += _receiptSectionHTML();
 
@@ -3608,6 +3617,11 @@ function renderFormFields(tx) {
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
   if (isIncome || isExpense) _onCategoryChange(); // aviso tributario suave de la categoría preseleccionada
   if (isIncome || isExpense) _renderInvAviso();   // F1: aviso de compra→inventario / costo 0 al vender
+
+  // Factura detallada: opción contextual solo para gastos
+  const facWrap = document.getElementById('fac-entry-wrap');
+  if (facWrap) facWrap.style.display = isExpense ? 'block' : 'none';
+  _applyMoreState(); // sincronizar foto + #form-more con el estado actual del toggle
 
   // La etiqueta de "Fecha" cambia de significado en una deuda
   const dateLabel = document.getElementById('f-date-label');
@@ -3620,6 +3634,34 @@ function toggleInventorySection() {
   if (sec) sec.style.display = cb?.checked ? 'block' : 'none';
   _renderInvAviso();
 }
+
+// ── "Más detalles ▾" — divulgación progresiva ────────────────────────────────
+// El toggle se inyecta al final del bloque dinámico (justo antes de la foto), así
+// controla la foto (que NO se reubica) y el contenedor estático #form-more, todo
+// revelándose DEBAJO del toggle (sin saltos de layout en móvil).
+function _moreToggleHTML() {
+  return `
+    <button type="button" id="more-toggle" onclick="toggleMoreDetails()"
+      style="display:flex; align-items:center; justify-content:center; gap:6px; width:100%;
+        background:none; border:none; color:var(--primary); font-size:13px; font-weight:700;
+        padding:11px; cursor:pointer; margin:4px 0;">
+      <span id="more-toggle-label">Más detalles</span>
+      <span id="more-toggle-arrow">▾</span>
+    </button>`;
+}
+
+function _applyMoreState() {
+  const more = document.getElementById('form-more');
+  const rg   = document.getElementById('receipt-group'); // foto (puede no existir en traslado)
+  const lbl  = document.getElementById('more-toggle-label');
+  const arr  = document.getElementById('more-toggle-arrow');
+  if (more) more.style.display = _moreOpen ? 'block' : 'none';
+  if (rg)   rg.style.display   = _moreOpen ? 'block' : 'none';
+  if (lbl)  lbl.textContent    = _moreOpen ? 'Menos detalles' : 'Más detalles';
+  if (arr)  arr.textContent    = _moreOpen ? '▴' : '▾';
+}
+
+function toggleMoreDetails() { _moreOpen = !_moreOpen; _applyMoreState(); }
 
 // F1 — Aviso suave NO bloqueante dentro de la sección de inventario:
 //   • Compra → explica que se registra como inventario (activo), no como gasto.
@@ -3734,6 +3776,11 @@ function submitForm() {
     const newTx = DB.addTransaction(data);
     if (attachPhoto && newTx) DB.savePhoto(newTx.id, _formPhoto);
     showToast('✅ Transacción guardada');
+  }
+
+  // Recordar la última cuenta usada por tipo de movimiento (default inteligente, editable)
+  if ((formType === 'income' || formType === 'expense') && data.account) {
+    DB.setLastAccount(formType, data.account);
   }
 
   // ── Aprendizaje: recordar descripción + configuración para futuros autocompletados

@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523v">
+  <link rel="stylesheet" href="css/style.css?v=20260523w">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -514,12 +514,6 @@
       <button class="type-tab" data-type="liability" onclick="setFormType('liability')">🔴 Deuda</button>
     </div>
 
-    <!-- Atajo: registrar una factura detallada con IVA -->
-    <button class="btn btn-outline btn-block" style="margin-bottom:14px; font-size:13px;"
-      onclick="openFacturaForm()">
-      🧾 Registrar factura detallada (IVA mixto, deducible)
-    </button>
-
     <!-- Monto (siempre presente) -->
     <div class="amount-input-wrap">
       <div style="font-size:13px; color:var(--gray-400); margin-bottom:4px;">MONTO</div>
@@ -552,20 +546,37 @@
     <!-- Campos dinámicos según tipo -->
     <div id="form-dynamic-fields"></div>
 
-    <!-- Notas (siempre presente) -->
-    <div class="form-group">
-      <label class="form-label">Notas (opcional)</label>
-      <textarea id="f-notes" class="form-control" rows="2"
-        placeholder="Factura #, nombre cliente, detalles..."></textarea>
+    <!-- Más detalles: zona avanzada colapsada. La foto vive en el bloque dinámico
+         (no se reubica) y se colapsa con el mismo control "Más detalles". -->
+    <div id="form-more" style="display:none;">
+      <!-- Factura detallada — opción contextual (solo gasto) -->
+      <div id="fac-entry-wrap">
+        <button id="fac-entry" class="btn btn-outline btn-block"
+          style="margin-bottom:6px; font-size:13px;" onclick="openFacturaForm()">
+          🧾 Registro detallado de factura
+        </button>
+        <div style="font-size:12px; color:var(--gray-500); line-height:1.45; margin-bottom:14px;">
+          ¿Tu factura tiene productos con 0% y 15%? Usa el registro detallado.
+        </div>
+      </div>
+
+      <!-- Notas -->
+      <div class="form-group">
+        <label class="form-label">Notas (opcional)</label>
+        <textarea id="f-notes" class="form-control" rows="2"
+          placeholder="Factura #, nombre cliente, detalles..."></textarea>
+      </div>
+
+      <!-- Guardar como plantilla — acción secundaria (ghost, sin competir con Guardar) -->
+      <button id="btn-save-template" onclick="saveAsTemplate()"
+        style="display:block; width:100%; background:none; border:none; color:var(--gray-500);
+          font-size:13px; font-weight:600; padding:8px; cursor:pointer; text-align:center;">
+        ⭐ Guardar como plantilla
+      </button>
     </div>
 
     <button class="btn btn-primary btn-block mt-8" onclick="submitForm()">
       ✅ Guardar
-    </button>
-    <button id="btn-save-template" class="btn btn-secondary btn-block mt-8"
-      onclick="saveAsTemplate()"
-      style="font-size:13px; padding:10px 16px; color:var(--gray-600);">
-      ⭐ Guardar como plantilla
     </button>
     <button id="btn-delete-tx" class="btn btn-danger btn-block mt-8"
       onclick="deleteCurrentTx()" style="display:none;">
@@ -1409,8 +1420,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523v"></script>
-<script src="js/app.js?v=20260523v"></script>
-<script src="js/tax.js?v=20260523v"></script>
+<script src="js/db.js?v=20260523w"></script>
+<script src="js/app.js?v=20260523w"></script>
+<script src="js/tax.js?v=20260523w"></script>
 </body>
 </html>

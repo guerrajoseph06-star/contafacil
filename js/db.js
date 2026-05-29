@@ -740,6 +740,11 @@ const DB = (() => {
   function getAccounts() { return load(KEYS.accounts) || DEFAULT_ACCOUNTS; }
   function getAccountById(id) { return getAccounts().find(a => a.id === id) || null; }
 
+  // Última cuenta usada por tipo de movimiento ('income' | 'expense').
+  // Default inteligente para altas nuevas. Por empresa (prefijo). Siempre editable.
+  function getLastAccount(type) { return load('cf_last_acc_' + type) || ''; }
+  function setLastAccount(type, id) { if (id) save('cf_last_acc_' + type, id); }
+
   // ── Configuración ──────────────────────────────────────────
   function getSettings() { return { ...DEFAULT_SETTINGS, ...(load(KEYS.settings) || {}) }; }
   function updateSettings(data) { save(KEYS.settings, { ...getSettings(), ...data }); }
@@ -2063,7 +2068,7 @@ const DB = (() => {
     addTransaction, updateTransaction, deleteTransaction,
     getMonthStats, getAllTimeBalance, getProfitStatement, getPendingLiabilities,
     getCategories, getCategoriesByType, getCategoryById, getCategoryTaxProfile,
-    getAccounts, getAccountById,
+    getAccounts, getAccountById, getLastAccount, setLastAccount,
     getInventory, addProduct, updateProduct, deleteProduct, getProductById,
     getSettings, updateSettings,
     getRecurrings, addRecurring, updateRecurring, deleteRecurring,
