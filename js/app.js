@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29a';
+const APP_VERSION = '2026.05.29b';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2369,8 +2369,7 @@ function _selectSuggestion(idx) {
     setTimeout(() => {
       const cb = document.getElementById('f-affects-inv');
       if (cb) { cb.checked = true; toggleInventorySection(); }
-      const pe = document.getElementById('f-product');
-      if (pe) pe.value = p.id;
+      _selectProduct(p.id); // setea el input oculto + etiqueta visible + aviso (selector con buscador)
       if (p.tipoIva) selectIva(p.tipoIva);
       showToast('⚡ Producto "' + p.name + '" seleccionado', 1800);
     }, 30);
@@ -3443,10 +3442,11 @@ function renderFormFields(tx) {
     '<option value="">— Cuenta (opcional) —</option>' +
     DB.getAccounts().map(a => `<option value="${a.id}" ${tx?.[acc] === a.id ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
 
-  // Productos para inventario
-  const products = DB.getInventory();
-  const prodOptions = '<option value="">— Seleccionar producto —</option>' +
-    products.map(p => `<option value="${p.id}" ${tx?.productId === p.id ? 'selected' : ''}>${p.emoji || '📦'} ${p.name} (Stock: ${p.quantity} ${p.unit})</option>`).join('');
+  // Productos para inventario (selector con buscador propio, no <select> nativo,
+  // pensado para catálogos de 100+ productos)
+  const products  = DB.getInventory();
+  const selProd   = tx?.productId ? products.find(p => p.id === tx.productId) : null;
+  const prodLabel = selProd ? `${selProd.emoji || '📦'} ${escHtml(selProd.name)}` : '— Seleccionar producto —';
 
   let html = '';
 
@@ -3596,7 +3596,21 @@ function renderFormFields(tx) {
           <div id="inv-f1-aviso" style="display:none;"></div>
           <div class="form-group">
             <label class="form-label">Producto</label>
-            <select id="f-product" class="form-control" onchange="_renderInvAviso()">${prodOptions}</select>
+            <input type="hidden" id="f-product" value="${tx?.productId || ''}">
+            <button type="button" id="f-product-trigger" class="form-control" onclick="_toggleProductPicker()"
+              style="text-align:left; display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer;">
+              <span id="f-product-label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                color:${selProd ? 'var(--gray-900)' : 'var(--gray-400)'};">${prodLabel}</span>
+              <span style="color:var(--gray-400); flex-shrink:0;">⌄</span>
+            </button>
+            <div id="f-product-panel" style="display:none; margin-top:6px; border:1.5px solid var(--gray-200);
+              border-radius:10px; overflow:hidden; background:var(--white);">
+              <input type="search" id="f-product-search" placeholder="🔍 Buscar por nombre o SKU…" autocomplete="off"
+                oninput="_filterProductPicker(this.value)"
+                style="width:100%; border:none; border-bottom:1px solid var(--gray-200); padding:11px 13px;
+                  font-size:14px; outline:none; background:transparent; color:var(--gray-900); box-sizing:border-box;">
+              <div id="f-product-list" style="max-height:240px; overflow-y:auto;"></div>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Cantidad ${isExpense ? 'comprada' : 'vendida'}</label>
@@ -3732,6 +3746,70 @@ function saveWithdrawal() {
   closeSettingsSheet();
   showToast('🏠 Retiro registrado');
   navigate('dashboard');
+}
+
+// ── Selector de producto con buscador (Parte 2 · Fase 1) ─────────────────────
+// #f-product sigue siendo la fuente de verdad (input oculto con el id del producto),
+// así submitForm y _renderInvAviso no cambian. Encima va un buscador filtrable.
+function _toggleProductPicker() {
+  const panel = document.getElementById('f-product-panel');
+  if (!panel) return;
+  const opening = (panel.style.display === 'none' || !panel.style.display);
+  panel.style.display = opening ? 'block' : 'none';
+  if (opening) {
+    _renderProductList('');
+    const s = document.getElementById('f-product-search');
+    if (s) { s.value = ''; setTimeout(() => s.focus(), 50); }
+  }
+}
+
+function _filterProductPicker(q) { _renderProductList(q); }
+
+function _renderProductList(q) {
+  const list = document.getElementById('f-product-list');
+  if (!list) return;
+  const query = (q || '').toLowerCase().trim();
+  let prods = DB.getInventory();
+  if (query) prods = prods.filter(p =>
+    (p.name || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query));
+
+  if (!prods.length) {
+    list.innerHTML = `<div style="padding:16px; text-align:center; color:var(--gray-400); font-size:13px;">Sin resultados</div>`;
+    return;
+  }
+  const selId = document.getElementById('f-product')?.value || '';
+  list.innerHTML = prods.map(p => {
+    const sel = p.id === selId;
+    const low = (p.minStock || 0) > 0 && p.quantity <= p.minStock;
+    return `
+      <button type="button" onclick="_selectProduct('${p.id}')"
+        style="display:flex; width:100%; align-items:center; gap:10px; padding:10px 13px;
+          background:${sel ? 'var(--primary-light)' : 'transparent'}; border:none;
+          border-bottom:1px solid var(--gray-100); cursor:pointer; text-align:left;
+          -webkit-tap-highlight-color:transparent;">
+        <span style="font-size:20px; flex-shrink:0;">${p.emoji || '📦'}</span>
+        <span style="flex:1; min-width:0;">
+          <span style="display:block; font-size:14px; font-weight:600; color:var(--gray-800);
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(p.name)}</span>
+          ${p.sku ? `<span style="font-size:11px; color:var(--gray-400); font-family:monospace;">${escHtml(p.sku)}</span>` : ''}
+        </span>
+        <span style="font-size:12px; color:${low ? 'var(--danger)' : 'var(--gray-500)'}; white-space:nowrap; flex-shrink:0;">${p.quantity} ${escHtml(p.unit || '')}</span>
+      </button>`;
+  }).join('');
+}
+
+function _selectProduct(id) {
+  const p      = DB.getProductById(id);
+  const hidden = document.getElementById('f-product');
+  const label  = document.getElementById('f-product-label');
+  const panel  = document.getElementById('f-product-panel');
+  if (hidden) hidden.value = id;
+  if (label && p) {
+    label.textContent = (p.emoji || '📦') + ' ' + p.name;
+    label.style.color = 'var(--gray-900)';
+  }
+  if (panel) panel.style.display = 'none';
+  _renderInvAviso(); // mantiene coherente el aviso de costo $0 al vender (F1)
 }
 
 // F1 — Aviso suave NO bloqueante dentro de la sección de inventario:
