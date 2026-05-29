@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260529f">
+  <link rel="stylesheet" href="css/style.css?v=20260529g">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -616,14 +616,16 @@
     <div class="card" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:white;margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:13px;opacity:.8;margin-bottom:4px;">Valor total en inventario</div>
+          <div style="font-size:13px;opacity:.85;margin-bottom:4px;">💰 Valor a precio de venta</div>
           <div style="font-size:28px;font-weight:800;" id="inv-total-value">$ 0</div>
         </div>
         <div style="text-align:right;">
-          <div style="font-size:13px;opacity:.8;margin-bottom:4px;">Productos</div>
+          <div style="font-size:13px;opacity:.85;margin-bottom:4px;">Productos</div>
           <div style="font-size:20px;font-weight:700;" id="inv-total-items">0</div>
         </div>
       </div>
+      <div id="inv-cost-line" style="display:none; margin-top:10px; padding-top:10px;
+        border-top:1px solid rgba(255,255,255,.22); font-size:12px; opacity:.92; line-height:1.5;"></div>
     </div>
 
     <!-- Botones de acción -->
@@ -1437,8 +1439,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260529f"></script>
-<script src="js/app.js?v=20260529f"></script>
-<script src="js/tax.js?v=20260529f"></script>
+<script src="js/db.js?v=20260529g"></script>
+<script src="js/app.js?v=20260529g"></script>
+<script src="js/tax.js?v=20260529g"></script>
 </body>
 </html>

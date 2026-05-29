@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29f';
+const APP_VERSION = '2026.05.29g';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -5401,10 +5401,26 @@ function renderInventory() {
     });
   }
 
-  // Total valor inventario (siempre sobre todos los productos, no los filtrados)
-  const totalValue = allProds.reduce((s, p) => s + (p.quantity * (p.unitCost || 0)), 0);
-  document.getElementById('inv-total-value').textContent = fmt(totalValue);
+  // Totales del inventario (siempre sobre todos los productos, no los filtrados)
+  //  • A precio de venta: lo que vale tu mercadería si la vendes (qty × precio de venta)
+  //  • Al costo: lo que te costó (qty × costo de compra) → valor contable (NIIF / Balance)
+  const totalSale = allProds.reduce((s, p) => s + (p.quantity * (p.precioFinal || 0)), 0);
+  const totalCost = allProds.reduce((s, p) => s + (p.quantity * (p.unitCost   || 0)), 0);
+  document.getElementById('inv-total-value').textContent = fmt(totalSale);
   document.getElementById('inv-total-items').textContent = allProds.length + ' producto' + (allProds.length !== 1 ? 's' : '');
+
+  const costLine = document.getElementById('inv-cost-line');
+  if (costLine) {
+    if (totalCost > 0) {
+      const ganancia = totalSale - totalCost;
+      costLine.style.display = 'block';
+      costLine.innerHTML = `📦 Al costo: <strong>${fmt(totalCost)}</strong>` +
+        (ganancia > 0 ? `  ·  📈 Ganancia potencial: <strong>${fmt(ganancia)}</strong>` : '');
+    } else {
+      costLine.style.display = 'block';
+      costLine.innerHTML = `💡 Agrega el <strong>costo de compra</strong> a tus productos para ver tu valor al costo y tu ganancia potencial.`;
+    }
+  }
 }
 
 function openProductForm(editId = null) {
