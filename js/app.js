@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23w';
+const APP_VERSION = '2026.05.23x';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1072,9 +1072,9 @@ function renderTodaySummary() {
   // Fila compacta por transacción
   const txRow = t => {
     const cat   = DB.getCategoryById(t.category);
-    const emoji = cat ? cat.emoji : { income:'💰', expense:'💸', liability:'🔴', transfer:'↔️' }[t.type] || '💰';
-    const color = { income:'var(--success)', expense:'var(--danger)', liability:'var(--warning)', transfer:'var(--primary)' }[t.type] || 'var(--gray-700)';
-    const sign  = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+    const emoji = cat ? cat.emoji : { income:'💰', expense:'💸', liability:'🔴', transfer:'↔️', withdrawal:'🏠' }[t.type] || '💰';
+    const color = { income:'var(--success)', expense:'var(--danger)', liability:'var(--warning)', transfer:'var(--primary)', withdrawal:'#6366f1' }[t.type] || 'var(--gray-700)';
+    const sign  = (t.type === 'income') ? '+' : (t.type === 'expense' || t.type === 'withdrawal') ? '−' : '';
     return `
       <div class="today-tx-row" data-tx-id="${t.id}">
         <span style="font-size:19px; flex-shrink:0;">${emoji}</span>
@@ -2198,6 +2198,14 @@ function txItemHTML(tx) {
     amountClass = 'liability';
     const status = tx.liabilityStatus === 'paid' ? ' ✅ Pagada' : ' 🔴 Pendiente';
     metaText = fmtDate(tx.date) + (cat ? ' · ' + cat.name : '') + status;
+
+  } else if (tx.type === 'withdrawal') {
+    const acc = DB.getAccountById(tx.account);
+    emoji = '🏠';
+    amountText = '-' + fmt(tx.amount);
+    amountClass = 'withdrawal';
+    const bnTag = tx.bankName ? ` 🏦 ${escHtml(tx.bankName)}` : '';
+    metaText = fmtDate(tx.date) + ' · 🏠 Retiro' + (acc ? ' · ' + acc.name + bnTag : '');
   }
 
   // Botón ⋯ de acciones (solo si el usuario puede editar o eliminar)
@@ -3663,6 +3671,69 @@ function _applyMoreState() {
 
 function toggleMoreDetails() { _moreOpen = !_moreOpen; _applyMoreState(); }
 
+// ── Retiro del dueño (hoja mínima, separada del flujo de gastos) ──────────────
+// Modelo: type:'withdrawal'. No es gasto ni ingreso → no toca utilidad ni
+// presupuestos. Solo baja el saldo de la cuenta (getAccountBalances).
+function openWithdrawalForm() {
+  if (isCurrentUserReadOnly()) { showToast('🔒 Modo solo-lectura', 2000); return; }
+  const accounts = DB.getAccounts();
+  const seed = DB.getLastAccount('expense') || ''; // sugerencia: la cuenta de egresos habitual
+  const accOpts = '<option value="">— Cuenta —</option>' +
+    accounts.map(a => `<option value="${a.id}" ${a.id === seed ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
+
+  document.getElementById('settings-sheet-content').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🏠 Retiro del dueño</h3>
+    <div style="font-size:13px; color:var(--gray-500); line-height:1.5; margin:-8px 0 16px;">
+      Dinero que sacas del negocio para uso personal. <strong>No afecta la utilidad.</strong>
+    </div>
+
+    <div class="amount-input-wrap">
+      <div style="font-size:13px; color:var(--gray-400); margin-bottom:4px;">MONTO</div>
+      <input type="number" id="w-amount" class="amount-input-large" placeholder="0"
+        min="0" step="any" inputmode="decimal">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">¿De qué cuenta salió?</label>
+      <select id="w-account" class="form-control">${accOpts}</select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha</label>
+      <input type="date" id="w-date" class="form-control" value="${today()}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo (opcional)</label>
+      <input type="text" id="w-notes" class="form-control"
+        placeholder="Ej: gastos personales, sueldo del dueño" maxlength="80">
+    </div>
+
+    <button class="btn btn-primary btn-block mt-8" onclick="saveWithdrawal()">✅ Registrar retiro</button>
+    <button class="btn btn-secondary btn-block mt-8" onclick="closeSettingsSheet()">Cancelar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function saveWithdrawal() {
+  const amount  = parseFloat(document.getElementById('w-amount')?.value);
+  const account = document.getElementById('w-account')?.value;
+  const date    = document.getElementById('w-date')?.value;
+  const notes   = document.getElementById('w-notes')?.value.trim() || '';
+  if (!amount || amount <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
+  if (!account)               { showToast('⚠️ Selecciona la cuenta de donde salió'); return; }
+  if (!date)                  { showToast('⚠️ Selecciona una fecha'); return; }
+
+  DB.addTransaction({
+    type:        'withdrawal',
+    amount, account, date,
+    description: notes || 'Retiro del dueño',
+    notes,
+  });
+  closeSettingsSheet();
+  showToast('🏠 Retiro registrado');
+  navigate('dashboard');
+}
+
 // F1 — Aviso suave NO bloqueante dentro de la sección de inventario:
 //   • Compra → explica que se registra como inventario (activo), no como gasto.
 //   • Venta  → advierte (visible) si el producto no tiene costo (CMV $0).
@@ -3817,14 +3888,15 @@ function openTxDetail(id) {
   // Guardar descripción en global para acceder desde onclick sin problemas de escape
   window._txDescForReport = tx.description;
 
-  const LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda / Pasivo' };
-  const BADGE  = { income:'badge-income', expense:'badge-expense', transfer:'badge-transfer', liability:'badge-liability' };
-  const COLORS = { income:'var(--success)', expense:'var(--danger)', transfer:'var(--primary)', liability:'var(--warning)' };
+  const LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda / Pasivo', withdrawal:'Retiro del dueño' };
+  const BADGE  = { income:'badge-income', expense:'badge-expense', transfer:'badge-transfer', liability:'badge-liability', withdrawal:'badge-withdrawal' };
+  const COLORS = { income:'var(--success)', expense:'var(--danger)', transfer:'var(--primary)', liability:'var(--warning)', withdrawal:'#6366f1' };
 
   let amountSign = '', mainDetail = '';
 
-  if (tx.type === 'income')  amountSign = '+';
-  if (tx.type === 'expense') amountSign = '-';
+  if (tx.type === 'income')     amountSign = '+';
+  if (tx.type === 'expense')    amountSign = '-';
+  if (tx.type === 'withdrawal') amountSign = '-';
 
   if (tx.type === 'transfer') {
     const from = DB.getAccountById(tx.fromAccount);
@@ -3868,6 +3940,15 @@ function openTxDetail(id) {
       ${(parseFloat(tx.liabilityMonthly) || 0) > 0 ? detRow('💵 Cuota mensual', fmt(tx.liabilityMonthly)) : ''}
       ${detRow('Estado', status)}
     `;
+  } else if (tx.type === 'withdrawal') {
+    const acc = DB.getAccountById(tx.account);
+    mainDetail = `
+      <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:12px; font-size:13px; color:#3730a3; line-height:1.6;">
+        🏠 <strong>Retiro del dueño.</strong> Dinero que salió del negocio para uso personal.
+        <strong>No afecta la utilidad</strong> — solo baja el saldo de la cuenta.
+      </div>
+      ${acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}${tx.bankName ? ' <span style="font-size:12px;color:var(--primary);">· 🏦 ' + escHtml(tx.bankName) + '</span>' : ''}</span></div>` : ''}
+    `;
   } else {
     const acc = DB.getAccountById(tx.account);
     const isSplit = Array.isArray(tx.splitPayments) && tx.splitPayments.length;
@@ -3895,7 +3976,7 @@ function openTxDetail(id) {
 
   document.getElementById('detail-content').innerHTML = `
     <div style="text-align:center; padding:8px 0 20px;">
-      <div style="font-size:52px; margin-bottom:8px;">${cat ? cat.emoji : (tx.type === 'transfer' ? '↔️' : tx.type === 'liability' ? '🔴' : '💰')}</div>
+      <div style="font-size:52px; margin-bottom:8px;">${cat ? cat.emoji : (tx.type === 'transfer' ? '↔️' : tx.type === 'liability' ? '🔴' : tx.type === 'withdrawal' ? '🏠' : '💰')}</div>
       <span class="badge ${BADGE[tx.type]}" style="margin-bottom:12px;">${LABELS[tx.type]}</span>
       <div style="font-size:36px; font-weight:800; color:${COLORS[tx.type]}; margin-bottom:4px;">${amountSign}${fmt(tx.amount)}</div>
       <div style="font-size:18px; font-weight:600; margin-bottom:4px;">${tx.description}</div>
@@ -6314,7 +6395,7 @@ function _doExportToExcel() {
   const pnl = DB.getProfitStatement(reportYear, reportMonth);
   const monthLabel = new Date(reportYear, reportMonth - 1, 1)
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
-  const TYPE_LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda' };
+  const TYPE_LABELS = { income:'Ingreso', expense:'Gasto', transfer:'Traslado', liability:'Deuda', withdrawal:'Retiro del dueño' };
   const deudaTot = txs.filter(t => t.type === 'liability').reduce((a, t) => a + t.amount, 0);
 
   // ═══ HOJA «Transacciones» — datos crudos + fila TOTALES con fórmula SUM ═══
@@ -6348,6 +6429,9 @@ function _doExportToExcel() {
       if (fb || tb) bankLabel = (fb || '—') + ' → ' + (tb || '—');
     } else if (t.type === 'liability') {
       deuda = t.amount; catLabel = t.creditor || (cat ? cat.name : 'Cuentas por pagar');
+    } else if (t.type === 'withdrawal') {
+      // Retiro del dueño: no es P&L (como el traslado, no ocupa columnas Ingreso/Gasto)
+      accLabel = acc ? acc.name : '';
     }
 
     const ivaAmt = (t.ivaAmount && t.ivaAmount > 0) ? t.ivaAmount : null;

@@ -371,6 +371,7 @@ a { text-decoration: none; color: inherit; }
 .tx-icon.income { background: var(--success-light); }
 .tx-icon.expense { background: var(--danger-light); }
 .tx-icon.transfer { background: var(--primary-light); }
+.tx-icon.withdrawal { background: #e0e7ff; }   /* índigo suave — retiro del dueño */
 .tx-info { flex: 1; min-width: 0; }
 .tx-desc {
   font-size: 14px;
@@ -389,6 +390,9 @@ a { text-decoration: none; color: inherit; }
 .tx-amount.income { color: var(--success); }
 .tx-amount.expense { color: var(--danger); }
 .tx-amount.transfer { color: var(--primary); }
+.tx-amount.withdrawal { color: #6366f1; }   /* índigo — retiro del dueño */
+.dark-mode .tx-icon.withdrawal { background: #312e81; }
+.dark-mode .tx-amount.withdrawal { color: #a5b4fc; }
 
 /* ── Botón ⋯ de acciones en fila de transacción ─────────────────────────────*/
 .tx-menu-btn {
@@ -817,6 +821,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .badge-income { background: var(--success-light); color: var(--success); }
 .badge-expense { background: var(--danger-light); color: var(--danger); }
 .badge-transfer { background: var(--primary-light); color: var(--primary); }
+.badge-withdrawal { background: #e0e7ff; color: #4338ca; }
 
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--gray-100); margin: 16px 0; }

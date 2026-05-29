@@ -1358,6 +1358,10 @@ const DB = (() => {
         if (t.fromAccount) bal[t.fromAccount] = (bal[t.fromAccount] || 0) - t.amount;
         if (t.toAccount)   bal[t.toAccount]   = (bal[t.toAccount]   || 0) + t.amount;
       }
+      // Retiro del dueño: el dinero sale de la cuenta (no es gasto P&L, solo afecta caja)
+      if (t.type === 'withdrawal' && t.account) {
+        bal[t.account] = (bal[t.account] || 0) - t.amount;
+      }
     });
     return bal; // { accountId: saldo }
   }

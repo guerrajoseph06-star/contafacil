@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523w">
+  <link rel="stylesheet" href="css/style.css?v=20260523x">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -388,6 +388,11 @@
         <div class="stat-chip-icon">🔴</div>
         <div class="stat-chip-val" style="color:var(--warning);">Deuda</div>
         <div class="stat-chip-lbl">Registrar</div>
+      </button>
+      <button class="stat-chip" onclick="openWithdrawalForm()">
+        <div class="stat-chip-icon">🏠</div>
+        <div class="stat-chip-val" style="color:#6366f1;">Retiro</div>
+        <div class="stat-chip-lbl">Dueño</div>
       </button>
       <button class="stat-chip" onclick="navigate('reports')">
         <div class="stat-chip-icon">📊</div>
@@ -1420,8 +1425,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523w"></script>
-<script src="js/app.js?v=20260523w"></script>
-<script src="js/tax.js?v=20260523w"></script>
+<script src="js/db.js?v=20260523x"></script>
+<script src="js/app.js?v=20260523x"></script>
+<script src="js/tax.js?v=20260523x"></script>
 </body>
 </html>
