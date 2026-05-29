@@ -7,7 +7,7 @@
  *            nueva = se descarga sola (nunca queda código viejo pegado).
  *  - Al activar una versión nueva se borran TODAS las cachés viejas.
  */
-const SW_VERSION = '2026.05.23s';            // sincronizar con APP_VERSION de app.js
+const SW_VERSION = '2026.05.23t';            // sincronizar con APP_VERSION de app.js
 const CACHE_NAME = 'contafacil-' + SW_VERSION;
 
 // App shell — archivos mínimos para abrir la app sin internet (mismo origen)
@@ -15,9 +15,10 @@ const SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './css/style.css?v=20260523s',
-  './js/db.js?v=20260523s',
-  './js/app.js?v=20260523s',
+  './css/style.css?v=20260523t',
+  './js/db.js?v=20260523t',
+  './js/app.js?v=20260523t',
+  './js/tax.js?v=20260523t',
 ];
 
 // ── Instalación: precachear el app shell ──────────────────────────────────────

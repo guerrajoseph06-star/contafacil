@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260523s">
+  <link rel="stylesheet" href="css/style.css?v=20260523t">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -1145,6 +1145,23 @@
       </button>
     </div>
 
+    <!-- ⚗️ Módulo experimental tributario (BETA) — visualmente separado -->
+    <div class="settings-section">
+      <button class="settings-item" onclick="SRI.openBeta()"
+        style="border:1.5px dashed #a78bfa; background:linear-gradient(135deg,#faf5ff,#f5f3ff); border-radius:14px;">
+        <div class="settings-item-icon">⚗️</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label" style="color:#7c3aed; font-weight:800;">
+            Funciones Experimentales
+            <span style="font-size:9px; font-weight:800; background:#7c3aed; color:#fff;
+              border-radius:5px; padding:1px 5px; margin-left:5px; vertical-align:middle; letter-spacing:.03em;">BETA</span>
+          </div>
+          <div class="settings-item-desc">Asistencia tributaria · Borrador IVA 104</div>
+        </div>
+        <div class="settings-item-arrow" style="color:#a78bfa;">›</div>
+      </button>
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">Automatización</div>
       <button class="settings-item" onclick="openBudgetManager()">
@@ -1321,6 +1338,22 @@
 
 
 <!-- ═══════════════════════════════════════════════════
+     BETA · BORRADOR IVA (Formulario 104) — módulo experimental
+═══════════════════════════════════════════════════ -->
+<div id="screen-tax-iva" class="screen">
+  <div class="topbar">
+    <button class="topbar-action" onclick="navigate('settings')">←</button>
+    <div class="topbar-title">🧾 Borrador IVA 104</div>
+    <span style="font-size:9px; font-weight:800; background:#7c3aed; color:#fff;
+      border-radius:5px; padding:2px 6px; letter-spacing:.03em;">BETA</span>
+  </div>
+  <div class="content">
+    <div id="tax-iva-body"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
      NAV INFERIOR (5 secciones)
 ═══════════════════════════════════════════════════ -->
 <nav class="bottom-nav" id="bottom-nav">
@@ -1376,7 +1409,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260523s"></script>
-<script src="js/app.js?v=20260523s"></script>
+<script src="js/db.js?v=20260523t"></script>
+<script src="js/app.js?v=20260523t"></script>
+<script src="js/tax.js?v=20260523t"></script>
 </body>
 </html>

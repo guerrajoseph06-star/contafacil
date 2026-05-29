@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23s';
+const APP_VERSION = '2026.05.23t';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -204,6 +204,7 @@ function navigate(screen, params = {}) {
     case 'cartera':    renderCartera();    break;
     case 'assets':     renderAssets();     break;
     case 'settings':   renderSettings();   break;
+    case 'tax-iva':    SRI.renderIva104(); break; // módulo Beta tributario (tax.js)
   }
   window.scrollTo(0, 0);
 }
@@ -6988,7 +6989,7 @@ function renderTemplates() {
           return `
             <button onclick="applyTemplate('${escHtml(t.id)}')"
               style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:4px;
-                background:var(--card-bg); border:1.5px solid var(--gray-200); border-radius:16px;
+                background:var(--white); border:1.5px solid var(--gray-200); border-radius:16px;
                 padding:10px 10px 8px; cursor:pointer; min-width:70px; max-width:90px;
                 text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.06);
                 -webkit-tap-highlight-color:transparent;">
