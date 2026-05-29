@@ -1112,6 +1112,12 @@ body.dark-mode {
   color: var(--gray-900);
 }
 
+/* Fase A: superficies blancas hardcodeadas → superficie de tarjeta oscura.
+   Elimina destellos blancos (menú flotante ⋯, buscador y su dropdown de resultados).
+   Solo cambia el fondo; el texto interno ya usa variables y adapta solo. */
+.dark-mode #tx-action-menu,
+.dark-mode #dash-search-wrap > div { background: var(--white); }
+
 /* Toggle switch para modo oscuro */
 .dark-toggle {
   display: flex;
