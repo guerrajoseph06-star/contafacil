@@ -1093,6 +1093,7 @@ body.dark-mode {
 
 .dark-mode .balance-hero {
   background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+  color: #fff; /* el texto hereda var(--white), que en dark se invierte a oscuro: restituir blanco real sobre el gradiente azul */
 }
 
 .dark-mode .onboarding-wrap {
