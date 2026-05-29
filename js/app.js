@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29e';
+const APP_VERSION = '2026.05.29f';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1205,34 +1205,53 @@ function renderDashboard() {
   const roEl = document.getElementById('dash-readonly-banner');
   if (roEl) roEl.style.display = isCurrentUserReadOnly() ? 'flex' : 'none';
 
-  // Insignia de deudas en la esquina del rectángulo de Utilidad Neta
-  // (toca para ver el desglose — sin banner que estrese al usuario)
-  const debtBadge = document.getElementById('dash-debt-badge');
+  // ── Insignias compactas en la esquina del cuadro azul ───────────────────────
+  // Deuda 🔴 · Cartera 🧾 · Stock 📉/⛔. Se apilan; cada una toca para ver su detalle.
+  const debtBadge    = document.getElementById('dash-debt-badge');
+  const carteraBadge = document.getElementById('dash-cartera-badge');
+  const stockBadge   = document.getElementById('dash-stock-badge');
+
   const debtShown = pending.length > 0;
-  if (debtBadge) {
-    debtBadge.style.display = debtShown ? 'flex' : 'none';
-    if (debtShown) {
-      const cEl = document.getElementById('dash-debt-count');
-      if (cEl) cEl.textContent = pending.length;
-    }
+  if (debtBadge && debtShown) {
+    const cEl = document.getElementById('dash-debt-count');
+    if (cEl) cEl.textContent = pending.length;
   }
 
-  // Insignia de cobros (cartera) — justo debajo de la de deudas
   const cobros = DB.getReceivables().filter(r => {
     const paid = (r.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
     return (r.totalAmount || 0) - paid > 0.005;
   });
-  const carteraBadge = document.getElementById('dash-cartera-badge');
-  if (carteraBadge) {
-    if (cobros.length) {
-      carteraBadge.style.display = 'flex';
-      carteraBadge.style.top = debtShown ? '46px' : '12px'; // debajo de deudas, o arriba si no hay
-      const cEl = document.getElementById('dash-cartera-count');
-      if (cEl) cEl.textContent = cobros.length;
-    } else {
-      carteraBadge.style.display = 'none';
-    }
+  if (carteraBadge && cobros.length) {
+    const cEl = document.getElementById('dash-cartera-count');
+    if (cEl) cEl.textContent = cobros.length;
   }
+
+  // Stock: agotado (⛔) / bajo (📉) / quedando poco (📉) — solo productos con minStock
+  const _trk  = DB.getInventory().filter(p => (p.minStock || 0) > 0);
+  const _ago  = _trk.filter(p => p.quantity <= 0).length;
+  const _bajo = _trk.filter(p => p.quantity > 0 && p.quantity <= p.minStock).length;
+  const _poco = _trk.filter(p => p.quantity > p.minStock && p.quantity <= p.minStock * 2).length;
+  const stockCount = _ago + _bajo + _poco;
+  if (stockBadge && stockCount > 0) {
+    stockBadge.style.background = (_ago + _bajo) > 0 ? '#dc2626' : '#d97706'; // rojo crítico / ámbar leve
+    const icoEl = document.getElementById('dash-stock-ico');
+    const cEl   = document.getElementById('dash-stock-count');
+    if (icoEl) icoEl.textContent = _ago > 0 ? '⛔' : '📉';
+    if (cEl)   cEl.textContent   = stockCount;
+  }
+
+  // Apilar verticalmente las insignias visibles (arranca en 12px, +34px por cada una)
+  let _badgeTop = 12;
+  [[debtBadge, debtShown], [carteraBadge, cobros.length > 0], [stockBadge, stockCount > 0]]
+    .forEach(([el, show]) => {
+      if (!el) return;
+      if (show) { el.style.display = 'flex'; el.style.top = _badgeTop + 'px'; _badgeTop += 34; }
+      else       el.style.display = 'none';
+    });
+
+  // El banner grande de stock se reemplazó por la insignia compacta del cuadro azul
+  const _stockBanner = document.getElementById('dash-stock-alert');
+  if (_stockBanner) _stockBanner.style.display = 'none';
 
   // Últimas transacciones (excluir asientos auto-generados de CMV e IVA).
   // Las ventas multi-producto se agrupan como una sola unidad (🛒 Venta · N productos).
@@ -1249,9 +1268,6 @@ function renderDashboard() {
 
   // Alertas de presupuesto excedido
   renderBudgetAlerts();
-
-  // Alertas de stock mínimo
-  renderStockAlerts();
 
   // Plantillas rápidas de acceso directo
   renderTemplates();
