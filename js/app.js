@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29d';
+const APP_VERSION = '2026.05.29e';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1234,12 +1234,15 @@ function renderDashboard() {
     }
   }
 
-  // Últimas 5 transacciones (excluir asientos auto-generados de CMV e IVA)
-  const txs = DB.getTransactions().filter(t => !t.isCogs && !t.isIva).slice(0, 5);
+  // Últimas transacciones (excluir asientos auto-generados de CMV e IVA).
+  // Las ventas multi-producto se agrupan como una sola unidad (🛒 Venta · N productos).
+  const recentTxs   = DB.getTransactions().filter(t => !t.isCogs && !t.isIva);
+  const recentUnits = _collapseSaleGroups(recentTxs).slice(0, 5);
   const recentEl = document.getElementById('dash-recent');
-  recentEl.innerHTML = txs.length
-    ? `<ul class="tx-list">${txs.map(txItemHTML).join('')}</ul>`
+  recentEl.innerHTML = recentUnits.length
+    ? `<ul class="tx-list">${recentUnits.map(_renderUnitHTML).join('')}</ul>`
     : emptyHTML('📭', 'Sin movimientos', 'Toca + para agregar tu primera transacción');
+  // (los clics se manejan por delegación en #dash-recent — ver init)
 
   // Saldo por cuenta bancaria
   renderAccountBalances();
@@ -1914,7 +1917,7 @@ function renderJournal() {
         </span>
       </div>
       <div class="card" style="margin-bottom:8px; padding:4px 12px;">
-        <ul class="tx-list">${items.map(txItemHTML).join('')}</ul>
+        <ul class="tx-list">${_collapseSaleGroups(items).map(_renderUnitHTML).join('')}</ul>
       </div>
     `;
   }).join('');
@@ -1922,6 +1925,53 @@ function renderJournal() {
   list.querySelectorAll('[data-tx-id]').forEach(el =>
     el.addEventListener('click', () => openTxDetail(el.dataset.txId))
   );
+  list.querySelectorAll('[data-sale-group]').forEach(el =>
+    el.addEventListener('click', () => openSaleGroupDetail(el.dataset.saleGroup))
+  );
+}
+
+// ── Fase 2b: agrupación visual de ventas multi-producto ──────────────────────
+// Colapsa todas las transacciones que comparten saleGroupId (líneas + sus asientos
+// de IVA/CMV) en una sola unidad de display "🛒 Venta · N productos".
+function _collapseSaleGroups(txs) {
+  const seen  = new Set();
+  const units = [];
+  txs.forEach(t => {
+    if (t.saleGroupId) {
+      if (seen.has(t.saleGroupId)) return;
+      seen.add(t.saleGroupId);
+      units.push({ kind: 'group', groupId: t.saleGroupId, txs: txs.filter(x => x.saleGroupId === t.saleGroupId) });
+    } else {
+      units.push({ kind: 'tx', tx: t });
+    }
+  });
+  return units;
+}
+
+function _renderUnitHTML(u) {
+  return u.kind === 'group' ? _saleGroupRowHTML(u.groupId, u.txs) : txItemHTML(u.tx);
+}
+
+// Fila resumen de una venta multi-producto en las listas
+function _saleGroupRowHTML(groupId, groupTxs) {
+  const sales = groupTxs.filter(t => t.type === 'income' && !t.isIva && !t.isCogs);
+  if (!sales.length) return groupTxs.map(txItemHTML).join(''); // defensivo: si algo raro, mostrar normal
+  const n     = sales.length;
+  const total = sales.reduce((s, t) =>
+    s + (t.listAmount != null ? (t.listAmount - (t.discount || 0)) : t.amount), 0);
+  const nombres = sales.map(t => {
+    const p = DB.getProductById(t.productId);
+    return p ? p.name : 'producto';
+  }).join(', ');
+  return `
+    <li class="tx-item" data-sale-group="${escHtml(groupId)}">
+      <div class="tx-icon income"><span>🛒</span></div>
+      <div class="tx-info">
+        <div class="tx-desc">Venta · ${n} productos</div>
+        <div class="tx-meta">${fmtDate(sales[0].date)} · ${escHtml(nombres)}</div>
+      </div>
+      <div class="tx-amount income">+${fmt(total)}</div>
+    </li>`;
 }
 
 function setJournalFilter(f) {
@@ -2233,6 +2283,7 @@ function txItemHTML(tx) {
 let _formIvaType      = 'IVA_INCLUIDO'; // tipo de IVA activo en el formulario
 let _ivaTouched       = false;          // ¿el usuario eligió el IVA manualmente? (evita que la sugerencia por categoría lo pise)
 let _moreOpen         = false;          // estado del bloque "Más detalles" (no persiste entre aperturas)
+let _saleCart         = [];             // Fase 2b: líneas de productos agregadas a una venta multi-producto
 let _smartSuggestions = [];              // lista de sugerencias actuales (por índice)
 
 // Normaliza texto a clave de aprendizaje: primeras 3 palabras ≥3 letras
@@ -3372,6 +3423,7 @@ function renderForm(editId = null) {
 
   // "Más detalles": nunca persiste. Nueva → colapsado. Edición con notas o foto → expandido.
   _moreOpen = !!(tx && (tx.notes || tx.hasReceipt));
+  _saleCart = []; // Fase 2b: el carrito de venta nunca persiste entre aperturas del formulario
 
   updateTypeTabs();
   renderFormFields(tx);
@@ -3600,8 +3652,9 @@ function renderFormFields(tx) {
         </div>
         <div id="inv-section" style="display:${tx?.affectsInventory ? 'block' : 'none'}">
           <div id="inv-f1-aviso" style="display:none;"></div>
+          ${isIncome && !editingTxId ? '<div id="sale-cart" style="display:none; margin-bottom:10px;"></div>' : ''}
           <div class="form-group">
-            <label class="form-label">Producto</label>
+            <label class="form-label" id="f-product-label-lbl">Producto</label>
             <input type="hidden" id="f-product" value="${tx?.productId || ''}">
             <button type="button" id="f-product-trigger" class="form-control" onclick="_toggleProductPicker()"
               style="text-align:left; display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer;">
@@ -3622,6 +3675,16 @@ function renderFormFields(tx) {
             <label class="form-label">Cantidad ${isExpense ? 'comprada' : 'vendida'}</label>
             <input type="number" id="f-quantity" class="form-control" value="${tx?.quantity || ''}" placeholder="Ej: 6" min="0" step="1" oninput="_onSaleQtyChange()">
           </div>
+          ${isIncome && !editingTxId ? `
+          <button type="button" onclick="_addToCart()"
+            style="width:100%; padding:11px; border:1.5px dashed var(--primary); border-radius:10px;
+              background:var(--primary-light); color:var(--primary); font-size:13px; font-weight:700;
+              cursor:pointer; margin-bottom:4px; -webkit-tap-highlight-color:transparent;">
+            ➕ Agregar otro producto a la venta
+          </button>
+          <div style="font-size:11px; color:var(--gray-400); line-height:1.4; margin-bottom:4px;">
+            Agrega varios productos a la misma venta. El total y el IVA de cada uno se calculan solos.
+          </div>` : ''}
         </div>
       `;
     } else {
@@ -3645,7 +3708,8 @@ function renderFormFields(tx) {
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
   if (isIncome || isExpense) _onCategoryChange(); // aviso tributario suave de la categoría preseleccionada
   if (isIncome || isExpense) _renderInvAviso();   // F1: aviso de compra→inventario / costo 0 al vender
-  if (isIncome || isExpense) _applyInvIvaLock();  // Fase 2a: derivar+bloquear IVA si afecta inventario
+  if (isIncome) _renderCart();                    // Fase 2b: pinta el carrito de venta (si tiene líneas)
+  if (isIncome || isExpense) _applyInvIvaLock();  // Fase 2a/2b: derivar+bloquear IVA si afecta inventario
 
   // Factura detallada: opción contextual solo para gastos
   const facWrap = document.getElementById('fac-entry-wrap');
@@ -3817,9 +3881,11 @@ function _selectProduct(id) {
     label.style.color = 'var(--gray-900)';
   }
   if (panel) panel.style.display = 'none';
-  _renderInvAviso();    // mantiene coherente el aviso de costo $0 al vender (F1)
-  _applyInvIvaLock();   // Fase 2a: el IVA se deriva del producto y se bloquea el selector global
-  _autofillSalePrice(); // Camino A: cargar el precio de venta del producto en el monto
+  const qEl = document.getElementById('f-quantity');
+  if (qEl && !qEl.value) qEl.value = '1'; // cantidad por defecto al elegir producto
+  _renderInvAviso();      // mantiene coherente el aviso de costo $0 al vender (F1)
+  _applyInvIvaLock();     // Fase 2a/2b: IVA por producto, selector bloqueado
+  _recomputeSaleTotal();  // Fase 2b: total final = carrito + producto activo
 }
 
 // Etiqueta legible de un tipo de IVA
@@ -3837,73 +3903,146 @@ function _ivaLabel(tipo) {
 function _applyInvIvaLock() {
   const row  = document.getElementById('iva-btn-row');
   const note = document.getElementById('iva-lock-note');
+  const bd   = document.getElementById('iva-breakdown');
   if (!row) return;
   const cb    = document.getElementById('f-affects-inv');
   const invOn = !!(cb && cb.checked);
 
-  if (invOn) {
+  if (!invOn) {
+    row.style.pointerEvents = ''; row.style.opacity = '';
+    if (note) { note.style.display = 'none'; note.innerHTML = ''; }
+    if (bd)   bd.style.display = '';
+    return;
+  }
+
+  // Inventario activo → IVA por producto, selector bloqueado
+  row.style.pointerEvents = 'none';
+  row.style.opacity = '.55';
+
+  if (formType === 'income') {
+    // Venta: el IVA lo define cada producto. No mostramos un split único.
+    if (bd) bd.style.display = 'none';
+    const multi = _saleCart.length > 0;
+    const pid   = document.getElementById('f-product')?.value;
+    const p     = pid ? DB.getProductById(pid) : null;
+    if (note) {
+      note.style.display = 'block';
+      note.innerHTML = multi
+        ? '🔒 IVA por producto: cada uno aplica su propia tarifa automáticamente.'
+        : (p ? `🔒 IVA tomado del producto: <strong>${escHtml(p.name)}</strong> · ${_ivaLabel(p.tipoIva || 'SIN_IVA')}`
+             : '🔒 El IVA se tomará de cada producto que agregues.');
+    }
+  } else {
+    // Compra (gasto) de inventario: Fase 2a — derivar IVA del producto, desglose visible
+    if (bd) bd.style.display = '';
     const pid = document.getElementById('f-product')?.value;
     const p   = pid ? DB.getProductById(pid) : null;
     if (p) {
-      const tipo = p.tipoIva || 'SIN_IVA';
-      selectIva(tipo, true); // derivar del producto (sin marcar toque manual)
-      if (note) {
-        note.style.display = 'block';
-        note.innerHTML = `🔒 IVA tomado del producto: <strong>${escHtml(p.name)}</strong> · ${_ivaLabel(tipo)}`;
-      }
-    } else if (note) {
-      note.style.display = 'block';
-      note.innerHTML = '🔒 El IVA se tomará del producto que selecciones.';
-    }
-    row.style.pointerEvents = 'none';
-    row.style.opacity = '.55';
-  } else {
-    row.style.pointerEvents = '';
-    row.style.opacity = '';
-    if (note) { note.style.display = 'none'; note.innerHTML = ''; }
+      selectIva(p.tipoIva || 'SIN_IVA', true);
+      if (note) { note.style.display = 'block'; note.innerHTML = `🔒 IVA tomado del producto: <strong>${escHtml(p.name)}</strong> · ${_ivaLabel(p.tipoIva || 'SIN_IVA')}`; }
+    } else if (note) { note.style.display = 'block'; note.innerHTML = '🔒 El IVA se tomará del producto que selecciones.'; }
   }
 }
 
-// ── Camino A: auto-precio desde el inventario + descuento ────────────────────
-// Solo en VENTAS (ingreso) que afectan inventario. Carga el monto desde el precio
-// de venta del producto; si el usuario lo baja, se registra como descuento.
-function _autofillSalePrice() {
-  const cb       = document.getElementById('f-affects-inv');
-  const pid      = document.getElementById('f-product')?.value;
-  const qtyRaw   = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+// ── Fase 2b: carrito de venta (varios productos) + Camino A (auto-precio/descuento) ──
+// En ventas de inventario el monto = TOTAL FINAL (precio de venta × cantidad, de todas
+// las líneas). El IVA se deriva por producto al guardar. El descuento = lista − cobrado.
+
+// Suma del precio de lista (final) del carrito + el producto activo del selector
+function _saleListTotal() {
+  let total = 0;
+  _saleCart.forEach(l => { total += (l.precioFinal || 0) * (l.quantity || 0); });
+  const pid  = document.getElementById('f-product')?.value;
+  const qty  = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+  const prod = pid ? DB.getProductById(pid) : null;
+  if (prod && qty > 0) total += (prod.precioFinal || 0) * qty;
+  return Math.round(total * 100) / 100;
+}
+
+// Recalcula el monto (total final = carrito + activo). Solo ventas de inventario.
+function _recomputeSaleTotal() {
+  const cb = document.getElementById('f-affects-inv');
   const amountEl = document.getElementById('f-amount');
-  const prod     = pid ? DB.getProductById(pid) : null;
-  if (formType !== 'income' || !(cb && cb.checked) || !prod || !amountEl) return;
-
-  // Valor a cargar según el modo de IVA del producto (para que el total final cuadre):
-  //  +IVA → base (la app suma el IVA);  incluido/sin IVA → precio final
-  const unit = (prod.tipoIva === 'IVA_NO_INCLUIDO') ? (prod.precioBase || 0) : (prod.precioFinal || 0);
-  if (unit <= 0) return; // producto sin precio de lista: no autocompletar (entrada manual)
-
-  const qty = qtyRaw > 0 ? qtyRaw : 1;
-  amountEl.value = Math.round(unit * qty * 100) / 100;
-  _updateIvaBreakdown(); // recalcula desglose IVA + (dentro) el hint de descuento
+  if (formType !== 'income' || !(cb && cb.checked) || !amountEl) return;
+  const total = _saleListTotal();
+  if (total > 0) amountEl.value = total;
+  _updateDiscountHint();
 }
 
 function _onSaleQtyChange() {
-  _autofillSalePrice(); // nueva cantidad → recalcular el total de lista
+  if (formType === 'income') _recomputeSaleTotal();
+}
+
+// Pinta el carrito de productos agregados a la venta
+function _renderCart() {
+  const el = document.getElementById('sale-cart');
+  if (!el) return;
+  if (!_saleCart.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  const rows = _saleCart.map((l, i) => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--gray-50);
+      border-radius:8px; margin-bottom:6px;">
+      <span style="font-size:18px; flex-shrink:0;">${l.emoji || '📦'}</span>
+      <span style="flex:1; min-width:0; font-size:13px; font-weight:600; color:var(--gray-800);
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(l.name)}
+        <span style="color:var(--gray-500); font-weight:400;">× ${l.quantity}</span></span>
+      <span style="font-size:13px; font-weight:700; color:var(--gray-700); white-space:nowrap;">${fmt((l.precioFinal || 0) * l.quantity)}</span>
+      <button type="button" onclick="_removeCartLine(${i})"
+        style="background:none; border:none; color:var(--danger); font-size:16px; cursor:pointer; padding:0 2px; flex-shrink:0;">✕</button>
+    </div>`).join('');
+  el.innerHTML = `
+    <div style="font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase;
+      letter-spacing:.04em; margin-bottom:6px;">🛒 Productos en esta venta (${_saleCart.length})</div>
+    ${rows}`;
+}
+
+// Agrega el producto activo del selector al carrito y limpia para el siguiente
+function _addToCart() {
+  const pid  = document.getElementById('f-product')?.value;
+  const qty  = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+  const prod = pid ? DB.getProductById(pid) : null;
+  if (!prod)    { showToast('⚠️ Elige un producto primero'); return; }
+  if (qty <= 0) { showToast('⚠️ Ingresa la cantidad'); return; }
+
+  _saleCart.push({
+    productId: prod.id, name: prod.name, emoji: prod.emoji || '📦', quantity: qty,
+    tipoIva: prod.tipoIva || 'SIN_IVA', precioFinal: prod.precioFinal || 0,
+    precioBase: prod.precioBase || 0,
+    porcentajeIva: prod.porcentajeIva || (DB.getSettings().porcentajeIva || DB.IVA_DEFAULT),
+  });
+
+  // limpiar la selección activa para el siguiente producto
+  const hidden = document.getElementById('f-product'); if (hidden) hidden.value = '';
+  const label  = document.getElementById('f-product-label');
+  if (label) { label.textContent = '— Seleccionar producto —'; label.style.color = 'var(--gray-400)'; }
+  const qEl = document.getElementById('f-quantity'); if (qEl) qEl.value = '';
+
+  _renderCart();
+  _recomputeSaleTotal(); // total = carrito (activo quedó vacío)
+  _applyInvIvaLock();    // pasa a modo "IVA por producto"
+  _renderInvAviso();
+  showToast('🛒 Producto agregado', 1300);
+}
+
+function _removeCartLine(idx) {
+  _saleCart.splice(idx, 1);
+  _renderCart();
+  _recomputeSaleTotal();
+  _applyInvIvaLock();
+  _renderInvAviso();
 }
 
 // Muestra el descuento (precio de lista vs total cobrado) en vivo. No bloquea.
 function _updateDiscountHint() {
   const el = document.getElementById('discount-hint');
   if (!el) return;
-  const cb   = document.getElementById('f-affects-inv');
-  const pid  = document.getElementById('f-product')?.value;
-  const qty  = parseFloat(document.getElementById('f-quantity')?.value) || 0;
-  const prod = pid ? DB.getProductById(pid) : null;
+  const cb = document.getElementById('f-affects-inv');
+  if (formType !== 'income' || !(cb && cb.checked)) { el.style.display = 'none'; el.innerHTML = ''; return; }
 
-  if (formType !== 'income' || !(cb && cb.checked) || !prod || !(prod.precioFinal > 0) || qty <= 0) {
-    el.style.display = 'none'; el.innerHTML = ''; return;
-  }
-  const listFinal    = prod.precioFinal * qty;          // precio de lista (lo que valían)
-  const chargedFinal = _formTotal();                    // lo que realmente cobras (con IVA)
-  const disc = Math.round((listFinal - chargedFinal) * 100) / 100;
+  const listFinal = _saleListTotal();
+  const charged   = parseFloat(document.getElementById('f-amount')?.value) || 0;
+  if (listFinal <= 0 || charged <= 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const disc = Math.round((listFinal - charged) * 100) / 100;
   if (disc > 0.005) {
     el.style.display = 'block';
     el.innerHTML = `🔻 Descuento aplicado: <strong>−${fmt(disc)}</strong> ` +
@@ -4002,6 +4141,14 @@ function submitForm() {
     }
 
     const affectsInv = document.getElementById('f-affects-inv')?.checked;
+
+    // Fase 2b: VENTA NUEVA de inventario (1 o varios productos) → emisión por producto.
+    // (La edición de una venta de 1 producto sigue por el camino de siempre, abajo.)
+    if (affectsInv && formType === 'income' && !editingTxId) {
+      _submitInventorySale({ desc, date, notes, category: data.category, account: data.account });
+      return;
+    }
+
     if (affectsInv) {
       const productId = document.getElementById('f-product')?.value;
       const quantity  = parseFloat(document.getElementById('f-quantity')?.value);
@@ -4062,6 +4209,93 @@ function submitForm() {
   navigate('dashboard');
 }
 
+// ── Fase 2b: emisión de una venta de inventario (1 o varios productos) ───────
+// Crea UNA transacción por producto (cada una con su IVA/CMV/stock, vía el motor
+// normal), unidas por saleGroupId si son varias. El descuento global se reparte
+// proporcionalmente. El núcleo contable no cambia: cada línea es una venta normal.
+function _submitInventorySale(common) {
+  const account  = document.getElementById('f-account')?.value || '';
+  const bankName  = account === 'a-banco' ? (document.getElementById('bank-name-main')?.value.trim() || '') : '';
+
+  // Reunir líneas: carrito + producto activo del selector (si hay)
+  const lines = _saleCart.slice();
+  const apid  = document.getElementById('f-product')?.value;
+  const aqty  = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+  if (apid && aqty > 0) {
+    const ap = DB.getProductById(apid);
+    if (ap) lines.push({
+      productId: ap.id, name: ap.name, emoji: ap.emoji || '📦', quantity: aqty,
+      tipoIva: ap.tipoIva || 'SIN_IVA', precioFinal: ap.precioFinal || 0, precioBase: ap.precioBase || 0,
+      porcentajeIva: ap.porcentajeIva || (DB.getSettings().porcentajeIva || DB.IVA_DEFAULT),
+    });
+  }
+  if (!lines.length) { showToast('⚠️ Agrega al menos un producto a la venta'); return; }
+
+  const listTotal = Math.round(lines.reduce((s, l) => s + (l.precioFinal || 0) * l.quantity, 0) * 100) / 100;
+  let charged = parseFloat(document.getElementById('f-amount')?.value);
+  if (!(charged > 0)) charged = listTotal; // sin monto explícito → total de lista
+  charged = Math.round(charged * 100) / 100;
+
+  const factor  = listTotal > 0 ? (charged / listTotal) : 1;
+  const groupId = lines.length > 1
+    ? ('sg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)) : null;
+
+  let assigned = 0;     // suma repartida hasta ahora (para que el total cuadre al centavo)
+  let firstTxId = null;
+
+  lines.forEach((l, i) => {
+    const lineList = Math.round((l.precioFinal || 0) * l.quantity * 100) / 100;
+    // Reparto proporcional del total cobrado; la última línea absorbe el redondeo
+    let lineCharged = (i === lines.length - 1)
+      ? Math.round((charged - assigned) * 100) / 100
+      : Math.round(lineList * factor * 100) / 100;
+    if (lineCharged < 0) lineCharged = 0;
+    assigned = Math.round((assigned + lineCharged) * 100) / 100;
+
+    const pct = l.porcentajeIva || (DB.getSettings().porcentajeIva || DB.IVA_DEFAULT);
+    // Monto a registrar según el modo de IVA del producto (para que el final cuadre):
+    //  +IVA → base (la app suma el IVA);  incluido/sin IVA → el cobrado es el final
+    const amountField = (l.tipoIva === 'IVA_NO_INCLUIDO')
+      ? Math.round((lineCharged / (1 + pct / 100)) * 100) / 100
+      : lineCharged;
+    const lineDiscount = Math.max(0, Math.round((lineList - lineCharged) * 100) / 100);
+
+    const lineDesc = groupId
+      ? (common.desc ? common.desc + ' · ' + l.name : 'Venta · ' + l.name)
+      : common.desc;
+
+    const newTx = DB.addTransaction({
+      type:             'income',
+      description:      lineDesc,
+      date:             common.date,
+      notes:            (i === 0 ? (common.notes || '') : ''),
+      category:         common.category || '',
+      account, bankName,
+      affectsInventory: true,
+      productId:        l.productId,
+      quantity:         l.quantity,
+      ivaType:          l.tipoIva,
+      porcentajeIva:    pct,
+      amount:           amountField,
+      saleGroupId:      groupId || undefined,
+      listAmount:       lineList,
+      discount:         lineDiscount,
+      hasReceipt:       (i === 0 && !!_formPhoto),
+    });
+    if (i === 0 && newTx) firstTxId = newTx.id;
+  });
+
+  if (_formPhoto && firstTxId) DB.savePhoto(firstTxId, _formPhoto);
+  if (account) DB.setLastAccount('income', account);
+
+  const descKey = _normalizeDescKey(common.desc);
+  if (descKey) DB.saveSmartDescEntry(descKey, { exampleDesc: common.desc, type: 'income', account: account || null });
+
+  _saleCart = [];
+  showToast(lines.length > 1 ? `✅ Venta de ${lines.length} productos guardada` : '✅ Venta guardada');
+  navigate('dashboard');
+}
+
 function deleteCurrentTx() {
   if (!editingTxId) return;
   if (!confirm('¿Eliminar esta transacción?')) return;
@@ -4071,9 +4305,65 @@ function deleteCurrentTx() {
 }
 
 // ── Detalle de transacción (sheet) ────────────────────────────────────────────
+// ── Fase 2b: detalle de una venta multi-producto (grupo) ─────────────────────
+function openSaleGroupDetail(groupId) {
+  const txs   = DB.getSaleGroup(groupId);
+  const sales = txs.filter(t => t.type === 'income' && !t.isIva && !t.isCogs);
+  if (!sales.length) return;
+
+  const charged = s => (s.listAmount != null ? (s.listAmount - (s.discount || 0)) : s.amount);
+  let totalCharged = 0, totalList = 0, totalDiscount = 0, totalIva = 0;
+  sales.forEach(s => { totalCharged += charged(s); totalList += (s.listAmount || charged(s)); totalDiscount += (s.discount || 0); });
+  txs.filter(t => t.isIva).forEach(t => { totalIva += t.amount; });
+
+  const rows = sales.map(s => {
+    const p = DB.getProductById(s.productId);
+    const nm = p ? p.name : (s.description || 'Producto');
+    const em = p ? (p.emoji || '📦') : '📦';
+    return `
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--gray-100);">
+        <span style="font-size:20px;">${em}</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:600; color:var(--gray-800);">${escHtml(nm)} <span style="color:var(--gray-500); font-weight:400;">× ${s.quantity}</span></div>
+          ${(s.discount > 0) ? `<div style="font-size:11px; color:var(--warning);">🔻 Descuento −${fmt(s.discount)} (lista ${fmt(s.listAmount || 0)})</div>` : ''}
+        </div>
+        <span style="font-size:14px; font-weight:700; color:var(--success); white-space:nowrap;">${fmt(charged(s))}</span>
+      </div>`;
+  }).join('');
+
+  const totRow = (lbl, val, color) => `<div style="display:flex; justify-content:space-between; font-size:13px; padding:2px 0;"><span style="color:var(--gray-500);">${lbl}</span><span style="font-weight:700; ${color ? 'color:' + color + ';' : ''}">${val}</span></div>`;
+
+  document.getElementById('detail-content').innerHTML = `
+    <div style="text-align:center; padding:8px 0 18px;">
+      <div style="font-size:50px; margin-bottom:6px;">🛒</div>
+      <span class="badge badge-income" style="margin-bottom:10px;">Venta · ${sales.length} productos</span>
+      <div style="font-size:34px; font-weight:800; color:var(--success); margin:4px 0;">+${fmt(totalCharged)}</div>
+      <div style="font-size:13px; color:var(--gray-500);">${fmtDate(sales[0].date)}</div>
+    </div>
+    <div class="divider"></div>
+    ${rows}
+    <div style="margin-top:12px;">
+      ${totalDiscount > 0 ? totRow('🔻 Descuento total', '−' + fmt(totalDiscount), 'var(--warning)') : ''}
+      ${totalIva > 0 ? totRow('🧾 IVA cobrado', fmt(totalIva), 'var(--primary)') : ''}
+      ${totRow('💵 Total cobrado', fmt(totalCharged))}
+    </div>
+    <div style="background:var(--gray-50); border-radius:10px; padding:10px 12px; font-size:12px; color:var(--gray-500); line-height:1.5; margin-top:12px;">
+      Esta venta agrupa ${sales.length} productos; cada uno aplicó su propio IVA y costo automáticamente.
+    </div>
+    <div style="margin-top:20px;">
+      ${isCurrentUserOwner()
+        ? `<button class="btn btn-danger btn-block" onclick="closeDetail(); setTimeout(()=>{ DB.deleteSaleGroup('${escHtml(groupId)}'); showToast('🗑️ Venta eliminada'); if (currentScreen==='journal') renderJournal(); else renderDashboard(); }, 100)">🗑️ Eliminar venta completa</button>`
+        : `<button class="btn btn-danger btn-block" style="opacity:.45; cursor:not-allowed;" onclick="showToast('🚫 Solo el propietario puede eliminar', 2500)">🗑️ Eliminar venta completa</button>`}
+    </div>
+  `;
+  document.getElementById('detail-overlay').classList.add('open');
+}
+
 function openTxDetail(id) {
   const tx  = DB.getTransactionById(id);
   if (!tx) return;
+  // Si la transacción es parte de una venta multi-producto, mostrar la venta completa
+  if (tx.saleGroupId) { openSaleGroupDetail(tx.saleGroupId); return; }
   const cat = DB.getCategoryById(tx.category);
   // Guardar descripción en global para acceder desde onclick sin problemas de escape
   window._txDescForReport = tx.description;
@@ -9386,6 +9676,8 @@ document.addEventListener('DOMContentLoaded', () => {
   );
 
   document.getElementById('dash-recent').addEventListener('click', e => {
+    const grp = e.target.closest('[data-sale-group]');
+    if (grp) { openSaleGroupDetail(grp.dataset.saleGroup); return; }
     const li = e.target.closest('[data-tx-id]');
     if (li) openTxDetail(li.dataset.txId);
   });

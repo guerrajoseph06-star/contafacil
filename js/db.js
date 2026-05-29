@@ -266,6 +266,7 @@ const DB = (() => {
       date:         saleTx.date,
       category:     'c-cmv',
       account:      saleTx.account || '',
+      saleGroupId:  saleTx.saleGroupId || undefined, // hereda el grupo de venta (multi-producto)
     };
   }
 
@@ -302,6 +303,7 @@ const DB = (() => {
       date:           parentTx.date,
       account:        parentTx.account || '',
       category:       isIncome ? 'c-iva-ventas' : 'c-iva-compras',
+      saleGroupId:    parentTx.saleGroupId || undefined, // hereda el grupo de venta (multi-producto)
     };
   }
 
@@ -467,6 +469,23 @@ const DB = (() => {
     if (tx.hasReceipt) deletePhoto(id);
     // Borrar memorandos de deducible vinculados (si era una factura)
     deleteDeduciblesByTx(id);
+  }
+
+  // ── Venta multi-producto (Fase 2b) ──────────────────────────────────────────
+  // Una venta de varios productos = N transacciones (una por producto) unidas por
+  // saleGroupId. Cada una usa el motor normal (IVA/CMV/inventario por producto).
+  function getSaleGroup(groupId) {
+    if (!groupId) return [];
+    return getTransactions().filter(t => t.saleGroupId === groupId);
+  }
+
+  // Borra toda la venta: borra cada línea principal (que arrastra su IVA y CMV
+  // vinculados y revierte el inventario, reutilizando deleteTransaction).
+  function deleteSaleGroup(groupId) {
+    if (!groupId) return;
+    const lines = getTransactions().filter(t =>
+      t.saleGroupId === groupId && !t.isIva && !t.isCogs);
+    lines.forEach(line => deleteTransaction(line.id));
   }
 
   // ── Gastos personales deducibles (Impuesto a la Renta — Ecuador) ─────────────
@@ -2071,6 +2090,7 @@ const DB = (() => {
     init,
     getTransactions, getTransactionsByMonth, getTransactionById,
     addTransaction, updateTransaction, deleteTransaction,
+    getSaleGroup, deleteSaleGroup,
     getMonthStats, getAllTimeBalance, getProfitStatement, getPendingLiabilities,
     getCategories, getCategoriesByType, getCategoryById, getCategoryTaxProfile,
     getAccounts, getAccountById, getLastAccount, setLastAccount,
