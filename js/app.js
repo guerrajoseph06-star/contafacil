@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23z';
+const APP_VERSION = '2026.05.29a';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -7138,32 +7138,45 @@ function renderStockAlerts() {
   const el = document.getElementById('dash-stock-alert');
   if (!el) return;
 
-  const allProds  = DB.getInventory();
-  const critical  = allProds.filter(p => (p.minStock || 0) > 0 && p.quantity <= p.minStock);
-  const warning   = allProds.filter(p => (p.minStock || 0) > 0 && p.quantity > p.minStock && p.quantity <= p.minStock * 2);
+  // Tres niveles de severidad (solo productos con alerta activada: minStock > 0)
+  const tracked = DB.getInventory().filter(p => (p.minStock || 0) > 0);
+  const agotado = tracked.filter(p => p.quantity <= 0);                                    // ⛔ sin stock
+  const bajo    = tracked.filter(p => p.quantity > 0 && p.quantity <= p.minStock);          // 📉 stock bajo
+  const poco    = tracked.filter(p => p.quantity > p.minStock && p.quantity <= p.minStock * 2); // 📉 quedando poco
 
-  if (!critical.length && !warning.length) { el.style.display = 'none'; return; }
+  if (!agotado.length && !bajo.length && !poco.length) { el.style.display = 'none'; return; }
 
-  const isRed   = critical.length > 0;
-  const shown   = isRed ? critical : warning;
+  // Icono y color por severidad: agotado (⛔ rojo) › stock bajo (📉 rojo) › quedando poco (📉 ámbar)
+  let icon, bg, border, color, shown, titulo;
+  if (agotado.length) {
+    icon = '⛔'; bg = '#fee2e2'; border = '#fca5a5'; color = '#991b1b';
+    shown = agotado; titulo = `${agotado.length} producto(s) agotado(s)`;
+  } else if (bajo.length) {
+    icon = '📉'; bg = '#fee2e2'; border = '#fca5a5'; color = '#991b1b';
+    shown = bajo; titulo = `${bajo.length} producto(s) con stock bajo`;
+  } else {
+    icon = '📉'; bg = '#fef3c7'; border = '#fcd34d'; color = '#92400e';
+    shown = poco; titulo = `${poco.length} producto(s) quedando poco`;
+  }
+
+  // Si coexisten varios niveles, mencionarlos en la sub-línea
+  const niveles = [];
+  if (icon === '⛔' && bajo.length) niveles.push(`${bajo.length} con stock bajo`);
+  if ((agotado.length || bajo.length) && poco.length) niveles.push(`${poco.length} quedando poco`);
+
   const preview = shown.slice(0, 3)
     .map(p => `${p.emoji || '📦'} ${escHtml(p.name)} (${p.quantity}/${p.minStock})`)
     .join(' · ');
 
   el.style.cssText = `
-    display:flex; background:${isRed ? '#fee2e2' : '#fef3c7'};
-    border:1.5px solid ${isRed ? '#fca5a5' : '#fcd34d'};
+    display:flex; background:${bg}; border:1.5px solid ${border};
     border-radius:var(--radius); padding:12px 14px; gap:10px;
-    align-items:center; margin-bottom:12px;
-    color:${isRed ? '#991b1b' : '#92400e'};
+    align-items:center; margin-bottom:12px; color:${color};
   `;
   el.innerHTML = `
-    <span style="font-size:20px;">${isRed ? '🔴' : '🟡'}</span>
-    <div style="flex:1;">
-      <div style="font-weight:700; font-size:14px;">
-        ${critical.length ? critical.length + ' producto(s) con stock bajo' : ''}
-        ${warning.length ? (critical.length ? ' · ' : '') + warning.length + ' quedando poco' : ''}
-      </div>
+    <span style="font-size:20px;">${icon}</span>
+    <div style="flex:1; min-width:0;">
+      <div style="font-weight:700; font-size:14px;">${titulo}${niveles.length ? ' · ' + niveles.join(' · ') : ''}</div>
       <div style="font-size:12px; opacity:.8; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         ${preview}${shown.length > 3 ? ` +${shown.length - 3} más` : ''}
       </div>
