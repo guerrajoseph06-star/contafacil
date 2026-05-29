@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29b';
+const APP_VERSION = '2026.05.29c';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2403,8 +2403,10 @@ function _onCategoryChange() {
 
   const prof = DB.getCategoryTaxProfile(catId);
 
-  // Sugerencia suave de IVA (solo si el usuario aún no lo tocó manualmente)
-  if (!_ivaTouched && prof.ivaSugerido) {
+  // Sugerencia suave de IVA (solo si el usuario no lo tocó manualmente Y la venta NO
+  // afecta inventario — si afecta, el IVA lo manda el producto, no la categoría).
+  const invOn = !!document.getElementById('f-affects-inv')?.checked;
+  if (!invOn && !_ivaTouched && prof.ivaSugerido) {
     if (prof.ivaSugerido === 'SIN_IVA')                                 selectIva('SIN_IVA', true);
     else if (prof.ivaSugerido === 'CON_IVA' && _formIvaType === 'SIN_IVA') selectIva('IVA_INCLUIDO', true);
   }
@@ -3563,7 +3565,7 @@ function renderFormFields(tx) {
     html += `
       <div class="form-group">
         <label class="form-label">🧾 IVA / Impuesto</label>
-        <div style="display:flex; gap:6px; margin-bottom:6px;">
+        <div id="iva-btn-row" style="display:flex; gap:6px; margin-bottom:6px;">
           ${ivaOptions.map(([t, ico, lbl]) => `
             <button type="button" id="iva-btn-${t}" onclick="selectIva('${t}')"
               style="flex:1; padding:10px 4px; border-radius:10px; font-size:11px; line-height:1.5;
@@ -3575,6 +3577,9 @@ function renderFormFields(tx) {
               ${ico}<br>${lbl}
             </button>`).join('')}
         </div>
+        <div id="iva-lock-note" style="display:none; font-size:12px; line-height:1.45;
+          padding:8px 11px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe;
+          color:#1e40af; margin-bottom:6px;"></div>
         <div id="iva-breakdown" style="font-size:12px; min-height:18px;"></div>
       </div>
     `;
@@ -3639,6 +3644,7 @@ function renderFormFields(tx) {
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
   if (isIncome || isExpense) _onCategoryChange(); // aviso tributario suave de la categoría preseleccionada
   if (isIncome || isExpense) _renderInvAviso();   // F1: aviso de compra→inventario / costo 0 al vender
+  if (isIncome || isExpense) _applyInvIvaLock();  // Fase 2a: derivar+bloquear IVA si afecta inventario
 
   // Factura detallada: opción contextual solo para gastos
   const facWrap = document.getElementById('fac-entry-wrap');
@@ -3655,6 +3661,7 @@ function toggleInventorySection() {
   const sec = document.getElementById('inv-section');
   if (sec) sec.style.display = cb?.checked ? 'block' : 'none';
   _renderInvAviso();
+  _applyInvIvaLock(); // Fase 2a: al activar/desactivar inventario, bloquear/liberar el IVA
 }
 
 // ── "Más detalles ▾" — divulgación progresiva ────────────────────────────────
@@ -3809,7 +3816,50 @@ function _selectProduct(id) {
     label.style.color = 'var(--gray-900)';
   }
   if (panel) panel.style.display = 'none';
-  _renderInvAviso(); // mantiene coherente el aviso de costo $0 al vender (F1)
+  _renderInvAviso();   // mantiene coherente el aviso de costo $0 al vender (F1)
+  _applyInvIvaLock();  // Fase 2a: el IVA se deriva del producto y se bloquea el selector global
+}
+
+// Etiqueta legible de un tipo de IVA
+function _ivaLabel(tipo) {
+  const pct = DB.getSettings().porcentajeIva || DB.IVA_DEFAULT;
+  return tipo === 'SIN_IVA'         ? 'Sin IVA'
+       : tipo === 'IVA_NO_INCLUIDO' ? '+' + pct + '% IVA'
+       :                              'IVA incluido (' + pct + '%)';
+}
+
+// ── Fase 2a: coherencia de IVA en ventas/compras de inventario ───────────────
+// Cuando el movimiento afecta inventario, el IVA lo define el PRODUCTO (su tipoIva),
+// no el selector global. Se deriva del producto y se BLOQUEA el selector (no desaparece),
+// evitando el desfase de declarar un IVA que el producto no tiene.
+function _applyInvIvaLock() {
+  const row  = document.getElementById('iva-btn-row');
+  const note = document.getElementById('iva-lock-note');
+  if (!row) return;
+  const cb    = document.getElementById('f-affects-inv');
+  const invOn = !!(cb && cb.checked);
+
+  if (invOn) {
+    const pid = document.getElementById('f-product')?.value;
+    const p   = pid ? DB.getProductById(pid) : null;
+    if (p) {
+      const tipo = p.tipoIva || 'SIN_IVA';
+      selectIva(tipo, true); // derivar del producto (sin marcar toque manual)
+      if (note) {
+        note.style.display = 'block';
+        note.innerHTML = `🔒 IVA tomado del producto: <strong>${escHtml(p.name)}</strong> · ${_ivaLabel(tipo)}`;
+      }
+    } else if (note) {
+      note.style.display = 'block';
+      note.innerHTML = '🔒 El IVA se tomará del producto que selecciones.';
+    }
+    row.style.pointerEvents = 'none';
+    row.style.opacity = '.55';
+  } else {
+    row.style.pointerEvents = '';
+    row.style.opacity = '';
+    if (note) { note.style.display = 'none'; note.innerHTML = ''; }
+  }
 }
 
 // F1 — Aviso suave NO bloqueante dentro de la sección de inventario:
