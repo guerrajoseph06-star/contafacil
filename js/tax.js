@@ -75,6 +75,7 @@ const SRI = (() => {
       let ventas15 = 0, ventas0 = 0, ivaVentas = 0;
       let compras15 = 0, compras0 = 0, ivaCompras = 0;
       let countVentas = 0, countCompras = 0;
+      let ivaRevisable = 0; // IVA incluido en el crédito pero que conviene revisar (ej. consumo personal)
 
       txs.forEach(t => {
         if (t.isCogs) return;                       // costo interno: no es IVA
@@ -89,7 +90,14 @@ const SRI = (() => {
           if (gravado) ventas15 += t.amount; else ventas0 += t.amount;
         } else if (t.type === 'expense') {
           countCompras++;
-          if (gravado) compras15 += t.amount; else compras0 += t.amount;
+          if (gravado) {
+            compras15 += t.amount;
+            // NO se excluye: el crédito se mantiene completo; solo se SEÑALA para revisión humana.
+            const prof = DB.getCategoryTaxProfile(t.category);
+            if (prof.creditoRevisable && t.ivaAmount) ivaRevisable += t.ivaAmount;
+          } else {
+            compras0 += t.amount;
+          }
         }
       });
 
@@ -100,6 +108,7 @@ const SRI = (() => {
         compras15, compras0, comprasTotal: compras15 + compras0, ivaCompras,
         ivaPorPagar:   neto > 0 ? neto : 0,
         creditoAFavor: neto < 0 ? -neto : 0,
+        ivaRevisable,
         countVentas, countCompras,
         movimientos: countVentas + countCompras,
       };
@@ -120,6 +129,8 @@ const SRI = (() => {
         pushW('warn', 'Hay IVA en compras pero sin base de compras gravadas registrada.');
       if (d.creditoAFavor > 0)
         pushW('info', `Tu IVA de compras supera al de ventas: tendrías ${fmt(d.creditoAFavor)} de crédito tributario a favor para el próximo periodo.`);
+      if (d.ivaRevisable > 0)
+        pushW('warn', `De tu crédito de IVA, ${fmt(d.ivaRevisable)} proviene de gastos a revisar (ej. consumo personal). El borrador lo incluye, pero confírmalo con tu contador.`);
 
       // Chequeo de coherencia: el IVA de ventas debería rondar el % sobre la base
       if (d.ventas15 > 0) {

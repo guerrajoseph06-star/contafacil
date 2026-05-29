@@ -642,11 +642,62 @@ const DB = (() => {
     );
   }
 
+  // ── Capa tributaria interna (DESACOPLADA) ──────────────────
+  // Las reglas tributarias viven en CÓDIGO, nunca en los datos del usuario.
+  // Filosofía: ORIENTA, NO IMPONE. La metadata es sugestiva, jamás bloqueante.
+  //   ivaSugerido       → 'CON_IVA' | 'SIN_IVA' | null  (pre-selección suave; null = neutral)
+  //   avisoIva          → texto blando opcional (informativo, editable por el usuario)
+  //   creditoRevisable  → si true, el borrador 104 SEÑALA (no excluye) su IVA para revisión
+  // No se guarda nada: se deriva en tiempo de lectura. Cambiar esta tabla NO migra datos.
+  const _DEFAULT_TAX_PROFILE = { taxProfile: 'OPERATIVO', ivaSugerido: null, avisoIva: '', creditoRevisable: false };
+  const CATEGORY_TAX_PROFILES = {
+    // INGRESOS
+    'c-ventas':     { taxProfile: 'INGRESO_OPERATIVO', ivaSugerido: 'CON_IVA' },
+    'c-servicios':  { taxProfile: 'INGRESO_OPERATIVO', ivaSugerido: 'CON_IVA' },
+    'c-comision':   { taxProfile: 'INGRESO_OPERATIVO', ivaSugerido: 'CON_IVA' },
+    'c-otros-i':    { taxProfile: 'INGRESO_OTRO',      ivaSugerido: null },     // neutral (puede ser gravado u ocasional)
+    'c-interes':    { taxProfile: 'INGRESO_OTRO',      ivaSugerido: null },     // oculto (compatibilidad histórica)
+    // GASTOS
+    'c-compras':    { taxProfile: 'COGS',           ivaSugerido: 'CON_IVA' },
+    'c-arriendo':   { taxProfile: 'OPERATIVO',      ivaSugerido: 'CON_IVA' },
+    'c-internet':   { taxProfile: 'OPERATIVO',      ivaSugerido: 'CON_IVA' },
+    'c-serv-bas':   { taxProfile: 'OPERATIVO',      ivaSugerido: 'CON_IVA' },
+    'c-salarios':   { taxProfile: 'OPERATIVO',      ivaSugerido: 'SIN_IVA', avisoIva: 'Los sueldos normalmente no llevan IVA.' },
+    'c-marketing':  { taxProfile: 'OPERATIVO',      ivaSugerido: 'CON_IVA' },
+    'c-transporte': { taxProfile: 'OPERATIVO',      ivaSugerido: 'CON_IVA' },
+    'c-impuestos':  { taxProfile: 'IMPUESTO',       ivaSugerido: 'SIN_IVA', avisoIva: 'Un impuesto no suele generar crédito de IVA.' },
+    'c-equipos':    { taxProfile: 'OPERATIVO_CAPEX', ivaSugerido: 'CON_IVA', avisoIva: 'Este gasto podría registrarse como activo fijo en contabilidades avanzadas.' },
+    'c-comida':     { taxProfile: 'PERSONAL_NO_DEDUCIBLE', ivaSugerido: 'CON_IVA', avisoIva: 'Si es consumo personal, su IVA podría no dar crédito. Revísalo con tu contador.', creditoRevisable: true },
+    'c-tarjeta-cr': { taxProfile: 'FINANCIERO',     ivaSugerido: 'SIN_IVA' },   // oculto (es forma de pago, no categoría)
+    'c-otros-e':    { taxProfile: 'OPERATIVO',      ivaSugerido: null },        // comodín neutral
+    // PASIVOS / DEUDAS
+    'c-deuda-prov': { taxProfile: 'PASIVO', ivaSugerido: 'SIN_IVA' },
+    'c-deuda-serv': { taxProfile: 'PASIVO', ivaSugerido: 'SIN_IVA' },
+    'c-prestamo':   { taxProfile: 'PASIVO', ivaSugerido: 'SIN_IVA' },
+    'c-otros-l':    { taxProfile: 'PASIVO', ivaSugerido: 'SIN_IVA' },
+  };
+
+  // Categorías que se OCULTAN del selector pero siguen siendo resolubles por id
+  // (para no romper transacciones históricas que las usaron).
+  const HIDDEN_CATEGORY_IDS = new Set(['c-interes', 'c-tarjeta-cr']);
+
+  // Devuelve el perfil tributario de una categoría. Con fallback por tipo para
+  // categorías personalizadas o futuras (jamás devuelve null).
+  function getCategoryTaxProfile(id) {
+    if (CATEGORY_TAX_PROFILES[id]) return { ..._DEFAULT_TAX_PROFILE, ...CATEGORY_TAX_PROFILES[id] };
+    const cat  = getCategoryById(id);
+    const type = cat && cat.type;
+    if (type === 'income')    return { ..._DEFAULT_TAX_PROFILE, taxProfile: 'INGRESO_OTRO' };
+    if (type === 'liability') return { ..._DEFAULT_TAX_PROFILE, taxProfile: 'PASIVO', ivaSugerido: 'SIN_IVA' };
+    return { ..._DEFAULT_TAX_PROFILE }; // gasto/desconocida → operativo neutral
+  }
+
   // ── Categorías ─────────────────────────────────────────────
-  // getCategoriesByType excluye las de sistema (no mostrar c-cmv al usuario)
+  // getCategoriesByType excluye las de sistema (c-cmv) y las ocultas (c-interes…)
   function getCategories() { return load(KEYS.categories) || DEFAULT_CATEGORIES; }
   function getCategoriesByType(type) {
-    return getCategories().filter(c => c.type === type && !c.isSystem);
+    return getCategories().filter(c =>
+      c.type === type && !c.isSystem && !HIDDEN_CATEGORY_IDS.has(c.id));
   }
   function getCategoryById(id) { return getCategories().find(c => c.id === id) || null; }
 
@@ -1976,7 +2027,7 @@ const DB = (() => {
     getTransactions, getTransactionsByMonth, getTransactionById,
     addTransaction, updateTransaction, deleteTransaction,
     getMonthStats, getAllTimeBalance, getProfitStatement, getPendingLiabilities,
-    getCategories, getCategoriesByType, getCategoryById,
+    getCategories, getCategoriesByType, getCategoryById, getCategoryTaxProfile,
     getAccounts, getAccountById,
     getInventory, addProduct, updateProduct, deleteProduct, getProductById,
     getSettings, updateSettings,

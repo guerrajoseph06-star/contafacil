@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.23t';
+const APP_VERSION = '2026.05.23u';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2223,6 +2223,7 @@ function txItemHTML(tx) {
 // ── Formulario de transacción ─────────────────────────────────────────────────
 // ── Sistema inteligente: autocompletar descripciones + selector IVA ───────────
 let _formIvaType      = 'IVA_INCLUIDO'; // tipo de IVA activo en el formulario
+let _ivaTouched       = false;          // ¿el usuario eligió el IVA manualmente? (evita que la sugerencia por categoría lo pise)
 let _smartSuggestions = [];              // lista de sugerencias actuales (por índice)
 
 // Normaliza texto a clave de aprendizaje: primeras 3 palabras ≥3 letras
@@ -2368,8 +2369,9 @@ function _selectSuggestion(idx) {
 }
 
 // Cambia el tipo de IVA activo y actualiza los botones + desglose
-function selectIva(type) {
+function selectIva(type, _auto) {
   _formIvaType = type;
+  if (!_auto) _ivaTouched = true; // toque manual: la sugerencia por categoría ya no lo pisará
   ['SIN_IVA', 'IVA_NO_INCLUIDO', 'IVA_INCLUIDO'].forEach(t => {
     const btn = document.getElementById('iva-btn-' + t);
     if (!btn) return;
@@ -2380,6 +2382,39 @@ function selectIva(type) {
     btn.style.fontWeight  = on ? '800' : '600';
   });
   _updateIvaBreakdown();
+}
+
+// Al cambiar la categoría: sugiere IVA suavemente y muestra un aviso informativo.
+// ORIENTA, NO IMPONE: nunca bloquea ni impide editar; el usuario manda.
+function _onCategoryChange() {
+  const sel   = document.getElementById('f-category');
+  const aviso = document.getElementById('cat-tax-aviso');
+  if (!sel) return;
+  const catId = sel.value;
+  if (!catId) { if (aviso) { aviso.style.display = 'none'; aviso.innerHTML = ''; } return; }
+
+  const prof = DB.getCategoryTaxProfile(catId);
+
+  // Sugerencia suave de IVA (solo si el usuario aún no lo tocó manualmente)
+  if (!_ivaTouched && prof.ivaSugerido) {
+    if (prof.ivaSugerido === 'SIN_IVA')                                 selectIva('SIN_IVA', true);
+    else if (prof.ivaSugerido === 'CON_IVA' && _formIvaType === 'SIN_IVA') selectIva('IVA_INCLUIDO', true);
+  }
+
+  // Aviso informativo (no bloqueante)
+  if (aviso) {
+    if (prof.avisoIva) {
+      const isWarn = prof.ivaSugerido === 'SIN_IVA';
+      aviso.style.display    = 'block';
+      aviso.style.background  = isWarn ? '#fffbeb' : '#eff6ff';
+      aviso.style.border      = isWarn ? '1px solid #fde68a' : '1px solid #bfdbfe';
+      aviso.style.color       = isWarn ? '#92400e' : '#1e40af';
+      aviso.innerHTML = (isWarn ? '⚠️ ' : '💡 ') + escHtml(prof.avisoIva);
+    } else {
+      aviso.style.display = 'none';
+      aviso.innerHTML = '';
+    }
+  }
 }
 
 // Muestra en tiempo real el desglose base + IVA según monto y tipo
@@ -3307,6 +3342,7 @@ function renderForm(editId = null) {
     if (dateEl)   dateEl.value   = isEdit ? tx.date : today(); // plantilla: siempre hoy
     if (notesEl)  notesEl.value  = isEdit ? (tx.notes || '') : ''; // plantilla: notas limpias
     _formIvaType = tx.ivaType || 'IVA_INCLUIDO';
+    _ivaTouched  = true; // editar/plantilla: respetar el IVA ya definido (no sugerir por categoría)
     // Cargar la foto del comprobante solo al editar (no en plantillas)
     _formPhoto = null;
     if (isEdit && tx.hasReceipt) {
@@ -3318,6 +3354,7 @@ function renderForm(editId = null) {
     if (dateEl)   dateEl.value   = today();
     if (notesEl)  notesEl.value  = '';
     _formIvaType = 'IVA_INCLUIDO'; // default para transacción nueva
+    _ivaTouched  = false;          // nueva: permitir sugerencia de IVA por categoría
     _formPhoto   = null;
   }
   _hideSuggestions(); // cerrar sugerencias al abrir el formulario
@@ -3463,13 +3500,20 @@ function renderFormFields(tx) {
     const accSel = sel => '<option value="">— Cuenta —</option>' +
       DB.getAccounts().map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${a.emoji} ${a.name}</option>`).join('');
 
+    // ── Semántica según la DIRECCIÓN del dinero (ingreso entra / gasto sale) ──
+    const cuentaLabel      = isIncome ? '¿En qué cuenta entró el dinero?'  : '¿De qué cuenta salió el dinero?';
+    const splitToggleLabel = isIncome ? '💵 El cobro se recibió en 2 cuentas' : '💳 El pago se dividió en 2 cuentas';
+    const split2Label      = isIncome ? '¿Cuánto entró en la 2da cuenta?'   : '¿Cuánto se pagó con la 2da cuenta?';
+
     html += `
       <div class="form-group">
         <label class="form-label">Categoría</label>
-        <select id="f-category" class="form-control">${catOptions}</select>
+        <select id="f-category" class="form-control" onchange="_onCategoryChange()">${catOptions}</select>
+        <div id="cat-tax-aviso" style="display:none; margin-top:6px; font-size:12px; line-height:1.45;
+          padding:8px 11px; border-radius:8px;"></div>
       </div>
       <div class="form-group">
-        <label class="form-label">Cuenta</label>
+        <label class="form-label">${cuentaLabel}</label>
         <select id="f-account" class="form-control" onchange="_onAcctChange('main')">${accSel(acc1Sel)}</select>
       </div>
       ${_bankSubHtml('main', mainBankName)}
@@ -3477,7 +3521,7 @@ function renderFormFields(tx) {
         background:var(--gray-50); border-radius:8px; margin-bottom:12px;">
         <input type="checkbox" id="f-split-on" ${splitOn ? 'checked' : ''} onchange="toggleSplitPayment()"
           style="width:18px; height:18px; accent-color:var(--primary);">
-        <div style="font-size:13px; font-weight:600;">💳 El pago se dividió en 2 cuentas</div>
+        <div style="font-size:13px; font-weight:600;">${splitToggleLabel}</div>
       </label>
       <div id="split-section" style="display:${splitOn ? 'block' : 'none'};">
         <div class="form-group">
@@ -3486,7 +3530,7 @@ function renderFormFields(tx) {
         </div>
         ${_bankSubHtml('split', splitBankName)}
         <div class="form-group">
-          <label class="form-label">¿Cuánto se recibió / pagó en la 2da cuenta?</label>
+          <label class="form-label">${split2Label}</label>
           <input type="number" id="f-split-amount" class="form-control" value="${split2Amount}"
             placeholder="0.00" min="0" step="any" inputmode="decimal" oninput="_updateSplitInfo()">
         </div>
@@ -3561,6 +3605,7 @@ function renderFormFields(tx) {
   _renderReceiptArea(); // pinta el estado actual de la foto
   _updateSplitInfo();   // pinta el reparto del pago dividido (si aplica)
   _liabilityHint();     // pinta la pista de plazo/cuota (si es deuda)
+  if (isIncome || isExpense) _onCategoryChange(); // aviso tributario suave de la categoría preseleccionada
 
   // La etiqueta de "Fecha" cambia de significado en una deuda
   const dateLabel = document.getElementById('f-date-label');
