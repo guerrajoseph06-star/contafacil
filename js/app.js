@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29c';
+const APP_VERSION = '2026.05.29d';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2444,8 +2444,9 @@ function _updateIvaBreakdown() {
         : `<span style="color:var(--gray-500)">Incluye: base ${sym} ${fmt(res.precioBase)} + IVA ${pct}%: ${sym} ${fmt(res.valorIva)}</span>`;
     }
   }
-  _updateSplitInfo(); // el total cambió → actualizar el reparto del pago dividido
-  _liabilityHint();   // el monto cambió → actualizar la pista de plazo/cuota
+  _updateSplitInfo();    // el total cambió → actualizar el reparto del pago dividido
+  _liabilityHint();      // el monto cambió → actualizar la pista de plazo/cuota
+  _updateDiscountHint(); // el monto cambió → recalcular descuento vs precio de lista
 }
 
 // ── Pago dividido en 2 cuentas (ingreso/gasto recibido o pagado de 2 formas) ──
@@ -3619,7 +3620,7 @@ function renderFormFields(tx) {
           </div>
           <div class="form-group">
             <label class="form-label">Cantidad ${isExpense ? 'comprada' : 'vendida'}</label>
-            <input type="number" id="f-quantity" class="form-control" value="${tx?.quantity || ''}" placeholder="Ej: 6" min="0" step="1">
+            <input type="number" id="f-quantity" class="form-control" value="${tx?.quantity || ''}" placeholder="Ej: 6" min="0" step="1" oninput="_onSaleQtyChange()">
           </div>
         </div>
       `;
@@ -3816,8 +3817,9 @@ function _selectProduct(id) {
     label.style.color = 'var(--gray-900)';
   }
   if (panel) panel.style.display = 'none';
-  _renderInvAviso();   // mantiene coherente el aviso de costo $0 al vender (F1)
-  _applyInvIvaLock();  // Fase 2a: el IVA se deriva del producto y se bloquea el selector global
+  _renderInvAviso();    // mantiene coherente el aviso de costo $0 al vender (F1)
+  _applyInvIvaLock();   // Fase 2a: el IVA se deriva del producto y se bloquea el selector global
+  _autofillSalePrice(); // Camino A: cargar el precio de venta del producto en el monto
 }
 
 // Etiqueta legible de un tipo de IVA
@@ -3859,6 +3861,55 @@ function _applyInvIvaLock() {
     row.style.pointerEvents = '';
     row.style.opacity = '';
     if (note) { note.style.display = 'none'; note.innerHTML = ''; }
+  }
+}
+
+// ── Camino A: auto-precio desde el inventario + descuento ────────────────────
+// Solo en VENTAS (ingreso) que afectan inventario. Carga el monto desde el precio
+// de venta del producto; si el usuario lo baja, se registra como descuento.
+function _autofillSalePrice() {
+  const cb       = document.getElementById('f-affects-inv');
+  const pid      = document.getElementById('f-product')?.value;
+  const qtyRaw   = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+  const amountEl = document.getElementById('f-amount');
+  const prod     = pid ? DB.getProductById(pid) : null;
+  if (formType !== 'income' || !(cb && cb.checked) || !prod || !amountEl) return;
+
+  // Valor a cargar según el modo de IVA del producto (para que el total final cuadre):
+  //  +IVA → base (la app suma el IVA);  incluido/sin IVA → precio final
+  const unit = (prod.tipoIva === 'IVA_NO_INCLUIDO') ? (prod.precioBase || 0) : (prod.precioFinal || 0);
+  if (unit <= 0) return; // producto sin precio de lista: no autocompletar (entrada manual)
+
+  const qty = qtyRaw > 0 ? qtyRaw : 1;
+  amountEl.value = Math.round(unit * qty * 100) / 100;
+  _updateIvaBreakdown(); // recalcula desglose IVA + (dentro) el hint de descuento
+}
+
+function _onSaleQtyChange() {
+  _autofillSalePrice(); // nueva cantidad → recalcular el total de lista
+}
+
+// Muestra el descuento (precio de lista vs total cobrado) en vivo. No bloquea.
+function _updateDiscountHint() {
+  const el = document.getElementById('discount-hint');
+  if (!el) return;
+  const cb   = document.getElementById('f-affects-inv');
+  const pid  = document.getElementById('f-product')?.value;
+  const qty  = parseFloat(document.getElementById('f-quantity')?.value) || 0;
+  const prod = pid ? DB.getProductById(pid) : null;
+
+  if (formType !== 'income' || !(cb && cb.checked) || !prod || !(prod.precioFinal > 0) || qty <= 0) {
+    el.style.display = 'none'; el.innerHTML = ''; return;
+  }
+  const listFinal    = prod.precioFinal * qty;          // precio de lista (lo que valían)
+  const chargedFinal = _formTotal();                    // lo que realmente cobras (con IVA)
+  const disc = Math.round((listFinal - chargedFinal) * 100) / 100;
+  if (disc > 0.005) {
+    el.style.display = 'block';
+    el.innerHTML = `🔻 Descuento aplicado: <strong>−${fmt(disc)}</strong> ` +
+      `<span style="opacity:.75;">(precio de lista ${fmt(listFinal)})</span>`;
+  } else {
+    el.style.display = 'none'; el.innerHTML = '';
   }
 }
 
@@ -3959,6 +4010,17 @@ function submitForm() {
       data.affectsInventory = true;
       data.productId = productId;
       data.quantity  = quantity;
+
+      // Camino A: descuento en ventas (precio de lista del producto vs total cobrado)
+      if (formType === 'income') {
+        const prod      = DB.getProductById(productId);
+        const listFinal = prod ? (prod.precioFinal || 0) * quantity : 0;
+        const charged   = _formTotal(); // total que cobras (con IVA)
+        if (listFinal > 0 && charged > 0 && (listFinal - charged) > 0.005) {
+          data.listAmount = Math.round(listFinal * 100) / 100;
+          data.discount   = Math.round((listFinal - charged) * 100) / 100;
+        }
+      }
     }
   }
 
@@ -4099,6 +4161,12 @@ function openTxDetail(id) {
       ${isSplit ? splitHTML : (acc ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Cuenta</span><span style="font-weight:600;">${acc.emoji} ${acc.name}</span></div>` : '')}
       ${bnDetail}
       ${tx.affectsInventory ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--gray-500); font-size:14px;">Inventario</span><span style="font-weight:600; color:var(--primary);">📦 -${tx.quantity} unidades</span></div>` : ''}
+      ${(tx.discount > 0) ? `
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px; font-size:13px; color:#1e40af; line-height:1.7; margin-top:2px;">
+          <div style="display:flex; justify-content:space-between;"><span>🏷️ Precio de lista</span><span style="font-weight:700;">${fmt(tx.listAmount || 0)}</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>🔻 Descuento</span><span style="font-weight:700;">−${fmt(tx.discount)}</span></div>
+          <div style="display:flex; justify-content:space-between; border-top:1px solid #bfdbfe; margin-top:4px; padding-top:4px;"><span style="font-weight:800;">Total cobrado</span><span style="font-weight:800;">${fmt((tx.listAmount || 0) - tx.discount)}</span></div>
+        </div>` : ''}
     `;
   }
 
@@ -4602,6 +4670,10 @@ function _renderPnL(pnl) {
   const sign = v => (v >= 0 ? '+' : '') + fmt(v);
   const colorNet = v => v >= 0 ? 'var(--success)' : 'var(--danger)';
 
+  // Descuentos otorgados en el período (informativo; el ingreso ya está neto)
+  const descTotal = DB.getTransactionsByMonth(reportYear, reportMonth)
+    .reduce((s, t) => s + (t.type === 'income' && t.discount > 0 ? t.discount : 0), 0);
+
   pnlEl.innerHTML = `
     <!-- INGRESOS -->
     <div class="pnl-group">
@@ -4620,6 +4692,11 @@ function _renderPnL(pnl) {
         <span>Total Ingresos</span>
         <span class="pnl-val income">${fmt(pnl.totalRevenue)}</span>
       </div>
+      ${descTotal > 0 ? `
+        <div class="pnl-row" style="opacity:.85;">
+          <span>🔻 Descuentos otorgados <span class="pnl-pct">(informativo)</span></span>
+          <span class="pnl-val" style="color:var(--warning);">−${fmt(descTotal)}</span>
+        </div>` : ''}
     </div>
 
     <!-- COSTO DE VENTAS -->

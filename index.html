@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260529c">
+  <link rel="stylesheet" href="css/style.css?v=20260529d">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -526,6 +526,10 @@
         placeholder="0" min="0" step="any" inputmode="decimal"
         oninput="_updateIvaBreakdown()">
     </div>
+    <!-- Aviso de descuento (venta de inventario: precio de lista vs cobrado) -->
+    <div id="discount-hint" style="display:none; font-size:13px; line-height:1.45;
+      padding:9px 12px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe;
+      color:#1e40af; margin-bottom:12px; margin-top:-6px;"></div>
 
     <!-- Descripción con autocompletar inteligente -->
     <div class="form-group" style="position:relative;">
@@ -1425,8 +1429,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260529c"></script>
-<script src="js/app.js?v=20260529c"></script>
-<script src="js/tax.js?v=20260529c"></script>
+<script src="js/db.js?v=20260529d"></script>
+<script src="js/app.js?v=20260529d"></script>
+<script src="js/tax.js?v=20260529d"></script>
 </body>
 </html>

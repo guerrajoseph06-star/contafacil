@@ -388,7 +388,8 @@ const DB = (() => {
 
     // Construir la tx actualizada (sin los campos de COGS/IVA anteriores)
     const { linkedCogsId: _lc, cogsAmount: _ca,
-            linkedIvaId: _li, ivaBase: _ib, ivaAmount: _ia, ivaTotal: _it, ...cleanOld } = old;
+            linkedIvaId: _li, ivaBase: _ib, ivaAmount: _ia, ivaTotal: _it,
+            listAmount: _la, discount: _di, ...cleanOld } = old;
     const updated = { ...cleanOld, ...newData, amount: parseFloat(newData.amount), id };
 
     // Recalcular IVA si aplica (ajusta updated.amount a la base)
