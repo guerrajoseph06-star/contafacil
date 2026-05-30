@@ -2086,6 +2086,141 @@ const DB = (() => {
     };
   }
 
+  // ── Compartir entre dispositivos (offline, modelo dueño↔vendedores) ──────────
+  // Dos paquetes, ambos sellados con el ID ÚNICO de la empresa para evitar mezclar
+  // datos de empresas distintas:
+  //   • 'company' (dueño→vendedor): inventario + configuración + usuarios/permisos.
+  //     El receptor adopta el MISMO id de empresa (queda atada al dueño).
+  //   • 'sales'   (vendedor→dueño): transacciones + cartera + fotos. Al recibir,
+  //     verifica que el id coincida con la empresa activa y descuenta inventario
+  //     de las ventas nuevas (sin duplicar).
+
+  // Paquete EMPRESA: inventario + configuración (NO incluye transacciones)
+  function exportCompanyPackage() {
+    const co = getActiveCompany();
+    const s  = getSettings();
+    return JSON.stringify({
+      cfShareType: 'company',
+      cfVersion:   1,
+      companyId:   co ? co.id : '',
+      companyName: co ? co.name : (s.companyName || 'Mi Empresa'),
+      exported:    new Date().toISOString(),
+      exportedBy:  s.userName || 'Principal',
+      inventory:   load(KEYS.inventory)  || [],
+      categories:  load(KEYS.categories) || [],
+      accounts:    load(KEYS.accounts)   || [],
+      settings:    load(KEYS.settings),    // incluye usuarios + permisos/restricciones
+      security:    load(SEC_KEY),
+      budgets:     load(KEYS.budgets)    || {},
+      recurring:   load(KEYS.recurring)  || [],
+    }, null, 2);
+  }
+
+  // Recibe el paquete EMPRESA: adopta el id de empresa (atadura) y carga inventario+config.
+  // NO toca las transacciones locales (preserva ventas no enviadas del vendedor).
+  function importCompanyPackage(jsonStr) {
+    const d = JSON.parse(jsonStr);
+    if (d.cfShareType !== 'company') throw new Error('Este archivo no es un paquete de empresa');
+    const cid = d.companyId;
+    if (!cid) throw new Error('El paquete no tiene identificador de empresa');
+
+    const list = getCompanyList();
+    let co = list.find(c => c.id === cid);
+    const isNew = !co;
+    if (isNew) {
+      co = { id: cid, name: d.companyName || 'Empresa', createdAt: new Date().toISOString() };
+      list.push(co); saveG(GKEYS.companies, list);
+    } else if (d.companyName && co.name !== d.companyName) {
+      co.name = d.companyName; saveG(GKEYS.companies, list);
+    }
+    // Activar esa empresa (fija el prefijo de almacenamiento)
+    saveG(GKEYS.active, cid);
+    _prefix = cid + '_';
+
+    // Cargar inventario + configuración (el dueño es la autoridad). Transacciones intactas.
+    if (d.inventory)  save(KEYS.inventory,  d.inventory);
+    if (d.categories) save(KEYS.categories, d.categories);
+    if (d.accounts)   save(KEYS.accounts,   d.accounts);
+    if (d.settings)   save(KEYS.settings,   d.settings);
+    if (d.security)   save(SEC_KEY,         d.security);
+    if (d.budgets)    save(KEYS.budgets,    d.budgets);
+    if (d.recurring)  save(KEYS.recurring,  d.recurring);
+    if (!load(KEYS.transactions)) save(KEYS.transactions, []);
+
+    return { companyId: cid, companyName: co.name, isNew, products: (d.inventory || []).length };
+  }
+
+  // Paquete VENTAS: transacciones + cartera + fotos, sellado con el id de empresa
+  async function exportSalesPackage() {
+    const co  = getActiveCompany();
+    const s   = getSettings();
+    const txs = load(KEYS.transactions) || [];
+    const recs = load(KEYS.receivables) || [];
+    const photos = await getPhotosFor(txs.filter(t => t.hasReceipt).map(t => t.id));
+    return JSON.stringify({
+      cfShareType: 'sales',
+      cfVersion:   1,
+      companyId:   co ? co.id : '',
+      companyName: co ? co.name : (s.companyName || ''),
+      exportedBy:  s.userName || 'Principal',
+      exported:    new Date().toISOString(),
+      transactions: txs,
+      receivables:  recs,
+      photos,
+    }, null, 2);
+  }
+
+  // Recibe el paquete VENTAS: verifica empresa (estricto), combina sin duplicar y
+  // descuenta inventario de las ventas/compras NUEVAS. Devuelve {error:'company_mismatch'} si no cuadra.
+  async function importSalesPackage(jsonStr) {
+    const d = JSON.parse(jsonStr);
+    if (d.cfShareType !== 'sales' && !d.syncVersion && !d.transactions)
+      throw new Error('Este archivo no es un paquete de ventas');
+
+    const active = getActiveCompany();
+    if (d.companyId && active && d.companyId !== active.id) {
+      return { error: 'company_mismatch', fileCompany: d.companyName || '—', activeCompany: active.name };
+    }
+
+    const sourceUser = d.exportedBy || 'Importado';
+    const newlyAdded = [];
+    let txs = load(KEYS.transactions) || [];
+    const existIds = new Set(txs.map(t => t.id));
+    (d.transactions || []).forEach(t => {
+      if (!existIds.has(t.id)) {
+        if (!t.userName) t.userName = sourceUser;
+        txs.push(t); newlyAdded.push(t);
+      }
+    });
+    txs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    save(KEYS.transactions, txs);
+
+    // Descontar/sumar inventario SOLO de las nuevas (las ya existentes se ignoraron → sin doble conteo)
+    newlyAdded.forEach(t => {
+      if (t.affectsInventory && t.productId && t.quantity && !t.isCogs) _applyInventory(t, 'add');
+    });
+
+    let recs = load(KEYS.receivables) || [];
+    const existRec = new Set(recs.map(r => r.id));
+    let addedRecs = 0;
+    (d.receivables || []).forEach(r => { if (!existRec.has(r.id)) { recs.push(r); addedRecs++; } });
+    save(KEYS.receivables, recs);
+
+    if (d.photos) await savePhotosMap(d.photos);
+
+    return { addedTxs: newlyAdded.length, addedRecs, sourceUser, companyName: d.companyName || '' };
+  }
+
+  // Detecta el tipo de paquete de un archivo compartido ('company' | 'sales' | 'unknown')
+  function detectPackageType(jsonStr) {
+    try {
+      const d = JSON.parse(jsonStr);
+      if (d.cfShareType === 'company') return 'company';
+      if (d.cfShareType === 'sales' || d.syncVersion || d.transactions) return 'sales';
+    } catch { /* no-op */ }
+    return 'unknown';
+  }
+
   return {
     init,
     getTransactions, getTransactionsByMonth, getTransactionById,
@@ -2118,6 +2253,8 @@ const DB = (() => {
     isOnboarded, markOnboarded,
     exportData, importData,
     exportSettings, importSettings,
+    exportCompanyPackage, importCompanyPackage,
+    exportSalesPackage, importSalesPackage, detectPackageType,
     getUpcomingAlerts,
     getCompanyList, getActiveCompany, addCompany, switchToCompany, updateCompanyName, deleteCompany,
     calcIva, getIvaSuggestion, recordIvaMemory, IVA_DEFAULT,

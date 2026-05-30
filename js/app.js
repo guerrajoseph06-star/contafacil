@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29g';
+const APP_VERSION = '2026.05.29h';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -9631,6 +9631,142 @@ function importData(input) {
     catch { showToast('❌ Archivo inválido'); }
   };
   reader.readAsText(input.files[0]);
+}
+
+// ── Compartir entre dispositivos (dueño ↔ vendedores, offline) ───────────────
+// Genera un archivo y lo comparte por el sistema (WhatsApp / Nearby Share); si el
+// equipo no soporta compartir archivos, lo descarga.
+async function _shareOrDownload(jsonStr, filename, okMsg) {
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  try {
+    const file = new File([blob], filename, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'ContaFácil Pro', text: filename });
+      showToast('✅ Listo para compartir');
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // el usuario canceló el menú de compartir
+    // cualquier otro error → caer a descarga
+  }
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(okMsg || '✅ Archivo generado');
+}
+
+function _safeName(s) { return String(s || 'empresa').replace(/[^\w\-]+/g, '_').slice(0, 30); }
+
+// Hoja única que reúne todas las opciones de compartir/recibir
+function openShareSheet() {
+  const co     = DB.getActiveCompany();
+  const coName = co ? co.name : (DB.getSettings().companyName || 'Mi Empresa');
+  const content = document.getElementById('settings-sheet-content');
+  if (!content) return;
+  content.innerHTML = `
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">🔗 Compartir entre dispositivos</h3>
+    <div style="background:var(--gray-50); border-radius:10px; padding:11px 13px; font-size:12px;
+      color:var(--gray-600); line-height:1.55; margin-bottom:16px;">
+      Empresa activa: <strong>${escHtml(coName)}</strong><br>
+      Funciona <strong>sin internet</strong>: genera un archivo y compártelo (WhatsApp, Nearby Share, USB…).
+    </div>
+
+    <div style="font-size:11px; font-weight:700; color:var(--gray-400); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;">📤 Enviar</div>
+
+    <button class="settings-item" onclick="_doShareCompany()" style="margin-bottom:8px;">
+      <div class="settings-item-icon">📦</div>
+      <div class="settings-item-info">
+        <div class="settings-item-label">Compartir empresa al vendedor</div>
+        <div class="settings-item-desc">Inventario + configuración + permisos (dueño → vendedor)</div>
+      </div>
+      <div class="settings-item-arrow">›</div>
+    </button>
+
+    <button class="settings-item" onclick="_doShareSales()" style="margin-bottom:16px;">
+      <div class="settings-item-icon">🧾</div>
+      <div class="settings-item-info">
+        <div class="settings-item-label">Compartir mis ventas / movimientos</div>
+        <div class="settings-item-desc">Tus registros + fotos (se combinan sin duplicar)</div>
+      </div>
+      <div class="settings-item-arrow">›</div>
+    </button>
+
+    <div style="font-size:11px; font-weight:700; color:var(--gray-400); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;">📥 Recibir</div>
+
+    <label class="settings-item" style="cursor:pointer; margin-bottom:8px;">
+      <div class="settings-item-icon">📥</div>
+      <div class="settings-item-info">
+        <div class="settings-item-label">Recibir un archivo</div>
+        <div class="settings-item-desc">Detecta solo si es empresa o ventas y lo aplica con seguridad</div>
+      </div>
+      <input type="file" accept=".json,application/json" style="display:none;" onchange="_onReceivePackage(this)">
+    </label>
+
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px;
+      font-size:12px; color:#1e40af; line-height:1.5; margin-top:8px;">
+      🔒 Al recibir <strong>ventas</strong>, el sistema verifica que sean de <strong>esta misma empresa</strong>.
+      Si son de otra, lo bloquea para no mezclar datos. Las ventas recibidas descuentan el inventario automáticamente.
+    </div>
+
+    <button class="btn btn-secondary btn-block mt-16" onclick="closeSettingsSheet()">Cerrar</button>
+  `;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+
+function _doShareCompany() {
+  const co = DB.getActiveCompany();
+  _shareOrDownload(DB.exportCompanyPackage(),
+    `contafacil-empresa-${_safeName(co && co.name)}-${today()}.json`,
+    '✅ Paquete de empresa generado');
+  DB.logAudit('share_company', '📦 Compartió empresa (inventario + configuración)');
+}
+
+async function _doShareSales() {
+  showToast('⏳ Preparando (incluye fotos)…', 5000);
+  const co = DB.getActiveCompany();
+  const json = await DB.exportSalesPackage();
+  await _shareOrDownload(json,
+    `contafacil-ventas-${_safeName(co && co.name)}-${today()}.json`,
+    '✅ Ventas listas para compartir');
+  DB.logAudit('share_sales', '🧾 Compartió ventas / movimientos');
+}
+
+function _onReceivePackage(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const text = e.target.result;
+    const type = DB.detectPackageType(text);
+    try {
+      if (type === 'company') {
+        if (!confirm('Vas a RECIBIR un inventario + configuración. Esto reemplaza el inventario, categorías, cuentas y permisos de esta empresa (no toca tus ventas registradas). ¿Continuar?')) { input.value = ''; return; }
+        const r = DB.importCompanyPackage(text);
+        DB.logAudit('receive_company', `📦 Recibió empresa "${r.companyName}"`);
+        closeSettingsSheet();
+        navigate('dashboard');
+        showToast(`✅ Empresa "${r.companyName}" recibida · ${r.products} producto(s)`, 4500);
+      } else if (type === 'sales') {
+        const r = await DB.importSalesPackage(text);
+        if (r && r.error === 'company_mismatch') {
+          showToast(`🚫 Ese archivo es de la empresa "${r.fileCompany}", no de "${r.activeCompany}". Cámbiate a esa empresa para recibirlo.`, 6000);
+          input.value = ''; return;
+        }
+        DB.logAudit('receive_sales', `🧾 Recibió ${r.addedTxs} movimiento(s)`);
+        closeSettingsSheet();
+        navigate('dashboard');
+        showToast(`✅ Recibido: ${r.addedTxs} movimiento(s) nuevo(s)` + (r.addedRecs ? ` · ${r.addedRecs} CxC` : ''), 4500);
+      } else {
+        showToast('❌ Archivo no reconocido', 3000);
+      }
+    } catch (err) {
+      showToast('❌ ' + (err && err.message ? err.message : 'No se pudo importar'), 4500);
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────

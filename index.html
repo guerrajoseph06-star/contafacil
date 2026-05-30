@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260529g">
+  <link rel="stylesheet" href="css/style.css?v=20260529h">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -1294,21 +1294,14 @@
         </div>
         <div class="settings-item-arrow">›</div>
       </button>
-      <button class="settings-item" onclick="openUserSyncSheet('export')">
-        <div class="settings-item-icon">📤</div>
+      <button class="settings-item" onclick="openShareSheet()"
+        style="border:1.5px solid var(--primary); border-radius:14px;">
+        <div class="settings-item-icon">🔗</div>
         <div class="settings-item-info">
-          <div class="settings-item-label">Exportar mi registro</div>
-          <div class="settings-item-desc">Comparte tus ventas con otro dispositivo</div>
+          <div class="settings-item-label" style="color:var(--primary); font-weight:800;">Compartir entre dispositivos</div>
+          <div class="settings-item-desc">Inventario, ventas y permisos · dueño ↔ vendedores (sin internet)</div>
         </div>
-        <div class="settings-item-arrow">›</div>
-      </button>
-      <button class="settings-item" onclick="openUserSyncSheet('import')">
-        <div class="settings-item-icon">📥</div>
-        <div class="settings-item-info">
-          <div class="settings-item-label">Importar registro de compañero</div>
-          <div class="settings-item-desc">Une los datos de otro vendedor sin duplicar</div>
-        </div>
-        <div class="settings-item-arrow">›</div>
+        <div class="settings-item-arrow" style="color:var(--primary);">›</div>
       </button>
     </div>
 
@@ -1439,8 +1432,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260529g"></script>
-<script src="js/app.js?v=20260529g"></script>
-<script src="js/tax.js?v=20260529g"></script>
+<script src="js/db.js?v=20260529h"></script>
+<script src="js/app.js?v=20260529h"></script>
+<script src="js/tax.js?v=20260529h"></script>
 </body>
 </html>
