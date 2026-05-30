@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29h';
+const APP_VERSION = '2026.05.29i';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -9767,6 +9767,276 @@ function _onReceivePackage(input) {
     input.value = '';
   };
   reader.readAsText(file);
+}
+
+// ── Manual completo (PDF) — guía detallada de TODAS las funciones ────────────
+// Abre una ventana con el manual maquetado; el usuario lo guarda como PDF (Imprimir → Guardar como PDF).
+function openUserGuide() {
+  const s   = DB.getSettings();
+  const win = window.open('', '_blank');
+  if (!win) { showToast('⚠️ Permite ventanas emergentes para abrir el manual', 3500); return; }
+
+  // Bloques reutilizables de maquetación
+  const css = `
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2937;line-height:1.6;
+      max-width:820px;margin:0 auto;padding:40px 32px 80px;font-size:15px;}
+    h1{font-size:30px;color:#1d4ed8;margin:0 0 4px;}
+    h2{font-size:22px;color:#1d4ed8;border-bottom:2px solid #dbeafe;padding-bottom:6px;margin:38px 0 14px;}
+    h3{font-size:17px;color:#111827;margin:22px 0 6px;}
+    p,li{font-size:15px;}
+    ul,ol{margin:6px 0 6px 4px;padding-left:22px;}
+    li{margin:3px 0;}
+    .sub{color:#6b7280;font-size:14px;margin-top:2px;}
+    .cover{text-align:center;padding:30px 0 10px;border-bottom:3px solid #1d4ed8;margin-bottom:10px;}
+    .cover .logo{font-size:56px;}
+    .cover .tag{color:#6b7280;font-size:14px;margin-top:6px;}
+    .toc{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin:20px 0;}
+    .toc h3{margin:0 0 8px;color:#1d4ed8;}
+    .toc ol{columns:2;column-gap:30px;font-size:14px;}
+    .box{border-radius:10px;padding:12px 15px;margin:12px 0;font-size:14px;line-height:1.55;}
+    .tip{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;}
+    .ex{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;}
+    .warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;}
+    .steps{counter-reset:step;list-style:none;padding-left:0;}
+    .steps li{counter-increment:step;position:relative;padding-left:34px;margin:7px 0;}
+    .steps li::before{content:counter(step);position:absolute;left:0;top:0;width:24px;height:24px;
+      background:#2563eb;color:#fff;border-radius:50%;text-align:center;line-height:24px;font-size:13px;font-weight:700;}
+    .chip{display:inline-block;background:#eef2ff;color:#4338ca;border-radius:6px;padding:1px 7px;font-size:13px;font-weight:600;}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0;}
+    th{background:#2563eb;color:#fff;text-align:left;padding:7px 10px;}
+    td{border-bottom:1px solid #e5e7eb;padding:7px 10px;vertical-align:top;}
+    .footer{margin-top:50px;border-top:1px solid #e5e7eb;padding-top:14px;color:#9ca3af;font-size:12px;text-align:center;}
+    .noprint{position:fixed;top:14px;right:14px;}
+    .noprint button{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.4);}
+    @media print{.noprint{display:none;} body{padding:0;} h2{page-break-after:avoid;} .box,table{page-break-inside:avoid;}}
+  `;
+
+  const tip  = t => `<div class="box tip">💡 <strong>Ventaja:</strong> ${t}</div>`;
+  const ex   = t => `<div class="box ex">📝 <strong>Ejemplo:</strong> ${t}</div>`;
+  const warn = t => `<div class="box warn">⚠️ <strong>Importante:</strong> ${t}</div>`;
+
+  const html = `
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manual de uso — ContaFácil Pro</title><style>${css}</style></head><body>
+
+<div class="noprint"><button onclick="window.print()">🖨️ Guardar como PDF</button></div>
+
+<div class="cover">
+  <div class="logo">💼</div>
+  <h1>ContaFácil Pro — Manual de uso</h1>
+  <div class="tag">Contabilidad simple y correcta para microempresas del Ecuador · NIIF PYMES · IVA 15% (SRI)</div>
+  <div class="tag">Empresa: <strong>${escHtml(s.companyName || 'Mi Negocio')}</strong> · Versión ${APP_VERSION}</div>
+</div>
+
+<div class="box ex" style="margin-top:18px;">
+  Para guardar este manual: toca <strong>“🖨️ Guardar como PDF”</strong> (arriba a la derecha) y, en el destino de impresión, elige <strong>“Guardar como PDF”</strong>.
+</div>
+
+<div class="toc">
+  <h3>📑 Contenido</h3>
+  <ol>
+    <li>Qué es y cómo funciona</li>
+    <li>Conceptos clave (sin ser contador)</li>
+    <li>Pantalla de Inicio</li>
+    <li>Registrar movimientos</li>
+    <li>El IVA explicado fácil</li>
+    <li>Inventario y ventas con productos</li>
+    <li>Venta de varios productos y descuentos</li>
+    <li>Diario Contable</li>
+    <li>Cartera (cuentas por cobrar)</li>
+    <li>Activos Fijos</li>
+    <li>Reportes y PDF</li>
+    <li>Compartir entre dispositivos</li>
+    <li>Seguridad y usuarios</li>
+    <li>Empresas, presupuestos y recurrentes</li>
+    <li>Módulo tributario (BETA)</li>
+    <li>Consejos y preguntas frecuentes</li>
+  </ol>
+</div>
+
+<h2>1. Qué es y cómo funciona</h2>
+<p>ContaFácil Pro es una app de contabilidad pensada para microempresas. <strong>Funciona 100% en tu dispositivo y sin internet</strong> (los datos se guardan en tu teléfono/computadora). Llevas ingresos, gastos, deudas, inventario, cuentas por cobrar y reportes — con las reglas contables correctas, pero de forma sencilla.</p>
+${tip('Al ser offline, es rápida y privada: tu información no sale de tu equipo a menos que tú decidas compartirla.')}
+${warn('Como los datos viven en cada equipo, recuerda hacer respaldos (Ajustes → Datos) y, si usas varios equipos, revisa la sección “Compartir entre dispositivos”.')}
+
+<h2>2. Conceptos clave (sin ser contador)</h2>
+<p>La app distingue <strong>4 tipos de movimiento</strong>. Entenderlos es la base de todo:</p>
+<table>
+  <tr><th>Tipo</th><th>Qué es</th><th>¿Afecta tu ganancia?</th></tr>
+  <tr><td>💰 <strong>Ingreso</strong></td><td>Dinero que entra (ventas, servicios)</td><td>Sí, la sube</td></tr>
+  <tr><td>💸 <strong>Gasto</strong></td><td>Dinero que sale por el negocio (arriendo, luz, sueldos)</td><td>Sí, la baja</td></tr>
+  <tr><td>↔️ <strong>Traslado</strong></td><td>Mover plata entre tus cuentas (caja → banco)</td><td>No</td></tr>
+  <tr><td>🔴 <strong>Deuda</strong></td><td>Dinero que debes (proveedor, préstamo)</td><td>No, hasta que la pagas</td></tr>
+</table>
+<p>Otros conceptos que la app maneja por ti:</p>
+<ul>
+  <li><strong>CMV (Costo de Mercadería Vendida):</strong> cuando vendes un producto del inventario, la app calcula <em>sola</em> cuánto te costó eso y lo descuenta de tu ganancia. Así sabes tu <strong>utilidad real</strong>, no solo lo que vendiste.</li>
+  <li><strong>Utilidad Bruta:</strong> Ventas − CMV. <strong>Utilidad Neta:</strong> Utilidad Bruta − Gastos.</li>
+  <li><strong>Retiro del dueño:</strong> plata que sacas para uso personal. <strong>No es un gasto del negocio</strong>; baja tu caja pero no tu utilidad.</li>
+</ul>
+${ex('Vendes una camisa en $20 que te costó $12. La app registra +$20 de venta y −$12 de CMV automáticamente → tu ganancia real de esa venta es $8.')}
+
+<h2>3. Pantalla de Inicio</h2>
+<p>Es tu tablero. De arriba hacia abajo:</p>
+<ul>
+  <li><strong>🔍 Buscador global:</strong> encuentra cualquier movimiento por nombre o monto.</li>
+  <li><strong>Cuadro azul “Utilidad Neta Acumulada”:</strong> tu ganancia total. Abajo, comparativa del mes (ingresos, gastos) contra el mes anterior.</li>
+  <li><strong>Insignias en la esquina del cuadro azul</strong> (solo aparecen si aplica):
+    <ul>
+      <li>🔴 <strong>Deudas</strong> pendientes (toca para ver el detalle).</li>
+      <li>🧾 <strong>Cartera</strong>: clientes que te deben.</li>
+      <li>📉 / ⛔ <strong>Stock</strong>: 📉 stock bajo · ⛔ producto agotado (toca → Inventario).</li>
+    </ul>
+  </li>
+  <li><strong>Saldo por cuenta:</strong> cuánto tienes en Caja, Banco, etc.</li>
+  <li><strong>Plantillas rápidas:</strong> registra movimientos frecuentes de 1 toque.</li>
+  <li><strong>Accesos rápidos:</strong> Ingreso, Gasto, Deuda, 🏠 Retiro, Reporte PDF, Cartera, Activos.</li>
+  <li><strong>Resumen de hoy</strong> y <strong>Próximos vencimientos</strong> (pagos/cobros que se acercan).</li>
+</ul>
+${tip('Las insignias de colores te avisan de un vistazo qué necesita atención, sin saturar la pantalla.')}
+
+<h2>4. Registrar movimientos</h2>
+<p>Toca el botón <span class="chip">+</span> o un acceso rápido. Elige el tipo (Ingreso, Gasto, Traslado, Deuda) y completa:</p>
+<ol class="steps">
+  <li><strong>Monto</strong> y <strong>Descripción</strong> (la app te <em>autocompleta</em> según lo que ya registraste antes).</li>
+  <li><strong>Categoría</strong> (Ventas, Arriendo, etc.). La app sugiere el IVA típico de esa categoría.</li>
+  <li><strong>Cuenta</strong>: de dónde salió o dónde entró el dinero. La app recuerda tu última cuenta usada.</li>
+  <li>Opcionales en <strong>“Más detalles ▾”</strong>: foto del comprobante, notas, guardar como plantilla.</li>
+  <li><strong>Guardar</strong>.</li>
+</ol>
+<p>Funciones especiales del formulario:</p>
+<ul>
+  <li><strong>💳 Pago dividido:</strong> si una venta/compra se pagó con 2 cuentas (ej. mitad efectivo, mitad tarjeta).</li>
+  <li><strong>🏦 ¿Cuál banco?:</strong> al elegir “Cuenta Bancaria” puedes anotar el banco exacto (Pichincha, Guayaquil…).</li>
+  <li><strong>🏠 Retiro del dueño</strong> (acceso rápido): registra plata que sacas para ti. Baja tu caja, no tu utilidad.</li>
+  <li><strong>🧾 Registro detallado de factura</strong> (dentro de “Más detalles”, en gastos): para facturas con IVA mixto (0% y 15%) y gastos deducibles.</li>
+</ul>
+${tip('El autocompletado de descripción acelera muchísimo: escribe “venta” y te ofrece la configuración que usaste antes (categoría, cuenta, IVA).')}
+
+<h2>5. El IVA explicado fácil</h2>
+<p>Al registrar, eliges cómo manejas el IVA (15% en Ecuador):</p>
+<table>
+  <tr><th>Opción</th><th>Cuándo usarla</th></tr>
+  <tr><td>🚫 <strong>Sin IVA</strong></td><td>Productos tarifa 0% (alimentos básicos, medicinas, libros…)</td></tr>
+  <tr><td>➕ <strong>+15% IVA</strong></td><td>Tu precio es la base y la app le suma el IVA</td></tr>
+  <tr><td>✅ <strong>IVA incluido</strong></td><td>Tu precio ya incluye IVA; la app separa la base y el impuesto</td></tr>
+</table>
+${ex('Vendes en $11,50 con “IVA incluido”: la app calcula base $10,00 + IVA $1,50. Eso es lo que va a tus reportes.')}
+${warn('Si la venta sale del inventario, el IVA se toma automáticamente de cada producto (no tienes que elegirlo). Ver sección 6.')}
+
+<h2>6. Inventario y ventas con productos</h2>
+<p>En la pestaña <strong>📦 Inventario</strong> registras tus productos. Cada producto tiene: emoji o <strong>foto</strong>, nombre, código/SKU (con escáner de barras), <strong>precio de venta</strong>, tipo de IVA, <strong>stock</strong>, <strong>stock mínimo</strong> (para la alerta) y <strong>costo de compra</strong> (opcional).</p>
+<h3>Valor del inventario</h3>
+<p>Arriba ves dos cifras:</p>
+<ul>
+  <li><strong>💰 Valor a precio de venta:</strong> cuánto vale tu mercadería si la vendes (cantidad × precio).</li>
+  <li><strong>📦 Al costo + 📈 Ganancia potencial:</strong> si registras el costo de compra, ves cuánto te costó y cuánto ganarías.</li>
+</ul>
+${warn('El valor siempre es cantidad × precio. Si un producto está en 0 unidades, no suma. Para ver “al costo” y la ganancia, llena el “Costo de compra”.')}
+<h3>Vender desde el inventario</h3>
+<p>Al registrar un <strong>Ingreso</strong>, marca <strong>“Esta venta afecta inventario”</strong>, busca el producto (hay <strong>buscador</strong> por nombre/SKU) e indica la cantidad. Entonces:</p>
+<ul>
+  <li>El <strong>monto se llena solo</strong> con el precio de venta del producto.</li>
+  <li>El <strong>stock baja</strong> automáticamente y se calcula el <strong>CMV</strong>.</li>
+  <li>El <strong>IVA se toma del producto</strong> (no tienes que elegirlo).</li>
+</ul>
+${tip('Por eso conviene cargar bien el inventario: registrar ventas se vuelve mucho más rápido (eliges el producto y listo), el stock y la ganancia se actualizan solos, y no te equivocas con el IVA.')}
+
+<h2>7. Venta de varios productos y descuentos</h2>
+<p>En una venta de inventario puedes agregar <strong>varios productos</strong>:</p>
+<ol class="steps">
+  <li>Eliges el primer producto y su cantidad.</li>
+  <li>Tocas <strong>“➕ Agregar otro producto a la venta”</strong> y eliges el siguiente.</li>
+  <li>El <strong>total se calcula solo</strong>. Cada producto aplica <strong>su propio IVA</strong> (mezcla 0% y 15% sin problema).</li>
+  <li>Si das un <strong>descuento</strong>, baja el monto total: la app muestra <em>“🔻 Descuento aplicado”</em> y lo reparte entre los productos.</li>
+</ol>
+<p>En el Diario, esa venta aparece agrupada como <span class="chip">🛒 Venta · N productos</span>. Al tocarla ves el detalle de cada producto, el descuento y el total.</p>
+${ex('Vendes 2 camisas ($15 c/u = $30). El cliente regatea y pagas $28: la app registra $2 de descuento, reparte el cobro y deja tu utilidad correcta (menor solo por el descuento, no por error).')}
+
+<h2>8. Diario Contable</h2>
+<p>La pestaña <strong>📒 Diario</strong> lista todos tus movimientos. Puedes:</p>
+<ul>
+  <li><strong>Filtrar</strong> por tipo, fecha (hoy, semana, mes, rango), categoría, banco o usuario.</li>
+  <li><strong>Buscar</strong> por texto.</li>
+  <li><strong>Tocar un movimiento</strong> para ver su detalle, editarlo o eliminarlo (botón ⋯).</li>
+  <li><strong>📥 Exportar a Excel</strong> (icono arriba a la derecha): genera un libro contable con Debe/Haber, IVA, etc.</li>
+</ul>
+${warn('Los asientos con etiqueta “AUTO” (CMV e IVA) se generan solos y no se editan directamente: edita la transacción original.')}
+
+<h2>9. Cartera (cuentas por cobrar)</h2>
+<p>Para <strong>ventas a crédito</strong>: registras el cliente (con RUC opcional), el monto, la fecha de emisión y el <strong>vencimiento</strong>. Luego registras <strong>abonos</strong> a medida que te pagan. La app muestra:</p>
+<ul>
+  <li>Total por cobrar, cobrado y pendiente.</li>
+  <li><strong>Cartera vencida</strong> (aging): cuánto te deben por rangos de días (30/60/90/+90).</li>
+</ul>
+${tip('Te avisa en Inicio (insignia 🧾 y “Próximos vencimientos”) qué cobros se acercan o están vencidos.')}
+
+<h2>10. Activos Fijos</h2>
+<p>Para bienes que duran años (computadoras, maquinaria, vehículos, muebles). Registras el costo, la fecha de compra y la categoría; la app calcula la <strong>depreciación en línea recta</strong> y el <strong>valor en libros</strong> según NIIF PYMES (vida útil estándar Ecuador).</p>
+${ex('Compras una laptop en $900. La app la deprecia en 3 años → ~$25/mes, y siempre sabes cuánto vale contablemente hoy.')}
+
+<h2>11. Reportes y PDF</h2>
+<p>La pestaña <strong>📊 Reportes</strong> incluye:</p>
+<ul>
+  <li><strong>Estado de Resultados (P&amp;L):</strong> ingresos, CMV, utilidad bruta, gastos, utilidad neta y márgenes.</li>
+  <li><strong>Descuentos del período</strong> (si otorgaste).</li>
+  <li><strong>Comparativa entre meses</strong> (elige con qué mes comparar).</li>
+  <li><strong>Gráficos</strong> de evolución y de gastos/ingresos por categoría.</li>
+  <li><strong>PDF mensual y anual</strong> profesional, y el <strong>detalle de IVA</strong>.</li>
+  <li><strong>Balance General</strong>: activos, pasivos y patrimonio.</li>
+</ul>
+
+<h2>12. Compartir entre dispositivos</h2>
+<p>En <strong>Ajustes → 🔗 Compartir entre dispositivos</strong>. Funciona <strong>sin internet</strong> (compartes un archivo por WhatsApp, Nearby Share, USB…). Modelo <strong>dueño ↔ vendedores</strong>:</p>
+<ul>
+  <li><strong>📦 Compartir empresa</strong> (dueño → vendedor): envía inventario + configuración + permisos. El equipo del vendedor queda “atado” a la misma empresa.</li>
+  <li><strong>🧾 Compartir ventas</strong> (vendedor → dueño): envía sus ventas + fotos. Al recibirlas, se <strong>combinan sin duplicar</strong> y <strong>descuentan el inventario</strong> del dueño.</li>
+  <li><strong>📥 Recibir un archivo:</strong> la app detecta el tipo y lo aplica con seguridad.</li>
+</ul>
+${warn('Seguridad: al recibir ventas, la app verifica que sean de la MISMA empresa activa. Si son de otra, lo bloquea para no mezclar datos. El dueño es quien maneja el inventario maestro.')}
+
+<h2>13. Seguridad y usuarios</h2>
+<ul>
+  <li><strong>🔒 PIN de bloqueo</strong> por usuario, con <strong>código de recuperación</strong> si lo olvidas.</li>
+  <li><strong>Multiusuario:</strong> el propietario crea usuarios (ej. vendedores) y define <strong>restricciones</strong> (a qué secciones acceden, solo-lectura, etc.).</li>
+  <li><strong>Exportar con contraseña:</strong> respaldos cifrados.</li>
+</ul>
+
+<h2>14. Empresas, presupuestos y recurrentes</h2>
+<ul>
+  <li><strong>🏢 Multi-empresa:</strong> maneja varios negocios separados en la misma app.</li>
+  <li><strong>🎯 Presupuesto mensual:</strong> pon un límite por categoría de gasto; la app te avisa al acercarte o pasarte.</li>
+  <li><strong>🔄 Gastos recurrentes:</strong> arriendo, internet, suscripciones — se registran solos cada mes.</li>
+  <li><strong>🌙 Modo oscuro</strong> (Apariencia) para uso nocturno cómodo.</li>
+  <li><strong>💱 Moneda</strong> configurable.</li>
+</ul>
+
+<h2>15. Módulo tributario (BETA)</h2>
+<p>Al final de Ajustes, <span class="chip">⚗️ Funciones Experimentales</span>. Incluye el <strong>Borrador de IVA (Formulario 104)</strong>: toma tus ventas y compras del mes y estima el IVA por pagar.</p>
+${warn('Es un BORRADOR de referencia, NO una declaración oficial. No envía nada al SRI. Revísalo siempre con tu contador.')}
+
+<h2>16. Consejos y preguntas frecuentes</h2>
+<ul>
+  <li><strong>¿Por qué cargar el inventario?</strong> Porque vender se vuelve un toque (eliges el producto), el stock y la ganancia se calculan solos y el IVA sale correcto.</li>
+  <li><strong>¿Mi “valor de inventario” sale en $0?</strong> Revisa que tus productos tengan <strong>stock</strong> (cantidad) y precio. El costo es opcional (solo para ver ganancia).</li>
+  <li><strong>¿Saqué plata para mí?</strong> Usa <strong>🏠 Retiro del dueño</strong>, no “Gasto” (así no ensucias tu utilidad).</li>
+  <li><strong>¿Trabajo en celular y computadora?</strong> Usa “Compartir entre dispositivos”. Recuerda: los datos no viajan con el link; cada equipo guarda lo suyo.</li>
+  <li><strong>Respalda seguido</strong> (Ajustes → Datos → Exportar) para no perder información.</li>
+</ul>
+
+<div class="footer">
+  ContaFácil Pro · Manual de uso · Versión ${APP_VERSION}<br>
+  Documento generado desde la app. Las cifras de ejemplo son ilustrativas.
+</div>
+
+<script>setTimeout(function(){ try{window.focus();}catch(e){} }, 200);<\/script>
+</body></html>`;
+
+  win.document.write(html);
+  win.document.close();
+  DB.logAudit('open_manual', '📘 Abrió el manual completo');
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────

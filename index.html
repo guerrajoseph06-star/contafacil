@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260529h">
+  <link rel="stylesheet" href="css/style.css?v=20260529i">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
@@ -1175,23 +1175,6 @@
       </button>
     </div>
 
-    <!-- ⚗️ Módulo experimental tributario (BETA) — visualmente separado -->
-    <div class="settings-section">
-      <button class="settings-item" onclick="SRI.openBeta()"
-        style="border:1.5px dashed #a78bfa; background:linear-gradient(135deg,#faf5ff,#f5f3ff); border-radius:14px;">
-        <div class="settings-item-icon">⚗️</div>
-        <div class="settings-item-info">
-          <div class="settings-item-label" style="color:#7c3aed; font-weight:800;">
-            Funciones Experimentales
-            <span style="font-size:9px; font-weight:800; background:#7c3aed; color:#fff;
-              border-radius:5px; padding:1px 5px; margin-left:5px; vertical-align:middle; letter-spacing:.03em;">BETA</span>
-          </div>
-          <div class="settings-item-desc">Asistencia tributaria · Borrador IVA 104</div>
-        </div>
-        <div class="settings-item-arrow" style="color:#a78bfa;">›</div>
-      </button>
-    </div>
-
     <div class="settings-section">
       <div class="settings-section-title">Automatización</div>
       <button class="settings-item" onclick="openBudgetManager()">
@@ -1274,14 +1257,6 @@
         </div>
         <div class="settings-item-arrow">›</div>
       </button>
-      <button class="settings-item" onclick="openFacturacionPlaceholder()">
-        <div class="settings-item-icon">📄</div>
-        <div class="settings-item-info">
-          <div class="settings-item-label">Facturación Electrónica</div>
-          <div class="settings-item-desc" style="color:#0891b2;">Próximamente · Factura PDF / SRI</div>
-        </div>
-        <div class="settings-item-arrow" style="color:#0891b2;">🔜</div>
-      </button>
     </div>
 
     <div class="settings-section">
@@ -1334,12 +1309,21 @@
     </div>
 
     <div class="settings-section">
-      <div class="settings-section-title">Ayuda</div>
+      <div class="settings-section-title">Información del aplicativo</div>
+      <button class="settings-item" onclick="openUserGuide()"
+        style="border:1.5px solid var(--primary); border-radius:14px;">
+        <div class="settings-item-icon">📘</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label" style="color:var(--primary); font-weight:800;">Manual completo (PDF)</div>
+          <div class="settings-item-desc">Guía detallada de TODAS las funciones, con ejemplos y consejos</div>
+        </div>
+        <div class="settings-item-arrow" style="color:var(--primary);">›</div>
+      </button>
       <button class="settings-item" onclick="openSettingsSheet('guide')">
         <div class="settings-item-icon">📖</div>
         <div class="settings-item-info">
-          <div class="settings-item-label">Guía de uso</div>
-          <div class="settings-item-desc">Cómo usar la app correctamente</div>
+          <div class="settings-item-label">Guía rápida</div>
+          <div class="settings-item-desc">Resumen corto de los conceptos</div>
         </div>
         <div class="settings-item-arrow">›</div>
       </button>
@@ -1350,6 +1334,23 @@
           <div class="settings-item-desc">ContaFácil Pro v2.0</div>
         </div>
         <div class="settings-item-arrow">›</div>
+      </button>
+    </div>
+
+    <!-- ⚗️ Módulo experimental tributario (BETA) — al final, separado del resto -->
+    <div class="settings-section">
+      <button class="settings-item" onclick="SRI.openBeta()"
+        style="border:1.5px dashed #a78bfa; background:linear-gradient(135deg,#faf5ff,#f5f3ff); border-radius:14px;">
+        <div class="settings-item-icon">⚗️</div>
+        <div class="settings-item-info">
+          <div class="settings-item-label" style="color:#7c3aed; font-weight:800;">
+            Funciones Experimentales
+            <span style="font-size:9px; font-weight:800; background:#7c3aed; color:#fff;
+              border-radius:5px; padding:1px 5px; margin-left:5px; vertical-align:middle; letter-spacing:.03em;">BETA</span>
+          </div>
+          <div class="settings-item-desc">Asistencia tributaria · Borrador IVA 104</div>
+        </div>
+        <div class="settings-item-arrow" style="color:#a78bfa;">›</div>
       </button>
     </div>
 
@@ -1432,8 +1433,8 @@
 <!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260529h"></script>
-<script src="js/app.js?v=20260529h"></script>
-<script src="js/tax.js?v=20260529h"></script>
+<script src="js/db.js?v=20260529i"></script>
+<script src="js/app.js?v=20260529i"></script>
+<script src="js/tax.js?v=20260529i"></script>
 </body>
 </html>
