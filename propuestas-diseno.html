@@ -3,217 +3,200 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Propuesta de diseño — ContaFácil Pro</title>
+<title>Diseños — ContaFácil Pro</title>
 <style>
   :root{
-    --bg:#eef1f8; --card:#ffffff;
-    --brand:#4f46e5; --brand2:#2563eb; --brand-tint:#eef2ff;
-    --green:#059669; --green-bg:#d1fae5;
-    --red:#e11d48; --red-bg:#ffe4e6;
-    --amber:#d97706; --amber-bg:#fef3c7;
-    --cyan:#0891b2; --cyan-bg:#cffafe;
-    --ink:#0f172a; --muted:#64748b; --faint:#94a3b8; --line:#e9edf5;
-    --r:18px; --sh:0 2px 10px rgba(15,23,42,.06);
+    --bg:#f4f6fb; --card:#fff; --blue:#2563eb; --blue2:#1e40af;
+    --green:#16a34a; --red:#dc2626; --ink:#0f172a; --muted:#64748b; --faint:#9aa3b4; --line:#eceef4;
   }
-  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0e1120; color:#fff;}
-  .head{position:sticky; top:0; z-index:20; background:#11152a; padding:14px 16px; border-bottom:1px solid #222a44;}
-  .head h1{font-size:16px; font-weight:800;}
-  .head p{font-size:12px; color:#9aa6c4; margin-top:3px; line-height:1.45;}
-  .tabs{display:flex; gap:8px; margin-top:12px;}
-  .tabs button{flex:1; padding:10px; border:none; border-radius:10px; cursor:pointer; background:#1c2440; color:#9aa6c4; font-size:13px; font-weight:700;}
-  .tabs button.on{background:var(--brand); color:#fff;}
-  .stage{max-width:440px; margin:18px auto; padding:0 14px;}
-  .legend{max-width:440px; margin:14px auto 30px; padding:0 16px; color:#cbd5e1; font-size:13px; line-height:1.65;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0e1120;color:#fff;}
+  .head{position:sticky;top:0;z-index:30;background:#11152a;padding:13px 14px;border-bottom:1px solid #222a44;}
+  .head h1{font-size:15px;font-weight:800;}
+  .head p{font-size:11.5px;color:#9aa6c4;margin-top:3px;line-height:1.4;}
+  .tabs{display:flex;gap:8px;margin-top:11px;}
+  .tabs>button{flex:1;padding:10px;border:none;border-radius:10px;cursor:pointer;background:#1c2440;color:#9aa6c4;font-size:13px;font-weight:700;}
+  .tabs>button.on{background:var(--blue);color:#fff;}
+  .sub{display:flex;gap:7px;margin-top:9px;}
+  .sub>button{flex:1;padding:8px 4px;border:none;border-radius:9px;cursor:pointer;background:#171d36;color:#8893b3;font-size:11.5px;font-weight:700;line-height:1.3;}
+  .sub>button.on{background:#2a335a;color:#fff;}
+  .stage{max-width:420px;margin:16px auto;padding:0 14px;}
+  .legend{max-width:420px;margin:12px auto 30px;padding:0 16px;color:#cbd5e1;font-size:12.5px;line-height:1.6;}
   .legend b{color:#fff;}
-
-  .phone{background:var(--bg); border-radius:30px; overflow:hidden; color:var(--ink);
-    box-shadow:0 20px 55px rgba(0,0,0,.55); border:7px solid #11152a;}
-  .topbar{display:flex; align-items:center; justify-content:space-between; padding:15px 16px 12px; background:var(--card);}
-  .co{display:flex; align-items:center; gap:7px; font-weight:800; color:var(--brand); font-size:15px;}
-  .usr{font-size:11px; background:var(--brand-tint); color:var(--brand); border-radius:20px; padding:5px 11px; font-weight:700;}
-  .help{width:34px; height:34px; border-radius:50%; background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:16px;}
-  .scroll{padding:14px; max-height:78vh; overflow-y:auto;}
   .hidden{display:none;}
-  .search{display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; color:var(--faint); font-size:14px; margin-bottom:14px; box-shadow:var(--sh);}
 
-  /* HERO */
-  .hero{background:linear-gradient(135deg,var(--brand),var(--brand2)); border-radius:22px; padding:20px; color:#fff; margin-bottom:14px; position:relative; overflow:hidden;}
-  .hero::after{content:''; position:absolute; top:-40px; right:-30px; width:160px; height:160px; border-radius:50%; background:rgba(255,255,255,.08);}
-  .hero .lbl{font-size:13px; opacity:.9; position:relative;}
-  .hero .big{font-size:40px; font-weight:800; letter-spacing:-1px; margin:3px 0 4px; position:relative;}
-  .hero .cmp{font-size:12px; opacity:.9; margin-bottom:16px; position:relative;}
-  .hero .cmp .up{color:#86efac; font-weight:700;}
-  .hero .mrow{display:flex; gap:10px; position:relative;}
-  .hero .m{flex:1; background:rgba(255,255,255,.15); border-radius:13px; padding:10px 11px;}
-  .hero .m .k{font-size:11px; opacity:.85;} .hero .m .v{font-size:16px; font-weight:800; margin-top:2px;}
-  .badges{display:flex; gap:8px; position:relative; margin-top:12px;}
-  .bg{display:flex; align-items:center; gap:5px; background:rgba(255,255,255,.16); border-radius:20px; padding:5px 11px; font-size:12px; font-weight:700;}
+  .phone{background:var(--bg);border-radius:30px;overflow:hidden;color:var(--ink);box-shadow:0 20px 55px rgba(0,0,0,.55);border:7px solid #11152a;}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--card);}
+  .top .co{font-weight:800;color:var(--blue);font-size:14px;}
+  .top .u{font-size:11px;background:#dbeafe;color:var(--blue);border-radius:20px;padding:4px 10px;font-weight:700;}
+  .fbar{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border-bottom:1px solid var(--line);}
+  .fbar .bk{width:32px;height:32px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:15px;}
+  .fbar h3{font-size:16px;font-weight:800;}
+  .scroll{padding:16px;max-height:80vh;overflow-y:auto;}
 
-  .sect{display:flex; align-items:center; justify-content:space-between; margin:18px 2px 9px;}
-  .sect h2{font-size:13px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
-  .sect a{font-size:12px; color:var(--brand); font-weight:700; text-decoration:none;}
+  /* Hero azul (lo que sí gustó) */
+  .hero{background:linear-gradient(135deg,var(--blue),var(--blue2));border-radius:22px;padding:22px;color:#fff;position:relative;overflow:hidden;}
+  .hero::after{content:'';position:absolute;top:-40px;right:-30px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.08);}
+  .hero .l{font-size:13px;opacity:.9;} .hero .b{font-size:40px;font-weight:800;letter-spacing:-1px;margin:3px 0 14px;}
+  .hero .row{display:flex;gap:12px;position:relative;}
+  .hero .m{flex:1;background:rgba(255,255,255,.15);border-radius:12px;padding:10px;}
+  .hero .m .k{font-size:11px;opacity:.85;}.hero .m .v{font-size:15px;font-weight:800;margin-top:2px;}
 
-  /* Acción primaria + chips */
-  .cta{display:flex; gap:10px; margin-bottom:6px;}
-  .cta .main{flex:1; background:var(--brand); color:#fff; border:none; border-radius:14px; padding:14px; font-size:15px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 6px 16px rgba(79,70,229,.35);}
-  .chips{display:flex; gap:8px; overflow-x:auto; padding:10px 0 2px;}
-  .chip{flex:0 0 auto; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 13px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:6px; box-shadow:var(--sh);}
+  .big-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--blue);color:#fff;border:none;border-radius:16px;padding:16px;font-size:16px;font-weight:800;box-shadow:0 6px 16px rgba(37,99,235,.32);}
+  .sect{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:20px 2px 9px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;}
+  .li{display:flex;align-items:center;gap:13px;padding:13px 16px;border-bottom:1px solid var(--line);}
+  .li:last-child{border:none;}
+  .li .ic{width:40px;height:40px;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:19px;}
+  .li .d{flex:1;}.li .n{font-size:14.5px;font-weight:600;}.li .m{font-size:12px;color:var(--faint);margin-top:1px;}
+  .li .a{font-weight:800;font-size:14.5px;}.li .ar{color:var(--faint);font-size:18px;}
+  .g{color:var(--green);}.r{color:var(--red);}
 
-  /* BENTO de KPIs */
-  .bento{display:grid; grid-template-columns:1fr 1fr; gap:11px;}
-  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px; box-shadow:var(--sh);}
-  .tile .ti{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); font-weight:700;}
-  .tile .tv{font-size:21px; font-weight:800; margin-top:6px;}
-  .tile .ts{font-size:11px; color:var(--faint); margin-top:2px;}
-  .ico{width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px;}
+  /* Menú de acciones grandes (inicio B) */
+  .menu .li .ic{width:46px;height:46px;font-size:22px;}
+  .menu .li .n{font-size:16px;font-weight:700;}
 
-  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--sh); overflow:hidden;}
-  .crow{display:flex; align-items:center; gap:12px; padding:12px 15px; border-bottom:1px solid var(--line);}
-  .crow:last-child{border:none;}
-  .crow .ci{width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:18px;}
-  .crow .cd{flex:1; min-width:0;} .crow .cn{font-size:14px; font-weight:600;} .crow .cm{font-size:12px; color:var(--faint);}
-  .crow .amt{font-weight:800; font-size:14px;}
-  .bar{height:6px; background:var(--bg); border-radius:3px; overflow:hidden; margin-top:6px;}
-  .bar > i{display:block; height:100%; border-radius:3px;}
-  .g{color:var(--green);} .r{color:var(--red);}
+  /* Teclado / caja registradora */
+  .amt{text-align:center;padding:8px 0 18px;}
+  .amt .k{font-size:12px;color:var(--faint);letter-spacing:.5px;}
+  .amt .v{font-size:46px;font-weight:800;color:var(--ink);}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .pad button{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 0;font-size:24px;font-weight:700;color:var(--ink);}
+  .next{margin-top:14px;background:var(--green);color:#fff;border:none;border-radius:14px;padding:15px;width:100%;font-size:16px;font-weight:800;}
 
-  /* Plantillas */
-  .tpl{display:flex; gap:9px; overflow-x:auto; padding-bottom:4px;}
-  .tplc{flex:0 0 78px; background:var(--card); border:1px solid var(--line); border-radius:15px; padding:11px 6px; text-align:center; box-shadow:var(--sh);}
-  .tplc .e{font-size:23px;} .tplc .n{font-size:11px; font-weight:700; margin-top:3px;} .tplc .a{font-size:11px; font-weight:700; color:var(--green); margin-top:2px;}
-
-  .nav{display:flex; justify-content:space-around; background:var(--card); border-top:1px solid var(--line); padding:9px 0 11px;}
-  .nav .n{flex:1; text-align:center; font-size:10px; color:var(--faint); font-weight:600;}
-  .nav .n.act{color:var(--brand);} .nav .n .ni{font-size:21px; display:block; margin-bottom:1px;}
-
-  /* ===== Formulario ===== */
-  .fbar{display:flex; align-items:center; gap:12px; padding:15px 16px; background:var(--card); border-bottom:1px solid var(--line);}
-  .fbar .bk{width:34px; height:34px; border-radius:50%; background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:16px;}
-  .fbar h3{font-size:16px; font-weight:800;}
-  .types{display:flex; gap:7px; background:var(--bg); border-radius:14px; padding:5px; margin-bottom:16px;}
-  .types b{flex:1; text-align:center; padding:10px 4px; border-radius:10px; font-size:12px; font-weight:700; color:var(--muted);}
-  .types b.on{background:var(--card); color:var(--green); box-shadow:var(--sh);}
-  .amount{background:var(--card); border:2px solid var(--brand); border-radius:18px; padding:18px; text-align:center; margin-bottom:14px; box-shadow:var(--sh);}
-  .amount .k{font-size:12px; color:var(--faint); letter-spacing:.5px;} .amount .v{font-size:38px; font-weight:800; color:var(--ink);}
-  .fg{margin-bottom:13px;} .fl{font-size:13px; font-weight:700; color:var(--muted); margin-bottom:6px; display:block;}
-  .inp{background:var(--card); border:1px solid var(--line); border-radius:13px; padding:13px 14px; font-size:14px; color:var(--ink); box-shadow:var(--sh);}
+  /* Form simple / paso */
+  .fg{margin-bottom:14px;}
+  .fl{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:7px;display:block;}
+  .inp{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:15px;font-size:15px;color:var(--ink);}
   .inp.ph{color:var(--faint);}
-  .iva{display:flex; gap:7px;}
-  .iva b{flex:1; text-align:center; padding:11px 4px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); font-size:11px; font-weight:700; color:var(--faint); line-height:1.4;}
-  .iva b.on{border-color:var(--brand); background:var(--brand-tint); color:var(--brand);}
-  .more{text-align:center; color:var(--brand); font-weight:700; font-size:13px; padding:11px;}
-  .save{background:var(--green); color:#fff; border:none; border-radius:14px; padding:15px; font-size:16px; font-weight:800; width:100%; box-shadow:0 6px 16px rgba(5,150,105,.3);}
+  .inp.big{font-size:30px;font-weight:800;text-align:center;padding:18px;}
+  .moreline{text-align:center;color:var(--blue);font-weight:700;font-size:14px;padding:13px;}
+  .save{background:var(--green);color:#fff;border:none;border-radius:14px;padding:16px;width:100%;font-size:16px;font-weight:800;box-shadow:0 6px 16px rgba(22,163,74,.3);}
+  .dots{display:flex;gap:7px;justify-content:center;margin:4px 0 18px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:#d6dbe7;}.dot.on{width:26px;border-radius:5px;background:var(--blue);}
+  .pill{display:inline-block;background:#dbeafe;color:var(--blue);font-size:12px;font-weight:700;border-radius:20px;padding:5px 12px;margin-bottom:14px;}
+
+  .nav{display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);padding:9px 0 11px;}
+  .nav .n{flex:1;text-align:center;font-size:10px;color:var(--faint);font-weight:600;}
+  .nav .n.act{color:var(--blue);}.nav .n .ni{font-size:20px;display:block;}
 </style>
 </head>
 <body>
-
 <div class="head">
-  <h1>🎨 Propuesta de diseño — “Bento ContaFácil”</h1>
-  <p>Mismo contenido de siempre (nada se quita), pero <b>encuadrado, agrupado y con un solo sistema de color</b> para que no agobie. Toca las pestañas. La app real no se ha tocado.</p>
+  <h1>🎨 Diseños — ContaFácil Pro</h1>
+  <p>Pensado para microempresas (poca experiencia en apps): <b>simple y sin saturar</b>. Toca para comparar. La app real NO se tocó.</p>
   <div class="tabs">
-    <button id="bIni" class="on" onclick="tab('Ini')">🏠 Inicio</button>
-    <button id="bForm" onclick="tab('Form')">➕ Registrar</button>
+    <button id="tIni" class="on" onclick="main('Ini')">🏠 Inicio</button>
+    <button id="tReg" onclick="main('Reg')">💰 Registrar ingreso</button>
   </div>
+  <div class="sub" id="subIni"><button id="i_a" class="on" onclick="ini('a')">Esencial</button><button id="i_b" onclick="ini('b')">Menú simple</button></div>
+  <div class="sub hidden" id="subReg"><button id="r_caja" class="on" onclick="reg('caja')">1 · Caja registradora</button><button id="r_paso" onclick="reg('paso')">2 · Paso a paso</button><button id="r_simple" onclick="reg('simple')">3 · Simple</button></div>
 </div>
 
-<!-- ===================== INICIO ===================== -->
-<div class="stage" id="sIni">
+<!-- ============ INICIO A — ESENCIAL ============ -->
+<div class="stage" id="ini_a">
   <div class="phone">
-    <div class="topbar">
-      <div class="co">💼 Mi Negocio</div>
-      <div style="display:flex; gap:8px; align-items:center;"><div class="usr">👤 Principal</div><div class="help">❓</div></div>
-    </div>
+    <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
     <div class="scroll">
-      <div class="search">🔍 Buscar en todo el negocio…</div>
-
-      <!-- HERO -->
       <div class="hero">
-        <div class="lbl">🎯 Utilidad Neta Acumulada</div>
-        <div class="big">$ 144,77</div>
-        <div class="cmp"><span class="up">↑ +18%</span> vs abril · Mayo 2026</div>
-        <div class="mrow">
-          <div class="m"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div>
+        <div class="l">🎯 Utilidad Neta Acumulada</div>
+        <div class="b">$ 144,77</div>
+        <div class="row">
+          <div class="m"><div class="k">💰 Ingresos</div><div class="v">$190</div></div>
           <div class="m"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div>
-          <div class="m"><div class="k">📦 CMV</div><div class="v">$20,00</div></div>
-        </div>
-        <div class="badges">
-          <span class="bg">🔴 1 deuda</span>
-          <span class="bg">🧾 $60 x cobrar</span>
-          <span class="bg">📉 1 stock bajo</span>
         </div>
       </div>
-
-      <!-- ACCIÓN PRIMARIA + accesos -->
-      <div class="cta"><button class="main">＋ Registrar movimiento</button></div>
-      <div class="chips">
-        <span class="chip" style="color:var(--green)">💰 Ingreso</span>
-        <span class="chip" style="color:var(--red)">💸 Gasto</span>
-        <span class="chip">↔️ Traslado</span>
-        <span class="chip" style="color:var(--amber)">🔴 Deuda</span>
-        <span class="chip" style="color:var(--brand)">🏠 Retiro</span>
-      </div>
-
-      <!-- BENTO KPIs -->
-      <div class="sect"><h2>Tu negocio hoy</h2></div>
-      <div class="bento">
-        <div class="tile"><div class="ti"><span class="ico" style="background:var(--green-bg)">🧾</span>Por cobrar</div><div class="tv g">$60,00</div><div class="ts">2 clientes</div></div>
-        <div class="tile"><div class="ti"><span class="ico" style="background:var(--amber-bg)">📉</span>Stock</div><div class="tv" style="color:var(--amber)">1 bajo</div><div class="ts">Blusa (0/1)</div></div>
-        <div class="tile"><div class="ti"><span class="ico" style="background:var(--brand-tint)">🏭</span>Activos</div><div class="tv">$875</div><div class="ts">2 activos</div></div>
-        <div class="tile"><div class="ti"><span class="ico" style="background:var(--red-bg)">📅</span>Por pagar</div><div class="tv r">$20,00</div><div class="ts">1 deuda</div></div>
-      </div>
-
-      <!-- CUENTAS -->
-      <div class="sect"><h2>💵 Saldo por cuenta</h2><a>Total $144,77</a></div>
+      <div style="height:16px;"></div>
+      <button class="big-btn">＋ Registrar movimiento</button>
+      <div class="sect">Mi dinero</div>
       <div class="card">
-        <div class="crow"><div class="ci" style="background:var(--green-bg)">💵</div><div class="cd"><div class="cn">Caja (Efectivo)</div><div class="bar"><i style="width:38%; background:var(--green)"></i></div></div><div class="amt g">$54,77</div></div>
-        <div class="crow"><div class="ci" style="background:var(--brand-tint)">🏦</div><div class="cd"><div class="cn">Cuenta Bancaria</div><div class="bar"><i style="width:62%; background:var(--brand)"></i></div></div><div class="amt g">$90,00</div></div>
+        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div></div><div class="a g">$54,77</div></div>
+        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div></div><div class="a g">$90,00</div></div>
       </div>
-
-      <!-- PLANTILLAS -->
-      <div class="sect"><h2>⭐ Acceso rápido</h2><a>Gestionar</a></div>
-      <div class="tpl">
-        <div class="tplc"><div class="e">🛒</div><div class="n">Venta día</div><div class="a">$20</div></div>
-        <div class="tplc"><div class="e">🌐</div><div class="n">Internet</div><div class="a">$25</div></div>
-        <div class="tplc"><div class="e">🚗</div><div class="n">Gasolina</div><div class="a">$15</div></div>
-      </div>
-
-      <!-- RECIENTES -->
-      <div class="sect"><h2>🕒 Movimientos recientes</h2><a>Ver todo</a></div>
+      <div class="sect">Últimos movimientos</div>
       <div class="card">
-        <div class="crow"><div class="ci" style="background:var(--green-bg)">🛒</div><div class="cd"><div class="cn">Venta · 2 productos</div><div class="cm">Hoy · Blusa, Jean</div></div><div class="amt g">+$30,00</div></div>
-        <div class="crow"><div class="ci" style="background:var(--brand-tint)">↔️</div><div class="cd"><div class="cn">Traslado a Banco</div><div class="cm">Hoy · Caja → Banco</div></div><div class="amt" style="color:var(--brand)">$50,00</div></div>
-        <div class="crow"><div class="ci" style="background:var(--red-bg)">🌐</div><div class="cd"><div class="cn">Internet</div><div class="cm">Ayer · Servicios</div></div><div class="amt r">−$25,23</div></div>
+        <div class="li"><div class="ic">🛒</div><div class="d"><div class="n">Venta de blusas</div><div class="m">Hoy</div></div><div class="a g">+$30,00</div></div>
+        <div class="li"><div class="ic">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="a r">−$25,23</div></div>
       </div>
-      <div style="height:8px;"></div>
     </div>
-    <div class="nav">
-      <div class="n act"><span class="ni">🏠</span>Inicio</div>
-      <div class="n"><span class="ni">📒</span>Diario</div>
-      <div class="n"><span class="ni">📦</span>Inventario</div>
-      <div class="n"><span class="ni">📊</span>Reportes</div>
-      <div class="n"><span class="ni">⚙️</span>Ajustes</div>
+    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+  </div>
+</div>
+
+<!-- ============ INICIO B — MENÚ SIMPLE ============ -->
+<div class="stage hidden" id="ini_b">
+  <div class="phone">
+    <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
+    <div class="scroll">
+      <div class="hero">
+        <div class="l">🎯 Utilidad Neta Acumulada</div>
+        <div class="b">$ 144,77</div>
+        <div class="row">
+          <div class="m"><div class="k">💰 Ingresos</div><div class="v">$190</div></div>
+          <div class="m"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div>
+        </div>
+      </div>
+      <div class="sect">¿Qué quieres hacer?</div>
+      <div class="card menu">
+        <div class="li"><div class="ic" style="background:#dcfce7">💰</div><div class="d"><div class="n">Registrar un ingreso</div></div><div class="ar">›</div></div>
+        <div class="li"><div class="ic" style="background:#fee2e2">💸</div><div class="d"><div class="n">Registrar un gasto</div></div><div class="ar">›</div></div>
+        <div class="li"><div class="ic" style="background:#dbeafe">📦</div><div class="d"><div class="n">Ver mi inventario</div></div><div class="ar">›</div></div>
+        <div class="li"><div class="ic" style="background:#ede9fe">📊</div><div class="d"><div class="n">Ver mis reportes</div></div><div class="ar">›</div></div>
+      </div>
+      <div class="sect">Mi dinero</div>
+      <div class="card">
+        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja</div></div><div class="a g">$54,77</div></div>
+        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Banco</div></div><div class="a g">$90,00</div></div>
+      </div>
+    </div>
+    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+  </div>
+</div>
+
+<!-- ============ INGRESO 1 — CAJA REGISTRADORA ============ -->
+<div class="stage hidden" id="reg_caja">
+  <div class="phone">
+    <div class="fbar"><div class="bk">←</div><h3>💰 Nuevo ingreso</h3></div>
+    <div class="scroll">
+      <div class="amt"><div class="k">¿CUÁNTO RECIBISTE?</div><div class="v">$ 30,00</div></div>
+      <div class="pad">
+        <button>1</button><button>2</button><button>3</button>
+        <button>4</button><button>5</button><button>6</button>
+        <button>7</button><button>8</button><button>9</button>
+        <button>.</button><button>0</button><button>⌫</button>
+      </div>
+      <button class="next">Siguiente →</button>
+      <div style="text-align:center;color:var(--faint);font-size:12.5px;margin-top:12px;line-height:1.5;">Después eliges <b>qué vendiste</b> y <b>dónde entró</b>. El IVA solo si lo necesitas.</div>
     </div>
   </div>
 </div>
 
-<!-- ===================== FORMULARIO ===================== -->
-<div class="stage hidden" id="sForm">
+<!-- ============ INGRESO 2 — PASO A PASO ============ -->
+<div class="stage hidden" id="reg_paso">
   <div class="phone">
-    <div class="fbar"><div class="bk">←</div><h3>Nueva Transacción</h3></div>
+    <div class="fbar"><div class="bk">←</div><h3>💰 Nuevo ingreso</h3></div>
     <div class="scroll">
-      <div class="types"><b class="on">💰 Ingreso</b><b>💸 Gasto</b><b>↔️ Traslado</b><b>🔴 Deuda</b></div>
-      <div class="amount"><div class="k">MONTO</div><div class="v">$ 30,00</div></div>
-      <div class="fg"><span class="fl">Descripción</span><div class="inp">Venta de blusas al cliente García</div></div>
-      <div class="fg"><span class="fl">Categoría</span><div class="inp">🛒 Ventas</div></div>
-      <div class="fg"><span class="fl">¿En qué cuenta entró el dinero?</span><div class="inp">💵 Caja (Efectivo)</div></div>
-      <div class="fg"><span class="fl">🧾 IVA / Impuesto</span>
-        <div class="iva"><b>🚫<br>Sin IVA</b><b>➕<br>+15% IVA</b><b class="on">✅<br>IVA incluido</b></div>
-      </div>
-      <div class="fg"><span class="fl">Fecha</span><div class="inp">29 de mayo, 2026</div></div>
-      <div class="more">Más detalles ▾ &nbsp;(inventario · foto · notas · plantilla)</div>
-      <button class="save">✅ Guardar</button>
-      <div style="height:10px;"></div>
+      <div class="dots"><div class="dot on"></div><div class="dot"></div><div class="dot"></div></div>
+      <span class="pill">Paso 1 de 3</span>
+      <div class="fl" style="font-size:20px;margin-bottom:14px;">¿Cuánto dinero recibiste?</div>
+      <div class="inp big">$ 30,00</div>
+      <button class="next" style="margin-top:20px;">Siguiente →</button>
+      <div style="text-align:center;color:var(--faint);font-size:12.5px;margin-top:16px;line-height:1.5;">Paso 2: ¿Qué vendiste? · Paso 3: ¿Dónde entró el dinero?<br>Una pregunta a la vez, sin perderte.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ INGRESO 3 — SIMPLE ============ -->
+<div class="stage hidden" id="reg_simple">
+  <div class="phone">
+    <div class="fbar"><div class="bk">←</div><h3>💰 Nuevo ingreso</h3></div>
+    <div class="scroll">
+      <div class="fg"><span class="fl">¿Cuánto recibiste?</span><div class="inp big">$ 30,00</div></div>
+      <div class="fg"><span class="fl">¿Qué vendiste?</span><div class="inp">Venta de blusas</div></div>
+      <div class="fg"><span class="fl">¿Dónde entró el dinero?</span><div class="inp">💵 Caja (Efectivo)</div></div>
+      <div class="moreline">➕ Más opciones &nbsp;(IVA · categoría · inventario · foto)</div>
+      <button class="save">✅ Guardar ingreso</button>
+      <div style="text-align:center;color:var(--faint);font-size:12.5px;margin-top:14px;line-height:1.5;">Solo 3 cosas a la vista. Lo demás (IVA, inventario…) queda escondido hasta que lo pidas.</div>
     </div>
   </div>
 </div>
@@ -222,18 +205,28 @@
 
 <script>
   var LEG = {
-    Ini: 'INICIO — Mismas funciones de siempre, ahora <b>encuadradas</b>: ① un héroe con lo único que importa (utilidad) + comparativa + avisos compactos (deuda/cobrar/stock); ② un botón claro para registrar + accesos; ③ una <b>cuadrícula “Bento”</b> con tus indicadores (por cobrar, stock, activos, por pagar); ④ cuentas, ⑤ plantillas, ⑥ recientes — cada cosa en su bloque, con secciones tituladas. <b>Nada se quitó</b>, solo se ordenó para que no agobie.',
-    Form: 'REGISTRAR — Lo esencial primero (monto, descripción, categoría, cuenta, IVA, fecha) y el resto en <b>“Más detalles ▾”</b> (inventario, foto, notas, plantilla). Así registras rápido sin ver 12 campos de golpe. Color: <b>verde = guardar/positivo</b>, índigo = marca.'
+    ini_a:'<b>INICIO · Esencial.</b> Solo lo importante: el cuadro azul (que te gustó), un botón grande para registrar, tu dinero y los últimos movimientos. Sin cuadrículas ni KPIs que saturen.',
+    ini_b:'<b>INICIO · Menú simple.</b> El cuadro azul + una lista grande “¿Qué quieres hacer?” (registrar ingreso/gasto, ver inventario/reportes). Ideal para quien usa poco el celular: toca lo que necesita y listo.',
+    reg_caja:'<b>INGRESO 1 · Caja registradora.</b> Abre como un datáfono: primero el monto con teclado grande, luego 2 toques (qué vendiste, dónde entró). Rápido y familiar para vender.',
+    reg_paso:'<b>INGRESO 2 · Paso a paso.</b> Una sola pregunta por pantalla (¿cuánto? → ¿qué? → ¿dónde?). Imposible perderse; el menos saturado de todos.',
+    reg_simple:'<b>INGRESO 3 · Simple.</b> Una pantalla con SOLO 3 campos visibles (monto, qué vendiste, dónde entró). El IVA, categoría e inventario se esconden en “Más opciones”. Rápido pero completo.'
   };
-  function tab(k){
-    ['Ini','Form'].forEach(function(x){
-      document.getElementById('s'+x).classList.toggle('hidden', x!==k);
-      document.getElementById('b'+x).classList.toggle('on', x===k);
-    });
-    document.getElementById('leg').innerHTML = LEG[k];
+  var state={main:'Ini',ini:'a',reg:'caja'};
+  function render(){
+    ['ini_a','ini_b','reg_caja','reg_paso','reg_simple'].forEach(function(id){document.getElementById(id).classList.add('hidden');});
+    document.getElementById('subIni').classList.toggle('hidden',state.main!=='Ini');
+    document.getElementById('subReg').classList.toggle('hidden',state.main!=='Reg');
+    document.getElementById('tIni').classList.toggle('on',state.main==='Ini');
+    document.getElementById('tReg').classList.toggle('on',state.main==='Reg');
+    var id = state.main==='Ini' ? ('ini_'+state.ini) : ('reg_'+state.reg);
+    document.getElementById(id).classList.remove('hidden');
+    document.getElementById('leg').innerHTML=LEG[id];
     window.scrollTo(0,0);
   }
-  tab('Ini');
+  function main(m){state.main=m;render();}
+  function ini(x){state.ini=x;['a','b'].forEach(function(v){document.getElementById('i_'+v).classList.toggle('on',v===x);});render();}
+  function reg(x){state.reg=x;['caja','paso','simple'].forEach(function(v){document.getElementById('r_'+v).classList.toggle('on',v===x);});render();}
+  render();
 </script>
 </body>
 </html>
