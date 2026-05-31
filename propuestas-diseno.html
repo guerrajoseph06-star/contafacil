@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Propuestas de diseño — ContaFácil Pro</title>
+<style>
+  :root{
+    --azul:#2563eb; --azul2:#1e40af; --verde:#16a34a; --rojo:#dc2626;
+    --ambar:#d97706; --indigo:#6366f1; --cian:#0891b2;
+    --g50:#f8fafc; --g100:#f1f5f9; --g200:#e5e7eb; --g400:#9ca3af;
+    --g500:#6b7280; --g700:#374151; --g900:#111827;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:#0e1120; color:#fff; padding-bottom:60px;}
+  .head{position:sticky; top:0; z-index:10; background:#11152a; padding:14px 16px 12px;
+    border-bottom:1px solid #222a44;}
+  .head h1{font-size:16px; font-weight:800;}
+  .head p{font-size:12px; color:#9aa6c4; margin-top:3px; line-height:1.4;}
+  .switch{display:flex; gap:8px; margin-top:12px;}
+  .switch button{flex:1; padding:10px 6px; border:none; border-radius:10px; cursor:pointer;
+    background:#1c2440; color:#9aa6c4; font-size:12px; font-weight:700; line-height:1.3;}
+  .switch button.on{background:var(--azul); color:#fff;}
+  .stage{max-width:430px; margin:18px auto; padding:0 14px;}
+  .legend{background:#11152a; border:1px solid #222a44; border-radius:14px; padding:14px 16px;
+    margin:16px auto 0; max-width:430px; font-size:13px; line-height:1.6; color:#cbd5e1;}
+  .legend b{color:#fff;} .legend .t{color:var(--azul); font-weight:800; font-size:14px;}
+  /* ===== Marco de teléfono ===== */
+  .phone{background:#fff; border-radius:26px; overflow:hidden; color:var(--g900);
+    box-shadow:0 18px 50px rgba(0,0,0,.5); border:6px solid #11152a;}
+  .topbar{display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+    border-bottom:1px solid var(--g100);}
+  .topbar .co{display:flex; align-items:center; gap:7px; font-weight:800; color:var(--azul); font-size:14px;}
+  .topbar .usr{font-size:11px; background:#dbeafe; color:var(--azul); border-radius:20px; padding:4px 10px; font-weight:700;}
+  .body{padding:16px;}
+  .hidden{display:none;}
+  /* búsqueda */
+  .search{display:flex; align-items:center; gap:8px; background:var(--g50); border:1.5px solid var(--g200);
+    border-radius:12px; padding:11px 14px; color:var(--g400); font-size:14px; margin-bottom:14px;}
+
+  /* ============ ESTILO A — SERENO ============ */
+  .A .hero{background:#fff; border:1px solid var(--g200); border-radius:20px; padding:22px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05); margin-bottom:14px;}
+  .A .hero .lbl{font-size:13px; color:var(--g500);}
+  .A .hero .big{font-size:42px; font-weight:800; letter-spacing:-1px; color:var(--g900); margin:2px 0 14px;}
+  .A .hero .row{display:flex; gap:10px;}
+  .A .hero .mini{flex:1;}
+  .A .hero .mini .k{font-size:11px; color:var(--g400);}
+  .A .hero .mini .v{font-size:16px; font-weight:700;}
+  .A .quick{display:flex; gap:10px; margin-bottom:14px;}
+  .A .quick .q{flex:1; background:#fff; border:1px solid var(--g200); border-radius:16px; padding:14px 6px;
+    text-align:center;}
+  .A .quick .qi{font-size:22px;} .A .quick .qt{font-size:12px; font-weight:600; margin-top:4px; color:var(--g700);}
+  .A .sect{font-size:12px; font-weight:700; color:var(--g400); text-transform:uppercase; letter-spacing:.5px; margin:6px 0 8px;}
+  .A .li{display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--g100);}
+  .A .li:last-child{border:none;}
+  .A .ic{width:38px; height:38px; border-radius:50%; background:var(--g100); display:flex; align-items:center; justify-content:center; font-size:18px;}
+  .A .li .d{flex:1;} .A .li .d .n{font-size:14px; font-weight:600;} .A .li .d .m{font-size:12px; color:var(--g400);}
+  .A .li .amt{font-weight:700;}
+
+  /* ============ ESTILO B — VIBRANTE ============ */
+  .B .hero{background:linear-gradient(135deg,var(--azul),var(--azul2)); border-radius:22px; padding:22px;
+    color:#fff; margin-bottom:14px; position:relative; overflow:hidden;}
+  .B .hero::after{content:''; position:absolute; top:-30px; right:-30px; width:140px; height:140px; border-radius:50%; background:rgba(255,255,255,.08);}
+  .B .hero .lbl{font-size:13px; opacity:.85;}
+  .B .hero .big{font-size:38px; font-weight:800; margin:2px 0 16px;}
+  .B .hero .row{display:flex; gap:10px; position:relative;}
+  .B .hero .mini{flex:1; background:rgba(255,255,255,.15); border-radius:12px; padding:10px;}
+  .B .hero .mini .k{font-size:11px; opacity:.8;} .B .hero .mini .v{font-size:15px; font-weight:700; margin-top:2px;}
+  .B .quick{display:flex; gap:9px; overflow-x:auto; margin-bottom:16px; padding-bottom:4px;}
+  .B .quick .q{flex:0 0 72px; background:#fff; border-radius:16px; padding:12px 4px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.06);}
+  .B .quick .qi{width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 6px; font-size:20px;}
+  .B .quick .qt{font-size:11px; font-weight:700; color:var(--g700);}
+  .B .cards{display:flex; gap:10px; margin-bottom:16px;}
+  .B .cc{flex:1; border-radius:16px; padding:14px;}
+  .B .cc .k{font-size:12px; font-weight:600;} .B .cc .v{font-size:20px; font-weight:800; margin-top:4px;}
+  .B .cc.in{background:#dcfce7; color:#15803d;} .B .cc.ex{background:#fee2e2; color:#b91c1c;}
+  .B .sect{font-size:13px; font-weight:800; margin:6px 0 8px;}
+  .B .li{display:flex; align-items:center; gap:12px; padding:10px; border-radius:12px; background:var(--g50); margin-bottom:8px;}
+  .B .ic{width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:19px;}
+  .B .li .d{flex:1;} .B .li .d .n{font-size:14px; font-weight:600;} .B .li .d .m{font-size:12px; color:var(--g400);}
+  .B .li .amt{font-weight:800;}
+
+  /* ============ ESTILO C — EJECUTIVO / CUADRÍCULA ============ */
+  .C .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;}
+  .C .kpi{border-radius:16px; padding:15px; color:#fff;}
+  .C .kpi.main{grid-column:1 / -1; background:linear-gradient(135deg,var(--azul),var(--azul2));}
+  .C .kpi.in{background:#16a34a;} .C .kpi.ex{background:#dc2626;}
+  .C .kpi.st{background:#475569;}
+  .C .kpi .k{font-size:12px; opacity:.85; font-weight:600;}
+  .C .kpi.main .big{font-size:36px; font-weight:800; margin-top:2px;}
+  .C .kpi .v{font-size:22px; font-weight:800; margin-top:3px;}
+  .C .kpi .s{font-size:11px; opacity:.8; margin-top:2px;}
+  .C .quick{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;}
+  .C .q{background:#fff; border:1px solid var(--g200); border-radius:12px; padding:10px 4px; text-align:center;}
+  .C .qi{font-size:19px;} .C .qt{font-size:10px; font-weight:700; color:var(--g700); margin-top:3px;}
+  .C .panel{border:1px solid var(--g200); border-radius:16px; overflow:hidden; margin-bottom:12px;}
+  .C .ph{background:var(--g50); padding:10px 14px; font-size:12px; font-weight:800; color:var(--g700); border-bottom:1px solid var(--g200);}
+  .C .li{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--g100);}
+  .C .li:last-child{border:none;}
+  .C .ic{width:34px; height:34px; border-radius:9px; background:var(--g100); display:flex; align-items:center; justify-content:center; font-size:16px;}
+  .C .li .d{flex:1;} .C .li .d .n{font-size:13px; font-weight:600;} .C .li .d .m{font-size:11px; color:var(--g400);}
+  .C .li .amt{font-size:13px; font-weight:700;}
+  .v-in{color:var(--verde);} .v-ex{color:var(--rojo);}
+  .nav{display:flex; justify-content:space-around; border-top:1px solid var(--g100); padding:8px 0;}
+  .nav .n{text-align:center; font-size:10px; color:var(--g400); flex:1;}
+  .nav .n.act{color:var(--azul);} .nav .n .ni{font-size:20px; display:block;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>🎨 Propuestas de diseño — ContaFácil Pro</h1>
+  <p>Toca cada estilo para ver la <b>portada</b> (Inicio). Son maquetas de ejemplo; la app real no se ha tocado.</p>
+  <div class="switch">
+    <button id="bA" class="on" onclick="sel('A')">A · Sereno<br>(minimal)</button>
+    <button id="bB" onclick="sel('B')">B · Vibrante<br>(fintech)</button>
+    <button id="bC" onclick="sel('C')">C · Ejecutivo<br>(cuadrícula)</button>
+  </div>
+</div>
+
+<!-- ============ ESTILO A ============ -->
+<div class="stage" id="sA">
+  <div class="phone A">
+    <div class="topbar"><div class="co">💼 Mi Negocio</div><div class="usr">👤 Principal</div></div>
+    <div class="body">
+      <div class="search">🔍 Buscar en todo el negocio…</div>
+      <div class="hero">
+        <div class="lbl">Utilidad Neta Acumulada</div>
+        <div class="big">$ 144,77</div>
+        <div class="row">
+          <div class="mini"><div class="k">📅 Mayo</div><div class="v" style="color:var(--verde)">+$144,77</div></div>
+          <div class="mini"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div>
+          <div class="mini"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div>
+        </div>
+      </div>
+      <div class="quick">
+        <div class="q"><div class="qi">💰</div><div class="qt">Ingreso</div></div>
+        <div class="q"><div class="qi">💸</div><div class="qt">Gasto</div></div>
+        <div class="q"><div class="qi">↔️</div><div class="qt">Traslado</div></div>
+        <div class="q"><div class="qi">🔴</div><div class="qt">Deuda</div></div>
+      </div>
+      <div class="sect">Cuentas</div>
+      <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div></div><div class="amt v-in">$54,77</div></div>
+      <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div></div><div class="amt v-in">$90,00</div></div>
+      <div class="sect" style="margin-top:14px;">Recientes</div>
+      <div class="li"><div class="ic">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy · Blusa, Jean</div></div><div class="amt v-in">+$30,00</div></div>
+      <div class="li"><div class="ic">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="amt v-ex">−$25,23</div></div>
+    </div>
+    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+  </div>
+</div>
+
+<!-- ============ ESTILO B ============ -->
+<div class="stage hidden" id="sB">
+  <div class="phone B">
+    <div class="topbar"><div class="co">💼 Mi Negocio</div><div class="usr">👤 Principal</div></div>
+    <div class="body">
+      <div class="search">🔍 Buscar en todo el negocio…</div>
+      <div class="hero">
+        <div class="lbl">🎯 Utilidad Neta Acumulada</div>
+        <div class="big">$ 144,77</div>
+        <div class="row">
+          <div class="mini"><div class="k">📅 Mayo</div><div class="v">+$144,77</div></div>
+          <div class="mini"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div>
+          <div class="mini"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div>
+        </div>
+      </div>
+      <div class="quick">
+        <div class="q"><div class="qi" style="background:#dcfce7">💰</div><div class="qt">Ingreso</div></div>
+        <div class="q"><div class="qi" style="background:#fee2e2">💸</div><div class="qt">Gasto</div></div>
+        <div class="q"><div class="qi" style="background:#e0e7ff">↔️</div><div class="qt">Traslado</div></div>
+        <div class="q"><div class="qi" style="background:#fef3c7">🔴</div><div class="qt">Deuda</div></div>
+        <div class="q"><div class="qi" style="background:#ede9fe">🏠</div><div class="qt">Retiro</div></div>
+      </div>
+      <div class="cards">
+        <div class="cc in"><div class="k">💰 Ingresos mes</div><div class="v">$190,00</div></div>
+        <div class="cc ex"><div class="k">💸 Gastos mes</div><div class="v">$45,23</div></div>
+      </div>
+      <div class="sect">Movimientos recientes</div>
+      <div class="li"><div class="ic" style="background:#dcfce7">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy · Blusa, Jean</div></div><div class="amt v-in">+$30,00</div></div>
+      <div class="li"><div class="ic" style="background:#fee2e2">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="amt v-ex">−$25,23</div></div>
+    </div>
+    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+  </div>
+</div>
+
+<!-- ============ ESTILO C ============ -->
+<div class="stage hidden" id="sC">
+  <div class="phone C">
+    <div class="topbar"><div class="co">💼 Mi Negocio</div><div class="usr">👤 Principal</div></div>
+    <div class="body">
+      <div class="search">🔍 Buscar en todo el negocio…</div>
+      <div class="grid">
+        <div class="kpi main"><div class="k">🎯 Utilidad Neta Acumulada</div><div class="big">$ 144,77</div><div class="s">+$144,77 este mes</div></div>
+        <div class="kpi in"><div class="k">💰 Ingresos</div><div class="v">$190,00</div><div class="s">mayo</div></div>
+        <div class="kpi ex"><div class="k">💸 Gastos</div><div class="v">$45,23</div><div class="s">mayo</div></div>
+      </div>
+      <div class="grid" style="margin-top:-2px;">
+        <div class="kpi st" style="background:#0891b2"><div class="k">🧾 Por cobrar</div><div class="v">$60,00</div></div>
+        <div class="kpi st" style="background:#d97706"><div class="k">📉 Stock bajo</div><div class="v">1</div></div>
+      </div>
+      <div class="quick">
+        <div class="q"><div class="qi">💰</div><div class="qt">Ingreso</div></div>
+        <div class="q"><div class="qi">💸</div><div class="qt">Gasto</div></div>
+        <div class="q"><div class="qi">↔️</div><div class="qt">Traslado</div></div>
+        <div class="q"><div class="qi">🔴</div><div class="qt">Deuda</div></div>
+      </div>
+      <div class="panel">
+        <div class="ph">💵 Saldo por cuenta</div>
+        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja</div></div><div class="amt v-in">$54,77</div></div>
+        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Banco</div></div><div class="amt v-in">$90,00</div></div>
+      </div>
+      <div class="panel">
+        <div class="ph">🕒 Recientes</div>
+        <div class="li"><div class="ic">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy</div></div><div class="amt v-in">+$30,00</div></div>
+        <div class="li"><div class="ic">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="amt v-ex">−$25,23</div></div>
+      </div>
+    </div>
+    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+  </div>
+</div>
+
+<div class="legend" id="leg"></div>
+
+<script>
+  var LEG = {
+    A: '<div class="t">A · Sereno (minimal)</div>Mucho aire, tarjetas blancas planas, un solo color de acento (azul). El número manda; lo demás respira. <b>Sensación:</b> tranquila, premium, ordenada. <b>Ideal si:</b> quieres algo limpio y elegante, fácil de leer.',
+    B: '<div class="t">B · Vibrante (fintech)</div>Hero azul con degradado, accesos en círculos de color, tarjetas verde/rojo para ingresos/gastos. <b>Sensación:</b> amigable, enérgica, moderna (estilo Mercado Pago / Nubank). <b>Ideal si:</b> quieres que se sienta vivo y guíe con color.',
+    C: '<div class="t">C · Ejecutivo (cuadrícula)</div>Todo simétrico en una cuadrícula de tarjetas (Utilidad, Ingresos, Gastos, Cobrar, Stock) — se ve todo de un vistazo, menos scroll. <b>Sensación:</b> control total, profesional. <b>Ideal si:</b> te gusta "todo ordenado y a la vista" (esto es lo que mencionaste de simetría).'
+  };
+  function sel(k){
+    ['A','B','C'].forEach(function(x){
+      document.getElementById('s'+x).classList.toggle('hidden', x!==k);
+      document.getElementById('b'+x).classList.toggle('on', x===k);
+    });
+    document.getElementById('leg').innerHTML = LEG[k];
+    window.scrollTo(0,0);
+  }
+  sel('A');
+</script>
+</body>
+</html>
