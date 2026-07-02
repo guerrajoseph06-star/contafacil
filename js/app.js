@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.02b';
+const APP_VERSION = '2026.07.02c';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -2293,7 +2293,7 @@ function txItemHTML(tx) {
 
 // ── Formulario de transacción ─────────────────────────────────────────────────
 // ── Sistema inteligente: autocompletar descripciones + selector IVA ───────────
-let _formIvaType      = 'IVA_INCLUIDO'; // tipo de IVA activo en el formulario
+let _formIvaType      = 'SIN_IVA'; // tipo de IVA activo en el formulario (default: sin IVA)
 let _ivaTouched       = false;          // ¿el usuario eligió el IVA manualmente? (evita que la sugerencia por categoría lo pise)
 let _moreOpen         = false;          // estado del bloque "Más detalles" (no persiste entre aperturas)
 let _saleCart         = [];             // Fase 2b: líneas de productos agregadas a una venta multi-producto
@@ -3428,7 +3428,7 @@ function renderForm(editId = null) {
     if (descEl)   descEl.value   = '';
     if (dateEl)   dateEl.value   = today();
     if (notesEl)  notesEl.value  = '';
-    _formIvaType = 'IVA_INCLUIDO'; // default para transacción nueva
+    _formIvaType = 'SIN_IVA'; // default para transacción nueva: no incluye IVA
     _ivaTouched  = false;          // nueva: permitir sugerencia de IVA por categoría
     _formPhoto   = null;
   }
