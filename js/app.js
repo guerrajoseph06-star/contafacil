@@ -8,11 +8,13 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.02a';
+const APP_VERSION = '2026.07.02b';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
-if ('serviceWorker' in navigator) {
+// El SW solo aplica en la web/PWA; dentro de la app instalada (Capacitor) los
+// archivos ya son locales y cachearlos causaría versiones viejas pegadas.
+if ('serviceWorker' in navigator && Platform.env() === 'web') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
       .then(reg => {
@@ -8764,6 +8766,19 @@ function openCarteraPanel() {
 // ── Escáner de código de barras (BarcodeDetector API — nativo Chrome) ─────────
 // 100% offline, sin IA, sin servidor externo. Solo cámara del dispositivo.
 async function openBarcodeScanner(targetFieldId) {
+  // App instalada: escáner nativo de Google (el WebView no trae BarcodeDetector)
+  if (Platform.env() === 'capacitor') {
+    try {
+      const code = await Platform.scanBarcode();
+      if (!code) return;
+      const field = document.getElementById(targetFieldId);
+      if (field) { field.value = code; field.dispatchEvent(new Event('input')); }
+      showToast('✅ Código detectado: ' + code, 3000);
+    } catch (e) {
+      showToast('⚠️ ' + (e && e.message ? e.message : 'No se pudo abrir el escáner'), 3500);
+    }
+    return;
+  }
   if (!('BarcodeDetector' in window)) {
     showToast('📷 Escáner disponible en Chrome Android actualizado', 4000);
     return;
