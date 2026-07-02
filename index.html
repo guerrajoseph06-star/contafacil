@@ -11,9 +11,14 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260529i">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/style.css?v=20260702a">
+  <!-- Chart.js empaquetado localmente (sin CDN — 100% offline desde la primera carga).
+       OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app):
+       OneDrive bloquea escrituras del shell en esta carpeta fuente. NO hacer "sync limpio". -->
+  <script src="js/lib/chart.umd.min.js?v=4.4.3"></script>
   <style>
     /* ══ PANTALLA DE BLOQUEO / PIN ══ */
     .pin-dot {
@@ -1430,11 +1435,12 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- SheetJS para lectura/escritura Excel (se cachea tras la primera carga) -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- SheetJS empaquetado localmente para lectura/escritura Excel (sin CDN) -->
+<script src="js/lib/xlsx.full.min.js?v=0.20.3"></script>
 <!-- Scripts -->
-<script src="js/db.js?v=20260529i"></script>
-<script src="js/app.js?v=20260529i"></script>
-<script src="js/tax.js?v=20260529i"></script>
+<script src="js/platform.js?v=20260702a"></script>
+<script src="js/db.js?v=20260702a"></script>
+<script src="js/app.js?v=20260702a"></script>
+<script src="js/tax.js?v=20260702a"></script>
 </body>
 </html>

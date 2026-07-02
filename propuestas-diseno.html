@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Inicio v2 — ContaFácil Pro</title>
+<title>Inicio elegido — ContaFácil Pro</title>
 <style>
   :root{
     --bg:#f5f7fc;--card:#fff;--blue:#2563eb;--blue2:#1d4ed8;
@@ -15,9 +15,6 @@
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0e1120;color:#fff;}
   .head{position:sticky;top:0;z-index:30;background:#11152a;padding:13px 14px;border-bottom:1px solid #222a44;}
   .head h1{font-size:15px;font-weight:800;}.head p{font-size:11.5px;color:#9aa6c4;margin-top:3px;line-height:1.45;}
-  .tabs{display:flex;gap:7px;margin-top:11px;}
-  .tabs>button{flex:1;padding:9px 4px;border:none;border-radius:10px;cursor:pointer;background:#1c2440;color:#9aa6c4;font-size:11.5px;font-weight:700;line-height:1.3;}
-  .tabs>button.on{background:var(--blue);color:#fff;}
   .stage{max-width:420px;margin:16px auto;padding:0 14px;}
   .legend{max-width:420px;margin:12px auto 34px;padding:14px 16px;background:#11152a;border:1px solid #222a44;border-radius:14px;color:#cbd5e1;font-size:12.5px;line-height:1.65;}
   .legend .t{color:#fff;font-weight:800;font-size:14px;}.legend b{color:#fff;}
@@ -28,7 +25,6 @@
   .top .co{font-weight:800;color:var(--blue);font-size:14px;}.top .u{font-size:11px;background:#dbeafe;color:var(--blue);border-radius:20px;padding:4px 10px;font-weight:700;}
   .scroll{padding:15px;max-height:80vh;overflow-y:auto;}
 
-  /* HERO con badges en la esquina (como te gustaba) */
   .hero{background:linear-gradient(135deg,var(--blue),var(--blue2));border-radius:22px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:0 10px 26px rgba(37,99,235,.3);}
   .hero::after{content:'';position:absolute;bottom:-50px;left:-25px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.07);}
   .hb{position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:7px;z-index:3;}
@@ -39,13 +35,24 @@
   .hero .row{display:flex;gap:11px;position:relative;}.hero .m{flex:1;background:rgba(255,255,255,.16);border-radius:13px;padding:10px 11px;}
   .hero .m .k{font-size:11px;opacity:.85;}.hero .m .v{font-size:15px;font-weight:800;margin-top:2px;}
 
-  .sh{display:flex;align-items:center;gap:8px;margin:18px 4px 9px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+  /* Pestañas seleccionables (lo que te encantó) */
+  .seg{display:flex;background:#e7ebf5;border-radius:13px;padding:4px;margin:15px 0 6px;}
+  .seg b{flex:1;text-align:center;padding:10px 4px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;}
+  .seg b.on{background:#fff;color:var(--blue);box-shadow:var(--sh);}
+
+  .sh{display:flex;align-items:center;gap:8px;margin:16px 4px 9px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
   .sh::before{content:'';width:4px;height:14px;border-radius:3px;background:var(--blue);}
   .sh.g::before{background:var(--green);}.sh .lnk{margin-left:auto;color:var(--blue);font-weight:700;text-transform:none;letter-spacing:0;font-size:12px;}
 
-  .chips{display:flex;gap:9px;overflow-x:auto;padding:3px 0;}
-  .chip{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 13px;box-shadow:var(--sh);min-width:62px;}
-  .chip .e{font-size:21px;}.chip .t{font-size:10.5px;font-weight:700;}
+  /* RUEDA de registrar (gira y se repite) */
+  .wheelw{position:relative;}
+  .wheelw::before,.wheelw::after{content:'';position:absolute;top:0;bottom:0;width:26px;z-index:2;pointer-events:none;}
+  .wheelw::before{left:0;background:linear-gradient(90deg,var(--bg),transparent);}
+  .wheelw::after{right:0;background:linear-gradient(270deg,var(--bg),transparent);}
+  .wheel{display:flex;gap:10px;overflow-x:auto;padding:3px 2px;scrollbar-width:none;}
+  .wheel::-webkit-scrollbar{display:none;}
+  .wheel .chip{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:50%;width:60px;height:60px;justify-content:center;box-shadow:var(--sh);}
+  .wheel .chip .e{font-size:22px;}.wheel .chip .t{font-size:9px;font-weight:700;}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
   .li{display:flex;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--line);}.li:last-child{border:none;}
@@ -54,30 +61,18 @@
   .li .a{font-weight:800;font-size:14px;}.g{color:var(--green);}.r{color:var(--red);}
   .li .bar{height:6px;background:var(--bg);border-radius:3px;margin-top:6px;overflow:hidden;}.li .bar>i{display:block;height:100%;border-radius:3px;}
 
-  /* SALDO por cuenta — estilo original que le gusta */
-  .saldo .li .a{font-size:15px;}
-
-  /* swipe cards de flujo */
-  .swipe{display:flex;gap:11px;overflow-x:auto;padding:3px 0 4px;scroll-snap-type:x mandatory;}
-  .fc{flex:0 0 80%;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--sh);}
-  .fc .ct{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;margin-bottom:10px;}
-  .fc .ln{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);}.fc .ln:last-child{border:none;}
-  .fc .ln .v{font-weight:800;}
-  .dotsr{display:flex;gap:5px;justify-content:center;margin-top:8px;}.dotsr i{width:6px;height:6px;border-radius:50%;background:#cbd5e1;}.dotsr i.on{background:var(--blue);width:18px;border-radius:3px;}
-
-  /* Ayer vs Hoy */
-  .vs{display:flex;align-items:stretch;gap:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);}
+  .vs{display:flex;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);}
   .vs .c{flex:1;padding:14px 15px;}.vs .c+ .c{border-left:1px solid var(--line);}
   .vs .k{font-size:11.5px;color:var(--faint);font-weight:700;}.vs .v{font-size:22px;font-weight:800;margin-top:3px;}.vs .s{font-size:11px;color:var(--faint);margin-top:2px;}
   .vs .hoy .v{color:var(--green);}
 
-  /* Flujo 2 columnas (Entró / Salió) */
   .flow2{display:flex;gap:11px;}
-  .fcol{flex:1;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--sh);}
-  .fcol .h{font-size:12px;font-weight:800;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
-  .fcol .ln{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;}
-  .fcol .ln .v{font-weight:700;}
-  .fcol .tot{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:13px;font-weight:800;}
+  .fcol{flex:1;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px;box-shadow:var(--sh);}
+  .fcol .h{font-size:12px;font-weight:800;margin-bottom:8px;}
+  .fcol .ln{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;}.fcol .ln .v{font-weight:700;}
+  .fcol .tot{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:13px;font-weight:800;}
+
+  .tpl{display:flex;gap:9px;overflow-x:auto;}.tplc{flex:0 0 78px;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 6px;text-align:center;box-shadow:var(--sh);}.tplc .e{font-size:21px;}.tplc .n{font-size:10.5px;font-weight:700;margin-top:3px;}.tplc .a{font-size:10.5px;font-weight:800;color:var(--green);}
 
   .nav{display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);padding:9px 0 11px;}
   .nav .n{flex:1;text-align:center;font-size:10px;color:var(--faint);font-weight:600;}.nav .n.act{color:var(--blue);}.nav .n .ni{font-size:20px;display:block;}
@@ -85,19 +80,11 @@
 </head>
 <body>
 <div class="head">
-  <h1>🏠 Inicio v2 — con tus ideas</h1>
-  <p>Avisos dentro del azul (como te gustaba) · tarjetas de Entró/Salió y Ayer vs Hoy · Saldo por cuenta destacado. Toca para comparar.</p>
-  <div class="tabs">
-    <button id="t1" class="on" onclick="go(1)">1 · Flujo<br>deslizable</button>
-    <button id="t2" onclick="go(2)">2 · Saldo<br>protagonista</button>
-    <button id="t3" onclick="go(3)">3 · Entró/Salió<br>2 columnas</button>
-  </div>
+  <h1>🏠 Inicio elegido — Pestañas + Rueda</h1>
+  <p>El que te encantó: <b>pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) + avisos en el azul + Saldo por cuenta + Entró/Salió + Ayer vs Hoy. <b>Registrar = rueda</b> (desliza, los íconos se repiten). Solo diseño; app intacta.</p>
 </div>
 
-<!-- HERO compartido (cada diseño lo repite para verse completo) -->
-
-<!-- ============ DISEÑO 1 — FLUJO DESLIZABLE ============ -->
-<div class="stage" id="s1">
+<div class="stage">
   <div class="phone">
     <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
     <div class="scroll">
@@ -108,128 +95,64 @@
         <div class="row"><div class="m"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div><div class="m"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div></div>
       </div>
 
-      <div class="sh">Movimiento del mes <span class="lnk" style="font-size:11px;">desliza →</span></div>
-      <div class="swipe">
-        <div class="fc"><div class="ct g">⬇️ Entró por cuenta</div><div class="ln"><span>💵 Caja</span><span class="v g">+$140,00</span></div><div class="ln"><span>🏦 Banco</span><span class="v g">+$50,00</span></div></div>
-        <div class="fc"><div class="ct" style="color:var(--red)">⬆️ Salió por cuenta</div><div class="ln"><span>💵 Caja</span><span class="v r">−$25,23</span></div><div class="ln"><span>🏦 Banco</span><span class="v r">−$20,00</span></div></div>
-        <div class="fc"><div class="ct" style="color:var(--blue)">📅 Ayer vs Hoy</div><div class="ln"><span>Ayer · 3 ventas</span><span class="v">$80,00</span></div><div class="ln"><span>Hoy · 1 venta</span><span class="v g">$30,00</span></div></div>
-        <div class="fc"><div class="ct" style="color:var(--indigo)">🏭 Activos fijos</div><div class="ln"><span>Valor en libros</span><span class="v">$875,00</span></div><div class="ln"><span>2 activos</span><span class="v" style="color:var(--faint)">›</span></div></div>
+      <!-- RUEDA de registrar -->
+      <div class="sh">Registrar <span class="lnk" style="font-size:11px;">↻ gira la rueda</span></div>
+      <div class="wheelw"><div class="wheel" id="wheel">
+        <div class="chip"><div class="e">💰</div><div class="t">Ingreso</div></div>
+        <div class="chip"><div class="e">💸</div><div class="t">Gasto</div></div>
+        <div class="chip"><div class="e">↔️</div><div class="t">Traslado</div></div>
+        <div class="chip"><div class="e">🔴</div><div class="t">Deuda</div></div>
+        <div class="chip"><div class="e">🏠</div><div class="t">Retiro</div></div>
+        <div class="chip"><div class="e">🧾</div><div class="t">Factura</div></div>
+      </div></div>
+
+      <!-- PESTAÑAS -->
+      <div class="seg"><b id="g_res" class="on" onclick="seg('res')">Resumen</b><b id="g_cue" onclick="seg('cue')">Cuentas</b><b id="g_pen" onclick="seg('pen')">Pendientes</b></div>
+
+      <div id="p_res">
+        <div class="sh">Ayer vs Hoy</div>
+        <div class="vs"><div class="c"><div class="k">📅 AYER</div><div class="v">$80,00</div><div class="s">3 ventas</div></div><div class="c hoy"><div class="k">☀️ HOY</div><div class="v">$30,00</div><div class="s">1 venta</div></div></div>
+        <div class="sh">⭐ Acceso rápido</div>
+        <div class="tpl"><div class="tplc"><div class="e">🛒</div><div class="n">Venta día</div><div class="a">$20</div></div><div class="tplc"><div class="e">🌐</div><div class="n">Internet</div><div class="a">$25</div></div><div class="tplc"><div class="e">🚗</div><div class="n">Gasolina</div><div class="a">$15</div></div></div>
+        <div class="sh">Recientes <span class="lnk">Ver todo</span></div>
+        <div class="card"><div class="li"><div class="ic" style="background:var(--greenbg)">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy · Blusa, Jean</div></div><div class="a g">+$30,00</div></div><div class="li"><div class="ic">↔️</div><div class="d"><div class="n">Traslado a Banco</div><div class="m">Hoy</div></div><div class="a" style="color:var(--blue)">$50,00</div></div><div class="li"><div class="ic" style="background:var(--redbg)">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="a r">−$25,23</div></div></div>
       </div>
-      <div class="dotsr"><i class="on"></i><i></i><i></i><i></i></div>
 
-      <div class="sh g">Saldo por cuenta <span class="lnk">$144,77</span></div>
-      <div class="card saldo">
-        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div><div class="bar"><i style="width:38%;background:var(--green)"></i></div></div><div class="a g">$54,77</div></div>
-        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div><div class="bar"><i style="width:62%;background:var(--blue)"></i></div></div><div class="a g">$90,00</div></div>
+      <div id="p_cue" class="hidden">
+        <div class="sh g">Saldo por cuenta <span class="lnk">$144,77</span></div>
+        <div class="card"><div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div><div class="bar"><i style="width:38%;background:var(--green)"></i></div></div><div class="a g">$54,77</div></div><div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div><div class="bar"><i style="width:62%;background:var(--blue)"></i></div></div><div class="a g">$90,00</div></div><div class="li"><div class="ic">📱</div><div class="d"><div class="n">Billetera Digital</div></div><div class="a">$0,00</div></div></div>
+        <div class="sh">Movimiento del mes</div>
+        <div class="flow2"><div class="fcol"><div class="h g">⬇️ Entró</div><div class="ln"><span>💵 Caja</span><span class="v g">+$140</span></div><div class="ln"><span>🏦 Banco</span><span class="v g">+$50</span></div><div class="tot"><span>Total</span><span class="g">+$190</span></div></div><div class="fcol"><div class="h" style="color:var(--red)">⬆️ Salió</div><div class="ln"><span>💵 Caja</span><span class="v r">−$25</span></div><div class="ln"><span>🏦 Banco</span><span class="v r">−$20</span></div><div class="tot"><span>Total</span><span class="r">−$45</span></div></div></div>
       </div>
 
-      <div class="sh">Registrar</div>
-      <div class="chips"><div class="chip"><div class="e">💰</div><div class="t">Ingreso</div></div><div class="chip"><div class="e">💸</div><div class="t">Gasto</div></div><div class="chip"><div class="e">↔️</div><div class="t">Traslado</div></div><div class="chip"><div class="e">🔴</div><div class="t">Deuda</div></div><div class="chip"><div class="e">🏠</div><div class="t">Retiro</div></div></div>
-
-      <div class="sh">Recientes <span class="lnk">Ver todo</span></div>
-      <div class="card"><div class="li"><div class="ic" style="background:var(--greenbg)">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy</div></div><div class="a g">+$30,00</div></div><div class="li"><div class="ic" style="background:var(--redbg)">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="a r">−$25,23</div></div></div>
+      <div id="p_pen" class="hidden">
+        <div class="sh">Pendientes</div>
+        <div class="card"><div class="li"><div class="ic" style="background:var(--redbg)">🔴</div><div class="d"><div class="n">Deuda a proveedor</div><div class="m">Pendiente</div></div><div class="a r">$20,00</div></div><div class="li"><div class="ic" style="background:var(--cyanbg)">🧾</div><div class="d"><div class="n">Cobro J. García</div><div class="m">Vence en 3 días</div></div><div class="a">$60,00</div></div><div class="li"><div class="ic" style="background:var(--amberbg)">📉</div><div class="d"><div class="n">Blusa · stock bajo</div><div class="m">0 de 1</div></div><div class="a" style="color:var(--amber)">⚠️</div></div></div>
+      </div>
       <div style="height:8px;"></div>
     </div>
     <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
   </div>
 </div>
 
-<!-- ============ DISEÑO 2 — SALDO PROTAGONISTA ============ -->
-<div class="stage hidden" id="s2">
-  <div class="phone">
-    <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
-    <div class="scroll">
-      <div class="hero">
-        <div class="hb"><span class="deuda">🔴 1</span><span class="cobro">🧾 1</span><span class="stock">📉 1</span></div>
-        <div class="l">🎯 Utilidad Neta Acumulada</div><div class="b">$ 144,77</div>
-        <div class="cmp"><span class="up">↑ +18%</span> vs abril · Mayo 2026</div>
-        <div class="row"><div class="m"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div><div class="m"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div></div>
-      </div>
-
-      <div class="sh g">Saldo por cuenta <span class="lnk">$144,77</span></div>
-      <div class="card saldo">
-        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div><div class="bar"><i style="width:38%;background:var(--green)"></i></div></div><div class="a g">$54,77</div></div>
-        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div><div class="bar"><i style="width:62%;background:var(--blue)"></i></div></div><div class="a g">$90,00</div></div>
-        <div class="li"><div class="ic">📱</div><div class="d"><div class="n">Billetera Digital</div><div class="bar"><i style="width:0;background:var(--cyan)"></i></div></div><div class="a">$0,00</div></div>
-      </div>
-
-      <div class="sh">Ayer vs Hoy</div>
-      <div class="vs">
-        <div class="c"><div class="k">📅 AYER</div><div class="v">$80,00</div><div class="s">3 ventas</div></div>
-        <div class="c hoy"><div class="k">☀️ HOY</div><div class="v">$30,00</div><div class="s">1 venta</div></div>
-      </div>
-
-      <div class="sh">Registrar</div>
-      <div class="chips"><div class="chip"><div class="e">💰</div><div class="t">Ingreso</div></div><div class="chip"><div class="e">💸</div><div class="t">Gasto</div></div><div class="chip"><div class="e">↔️</div><div class="t">Traslado</div></div><div class="chip"><div class="e">🔴</div><div class="t">Deuda</div></div><div class="chip"><div class="e">🏠</div><div class="t">Retiro</div></div></div>
-
-      <div class="sh">Recientes <span class="lnk">Ver todo</span></div>
-      <div class="card"><div class="li"><div class="ic" style="background:var(--greenbg)">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy</div></div><div class="a g">+$30,00</div></div><div class="li"><div class="ic">↔️</div><div class="d"><div class="n">Traslado a Banco</div><div class="m">Hoy</div></div><div class="a" style="color:var(--blue)">$50,00</div></div></div>
-      <div style="height:8px;"></div>
-    </div>
-    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
-  </div>
+<div class="legend">
+  <div class="t">Inicio elegido (lo guardo para implementar)</div>
+  <b>Pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) → el contenido no satura porque ves una vista a la vez, pero todo sigue ahí.<br>
+  <b>Resumen:</b> Ayer vs Hoy + acceso rápido + recientes. <b>Cuentas:</b> Saldo por cuenta (el que te gusta) + Entró/Salió. <b>Pendientes:</b> deudas, cobros y stock.<br>
+  <b>Avisos</b> 🔴/🧾/📉 dentro del cuadro azul. <b>Registrar = rueda</b> circular: deslízala, los íconos se repiten (prueba arrastrar de lado a lado).
 </div>
 
-<!-- ============ DISEÑO 3 — ENTRÓ / SALIÓ EN 2 COLUMNAS ============ -->
-<div class="stage hidden" id="s3">
-  <div class="phone">
-    <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
-    <div class="scroll">
-      <div class="hero">
-        <div class="hb"><span class="deuda">🔴 1</span><span class="cobro">🧾 1</span><span class="stock">📉 1</span></div>
-        <div class="l">🎯 Utilidad Neta Acumulada</div><div class="b">$ 144,77</div>
-        <div class="cmp"><span class="up">↑ +18%</span> vs abril · Mayo 2026</div>
-        <div class="row"><div class="m"><div class="k">💰 Ingresos</div><div class="v">$190,00</div></div><div class="m"><div class="k">💸 Gastos</div><div class="v">$45,23</div></div></div>
-      </div>
-
-      <div class="sh">Flujo del mes por cuenta</div>
-      <div class="flow2">
-        <div class="fcol">
-          <div class="h g">⬇️ Entró</div>
-          <div class="ln"><span>💵 Caja</span><span class="v g">+$140</span></div>
-          <div class="ln"><span>🏦 Banco</span><span class="v g">+$50</span></div>
-          <div class="tot"><span>Total</span><span class="g">+$190</span></div>
-        </div>
-        <div class="fcol">
-          <div class="h" style="color:var(--red)">⬆️ Salió</div>
-          <div class="ln"><span>💵 Caja</span><span class="v r">−$25</span></div>
-          <div class="ln"><span>🏦 Banco</span><span class="v r">−$20</span></div>
-          <div class="tot"><span>Total</span><span class="r">−$45</span></div>
-        </div>
-      </div>
-
-      <div class="sh">Ayer vs Hoy</div>
-      <div class="vs">
-        <div class="c"><div class="k">📅 AYER</div><div class="v">$80,00</div><div class="s">3 ventas</div></div>
-        <div class="c hoy"><div class="k">☀️ HOY</div><div class="v">$30,00</div><div class="s">1 venta</div></div>
-      </div>
-
-      <div class="sh g">Saldo por cuenta <span class="lnk">$144,77</span></div>
-      <div class="card saldo">
-        <div class="li"><div class="ic">💵</div><div class="d"><div class="n">Caja (Efectivo)</div></div><div class="a g">$54,77</div></div>
-        <div class="li"><div class="ic">🏦</div><div class="d"><div class="n">Cuenta Bancaria</div></div><div class="a g">$90,00</div></div>
-      </div>
-
-      <div class="sh">Registrar</div>
-      <div class="chips"><div class="chip"><div class="e">💰</div><div class="t">Ingreso</div></div><div class="chip"><div class="e">💸</div><div class="t">Gasto</div></div><div class="chip"><div class="e">↔️</div><div class="t">Traslado</div></div><div class="chip"><div class="e">🔴</div><div class="t">Deuda</div></div><div class="chip"><div class="e">🏠</div><div class="t">Retiro</div></div></div>
-
-      <div class="sh">Recientes <span class="lnk">Ver todo</span></div>
-      <div class="card"><div class="li"><div class="ic" style="background:var(--greenbg)">🛒</div><div class="d"><div class="n">Venta · 2 productos</div><div class="m">Hoy</div></div><div class="a g">+$30,00</div></div><div class="li"><div class="ic" style="background:var(--redbg)">🌐</div><div class="d"><div class="n">Internet</div><div class="m">Ayer</div></div><div class="a r">−$25,23</div></div></div>
-      <div style="height:8px;"></div>
-    </div>
-    <div class="nav"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
-  </div>
-</div>
-
-<div class="legend" id="leg"></div>
 <script>
-  var L={
-    1:'<div class="t">1 · Flujo deslizable</div>Avisos dentro del azul (🔴/🧾/📉). Debajo, tarjetas que se deslizan: <b>Entró por cuenta</b>, <b>Salió por cuenta</b>, <b>Ayer vs Hoy</b> y <b>Activos</b>. Luego tu <b>Saldo por cuenta</b> (el que te gusta). Mucha info, poco espacio.',
-    2:'<div class="t">2 · Saldo protagonista</div>El <b>Saldo por cuenta va primero y grande</b> (lo que más te gusta), con barras como el original. Luego <b>Ayer vs Hoy</b> lado a lado, accesos y recientes. El más directo al dato que más miras.',
-    3:'<div class="t">3 · Entró / Salió en 2 columnas</div>Avisos en el azul + un bloque <b>simétrico de 2 columnas: ⬇️ Entró y ⬆️ Salió por cuenta</b> (con totales), <b>Ayer vs Hoy</b>, y tu <b>Saldo por cuenta</b>. Muy ordenado y "cuadrado".'
-  };
-  function go(k){[1,2,3].forEach(function(x){document.getElementById('s'+x).classList.toggle('hidden',x!==k);document.getElementById('t'+x).classList.toggle('on',x===k);});document.getElementById('leg').innerHTML=L[k];window.scrollTo(0,0);}
-  go(1);
+  function seg(p){['res','cue','pen'].forEach(function(v){document.getElementById('p_'+v).classList.toggle('hidden',v!==p);document.getElementById('g_'+v).classList.toggle('on',v===p);});}
+  // Rueda infinita: al llegar a un extremo, salta al otro para sentir que "gira"
+  var w=document.getElementById('wheel');
+  function center(){ w.scrollLeft = w.scrollWidth/2 - w.clientWidth/2; }
+  setTimeout(center,60);
+  w.addEventListener('scroll',function(){
+    var max=w.scrollWidth-w.clientWidth;
+    if(w.scrollLeft<6){ w.scrollLeft = max-70; }
+    else if(w.scrollLeft>max-6){ w.scrollLeft = 70; }
+  });
 </script>
 </body>
 </html>

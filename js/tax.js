@@ -337,8 +337,6 @@ const SRI = (() => {
   function ivaExportPdf() {
     const d = ivaModule.compute104(_y, _m);
     const s = DB.getSettings();
-    const win = window.open('', '_blank');
-    if (!win) { showToast('⚠️ Permite ventanas emergentes para exportar', 3000); return; }
 
     const row = (label, val, strong) => `
       <tr>
@@ -346,7 +344,7 @@ const SRI = (() => {
         <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; text-align:right; ${strong ? 'font-weight:800;' : ''}">${fmt(val)}</td>
       </tr>`;
 
-    win.document.write(`
+    const html = `
       <!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
       <title>Borrador IVA ${MESES[_m - 1]} ${_y}</title></head>
       <body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif; color:#111827; max-width:720px; margin:0 auto; padding:32px;">
@@ -383,8 +381,8 @@ const SRI = (() => {
           crédito de periodos anteriores, retenciones ni exportaciones.
         </div>
         <script>setTimeout(function(){window.print();}, 350);<\/script>
-      </body></html>`);
-    win.document.close();
+      </body></html>`;
+    if (!Platform.printHTML(html)) { showToast('⚠️ Permite ventanas emergentes para exportar', 3000); return; }
     DB.logAudit('beta_iva_pdf', `🧾 Borrador IVA ${MESES[_m - 1]} ${_y}`);
   }
 

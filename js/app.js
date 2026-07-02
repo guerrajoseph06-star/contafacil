@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.05.29i';
+const APP_VERSION = '2026.07.02a';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -982,14 +982,9 @@ async function doEncryptedExport() {
     const encrypted = await DB.exportForSyncEncrypted(p1);
     const s    = DB.getSettings();
     const blob = new Blob([encrypted], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
     const date = new Date().toISOString().split('T')[0];
     const safe = (s.userName || 'registro').replace(/[^a-zA-Z0-9]/g, '-');
-    a.href     = url;
-    a.download = `contafacil-cifrado-${safe}-${date}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await Platform.saveFile(blob, `contafacil-cifrado-${safe}-${date}.json`);
     closeSettingsSheet();
     showToast('🔐 Archivo cifrado descargado. ¡Guarda la contraseña!', 4000);
   } catch (e) {
@@ -5304,7 +5299,7 @@ function printReport() {
   requireOwnerPin(() => {
     DB.logAudit('export_pdf', '📄 PDF exportado');
     showToast('📄 Preparando PDF...');
-    setTimeout(() => window.print(), 400);
+    setTimeout(() => Platform.printPage(), 400);
   });
 }
 
@@ -6550,7 +6545,7 @@ function printAnnualReport() {
     DB.logAudit('export_pdf', '📅 PDF Anual ' + annualYear + ' exportado');
     document.body.classList.add('print-annual');
     setTimeout(() => {
-      window.print();
+      Platform.printPage();
       // Restaurar modo normal después de que se cierre el diálogo de impresión
       setTimeout(() => document.body.classList.remove('print-annual'), 1200);
     }, 300);
@@ -6836,13 +6831,7 @@ function _downloadXlsx(bytes, filename) {
   const blob = new Blob([bytes], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   });
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  Platform.saveFile(blob, filename);
 }
 
 // ── Exportar resumen anual a Excel ────────────────────────────────────────────
@@ -7481,16 +7470,9 @@ function _doExportConfig() {
     try {
       const json = DB.exportSettings();
       const blob = new Blob([json], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
       const s    = DB.getSettings();
       const date = new Date().toISOString().slice(0, 10);
-      a.href     = url;
-      a.download = `contafacil-config-${(s.companyName || 'empresa').toLowerCase().replace(/\s+/g,'-')}-${date}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      Platform.saveFile(blob, `contafacil-config-${(s.companyName || 'empresa').toLowerCase().replace(/\s+/g,'-')}-${date}.json`);
       DB.logAudit('export_config', 'Configuración exportada como JSON');
       showToast('✅ Configuración descargada');
     } catch(e) {
@@ -9350,14 +9332,9 @@ async function doExportForSync() {
   showToast('⏳ Preparando archivo (incluye fotos)…', 6000);
   const json = await DB.exportForSync();
   const blob = new Blob([json], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
   const date = new Date().toISOString().split('T')[0];
   const safe = (s.userName || 'Principal').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]/g, '-');
-  a.href     = url;
-  a.download = `contafacil-${safe}-${date}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await Platform.saveFile(blob, `contafacil-${safe}-${date}.json`);
   closeSettingsSheet();
   showToast('📤 Archivo exportado — envíalo a tu compañero', 3500);
 }
@@ -9617,10 +9594,7 @@ function closeSettingsSheet() {
 async function exportData() {
   showToast('⏳ Preparando respaldo (incluye fotos)…', 6000);
   const blob = new Blob([await DB.exportData()], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href: url, download: `contafacil-backup-${today()}.json` });
-  a.click();
-  URL.revokeObjectURL(url);
+  await Platform.saveFile(blob, `contafacil-backup-${today()}.json`);
   showToast('✅ Datos exportados');
 }
 
@@ -9637,22 +9611,11 @@ function importData(input) {
 // Genera un archivo y lo comparte por el sistema (WhatsApp / Nearby Share); si el
 // equipo no soporta compartir archivos, lo descarga.
 async function _shareOrDownload(jsonStr, filename, okMsg) {
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  try {
-    const file = new File([blob], filename, { type: 'application/json' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: 'ContaFácil Pro', text: filename });
-      showToast('✅ Listo para compartir');
-      return;
-    }
-  } catch (e) {
-    if (e && e.name === 'AbortError') return; // el usuario canceló el menú de compartir
-    // cualquier otro error → caer a descarga
-  }
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
-  a.click();
-  URL.revokeObjectURL(url);
+  const blob   = new Blob([jsonStr], { type: 'application/json' });
+  const result = await Platform.shareFile(blob, filename, 'ContaFácil Pro', filename);
+  if (result === 'shared') { showToast('✅ Listo para compartir'); return; }
+  if (result === 'cancel') return; // el usuario cerró el menú de compartir
+  await Platform.saveFile(blob, filename); // el equipo no soporta compartir → descarga
   showToast(okMsg || '✅ Archivo generado');
 }
 
@@ -9773,8 +9736,6 @@ function _onReceivePackage(input) {
 // Abre una ventana con el manual maquetado; el usuario lo guarda como PDF (Imprimir → Guardar como PDF).
 function openUserGuide() {
   const s   = DB.getSettings();
-  const win = window.open('', '_blank');
-  if (!win) { showToast('⚠️ Permite ventanas emergentes para abrir el manual', 3500); return; }
 
   // Bloques reutilizables de maquetación
   const css = `
@@ -10034,8 +9995,7 @@ ${warn('Es un BORRADOR de referencia, NO una declaración oficial. No envía nad
 <script>setTimeout(function(){ try{window.focus();}catch(e){} }, 200);<\/script>
 </body></html>`;
 
-  win.document.write(html);
-  win.document.close();
+  if (!Platform.printHTML(html)) { showToast('⚠️ Permite ventanas emergentes para abrir el manual', 3500); return; }
   DB.logAudit('open_manual', '📘 Abrió el manual completo');
 }
 

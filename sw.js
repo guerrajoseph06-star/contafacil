@@ -7,18 +7,24 @@
  *            nueva = se descarga sola (nunca queda código viejo pegado).
  *  - Al activar una versión nueva se borran TODAS las cachés viejas.
  */
-const SW_VERSION = '2026.05.29i';            // sincronizar con APP_VERSION de app.js
+const SW_VERSION = '2026.07.02a';            // sincronizar con APP_VERSION de app.js
 const CACHE_NAME = 'contafacil-' + SW_VERSION;
 
 // App shell — archivos mínimos para abrir la app sin internet (mismo origen)
+// OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app).
 const SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './css/style.css?v=20260529i',
-  './js/db.js?v=20260529i',
-  './js/app.js?v=20260529i',
-  './js/tax.js?v=20260529i',
+  './css/style.css?v=20260702a',
+  './js/platform.js?v=20260702a',
+  './js/db.js?v=20260702a',
+  './js/app.js?v=20260702a',
+  './js/tax.js?v=20260702a',
+  './js/lib/chart.umd.min.js?v=4.4.3',
+  './js/lib/xlsx.full.min.js?v=0.20.3',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 // ── Instalación: precachear el app shell ──────────────────────────────────────
