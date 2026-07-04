@@ -154,7 +154,8 @@ const Platform = (() => {
         });
       }
       if (StatusBar) {
-        StatusBar.setBackgroundColor({ color: '#2563eb' }).catch(() => {});
+        // Blanco + iconos oscuros: coincide con la barra superior blanca de la app
+        StatusBar.setBackgroundColor({ color: '#ffffff' }).catch(() => {});
         StatusBar.setStyle({ style: 'LIGHT' }).catch(() => {});
       }
     });

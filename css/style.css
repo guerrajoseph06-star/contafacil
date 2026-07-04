@@ -173,7 +173,7 @@ a { text-decoration: none; color: inherit; }
   justify-content: space-around;
   z-index: 100;
   box-shadow: 0 -4px 12px rgba(0,0,0,.06);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--sa-bottom);
 }
 .nav-item {
   flex: 1;
@@ -1164,3 +1164,16 @@ body.dark-mode {
 .justify-between { justify-content: space-between; }
 .gap-8 { gap: 8px; }
 .w-full { width: 100%; }
+
+/* ═══ ZONAS SEGURAS — barras del sistema (Android 3-teclas/gestos, iOS notch) ═══
+   En la app instalada, Capacitor inyecta --safe-area-inset-* (env() no es
+   confiable en el WebView de Android). En web, env() cubre PWA/iOS.
+   Redefinir --bottom-h INCLUYENDO la zona segura corrige de una sola vez:
+   menú inferior, FAB, toast y la reserva de contenido de cada pantalla. */
+:root {
+  --sa-top:    var(--safe-area-inset-top,    env(safe-area-inset-top,    0px));
+  --sa-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --bottom-h:  calc(68px + var(--sa-bottom));
+}
+.topbar { padding-top: var(--sa-top); }
+.modal-overlay .sheet { padding-bottom: calc(24px + var(--sa-bottom)); }
