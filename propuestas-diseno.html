@@ -238,6 +238,143 @@
   En AMBOS: la barra inferior reserva el espacio de las teclas del sistema (franja verde) — eso ya lo dejé <b>arreglado de verdad</b> en la app y el APK de hoy.
 </div>
 
+<style>
+  /* ── Concepto C: Azul Profundo (autocrítica aplicada) ── */
+  .ph-c{background:#f4f6fb;border-radius:30px;overflow:hidden;color:#101828;box-shadow:0 22px 55px rgba(0,0,0,.55);border:7px solid #11152a;}
+  .ph-c .top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#fff;border-bottom:1px solid #eef1f7;}
+  .ph-c .co{font-weight:800;color:#1d4ed8;font-size:15px;}
+  .ph-c .u{font-size:12px;background:#eff4ff;color:#1d4ed8;border-radius:20px;padding:5px 12px;font-weight:700;}
+  .ph-c .scroll{padding:15px;}
+  .hero-c{background:linear-gradient(150deg,#1e3a8a,#2563eb);border-radius:20px;color:#fff;position:relative;overflow:hidden;box-shadow:0 10px 24px rgba(30,58,138,.28);}
+  .hero-c::after{content:'';position:absolute;top:-60px;right:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.07);}
+  .hero-c .inner{padding:18px 18px 14px;position:relative;}
+  .hero-c .l{font-size:13px;opacity:.9;font-weight:600;}
+  .hero-c .b{font-size:44px;font-weight:800;letter-spacing:-1.8px;margin:2px 0 6px;}
+  .hero-c .chip-var{display:inline-block;background:rgba(255,255,255,.16);border-radius:16px;padding:4px 12px;font-size:12.5px;font-weight:700;}
+  .hero-c .chip-var b{color:#6ee7b7;}
+  .hero-c .mline{display:flex;gap:18px;margin-top:12px;font-size:13.5px;font-weight:600;}
+  .hero-c .mline .dn{color:#fca5a5;}
+  .hero-c .mline .up2{color:#6ee7b7;}
+  /* franja de avisos: ya no pelea con el número, ancho completo, tocable */
+  .hero-c .alerts{display:flex;align-items:center;gap:14px;background:rgba(0,0,0,.22);padding:10px 16px;font-size:12.5px;font-weight:700;position:relative;}
+  .hero-c .alerts span{display:flex;align-items:center;gap:5px;}
+  .hero-c .alerts .go{margin-left:auto;opacity:.8;font-size:14px;}
+  .seg-c{display:flex;background:#e8edf7;border-radius:14px;padding:4px;margin:14px 0 12px;}
+  .seg-c b{flex:1;text-align:center;padding:12px 4px;border-radius:11px;font-size:13.5px;font-weight:700;color:#5d6b85;}
+  .seg-c b.on{background:#fff;color:#1d4ed8;box-shadow:0 2px 8px rgba(16,24,40,.08);}
+  .sh-c{margin:14px 4px 9px;font-size:13px;font-weight:800;color:#3d4a63;}
+  /* rueda: anillos de color por tipo (afford. clara), texto 12px */
+  .wheel-c{display:flex;gap:12px;overflow:hidden;padding:2px;}
+  .wheel-c .ch{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .wheel-c .ico{width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:23px;border:2.5px solid;box-shadow:0 1px 3px rgba(16,24,40,.06);}
+  .wheel-c .t{font-size:12px;font-weight:700;color:#3d4a63;}
+  .card-c{background:#fff;border:1px solid #e7ebf3;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);}
+  .card-c .row{display:flex;align-items:center;gap:12px;padding:13px 16px;}
+  .card-c .row+.row{border-top:1px solid #f1f4f9;}
+  .card-c .ic{width:40px;height:40px;border-radius:12px;background:#f4f6fb;display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .card-c .nm{flex:1;font-size:14.5px;font-weight:600;}
+  .card-c .nm .bar{height:6px;background:#eef1f7;border-radius:3px;margin-top:7px;overflow:hidden;}
+  .card-c .nm .bar i{display:block;height:100%;border-radius:3px;}
+  .card-c .amt{font-weight:800;font-size:15px;}
+  .in-c{color:#059669;}.out-c{color:#dc2626;}
+  .vs-c{display:flex;gap:12px;margin-top:12px;}
+  .vs-c .box{flex:1;background:#fff;border:1px solid #e7ebf3;border-radius:16px;padding:13px 15px;}
+  .vs-c .k{font-size:12.5px;color:#5d6b85;font-weight:700;}
+  .vs-c .v{font-size:21px;font-weight:800;margin-top:3px;}
+  .nav-c{display:flex;justify-content:space-around;background:#fff;border-top:1px solid #e7ebf3;padding:10px 0;}
+  .nav-c .n{flex:1;text-align:center;font-size:11px;color:#8592aa;font-weight:600;}
+  .nav-c .n .ni{font-size:21px;display:block;}
+  .nav-c .n.act{color:#1d4ed8;font-weight:800;}
+  /* mini teléfono modo oscuro */
+  .ph-d{background:#0f172a;border-radius:26px;overflow:hidden;color:#e2e8f0;box-shadow:0 18px 45px rgba(0,0,0,.6);border:6px solid #11152a;margin-top:18px;}
+  .ph-d .scroll{padding:14px;}
+  .ph-d .card-d{background:#1e293b;border:1px solid #2b3a52;border-radius:16px;}
+  .ph-d .row{display:flex;align-items:center;gap:12px;padding:12px 15px;}
+  .ph-d .row+.row{border-top:1px solid #2b3a52;}
+  .ph-d .ic{width:38px;height:38px;border-radius:12px;background:#0f172a;display:flex;align-items:center;justify-content:center;font-size:17px;}
+  .ph-d .nm{flex:1;font-size:14px;font-weight:600;}
+  .ph-d .amt{font-weight:800;font-size:14.5px;}
+  .ph-d .in-c{color:#34d399;}
+</style>
+
+<div class="p2head">
+  <div class="t">🔍 AUTOCRÍTICA de los conceptos A y B → nace el CONCEPTO C</div>
+  <b>Qué estaba mal:</b> (1) En A, los avisos apilados en la esquina <b>pelean contra el número</b> de la utilidad — lo más importante de toda la app. (2) B cambia tu azul por índigo: <b>desorienta</b> a quien ya conoce "la app azul" y se ve a fintech genérica. (3) Letras de 10–11px: pequeñas para tu público. (4) Sombras suaves <b>se lavan a pleno sol</b> (tus clientes venden en la calle/mercado) — un borde fino aguanta mejor. (5) Verde para todo el dinero = nada resalta. (6) Nadie mostró el modo oscuro que ya tienes.
+</div>
+
+<div class="stage">
+  <div class="p2tag">CONCEPTO C — Azul Profundo (la crítica, corregida)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">💼 Mi Negocio</div><div class="u">👤 Principal</div></div>
+    <div class="scroll">
+      <div class="hero-c">
+        <div class="inner">
+          <div class="l">🎯 Utilidad neta acumulada</div>
+          <div class="b">$ 144,77</div>
+          <span class="chip-var"><b>↑ +18%</b> vs abril · Mayo 2026</span>
+          <div class="mline"><span class="up2">⬇ Entró $190,00</span><span class="dn">⬆ Salió $45,23</span></div>
+        </div>
+        <div class="alerts"><span>🔴 1 deuda</span><span>🧾 1 por cobrar</span><span>📉 1 stock</span><span class="go">›</span></div>
+      </div>
+
+      <div class="sh-c">Registrar <span style="color:#8592aa;font-weight:600;font-size:11.5px;">· gira la rueda ↻</span></div>
+      <div class="wheel-c">
+        <div class="ch"><div class="ico" style="border-color:#059669;">💰</div><div class="t">Ingreso</div></div>
+        <div class="ch"><div class="ico" style="border-color:#dc2626;">💸</div><div class="t">Gasto</div></div>
+        <div class="ch"><div class="ico" style="border-color:#1d4ed8;">↔️</div><div class="t">Traslado</div></div>
+        <div class="ch"><div class="ico" style="border-color:#d97706;">🔴</div><div class="t">Deuda</div></div>
+        <div class="ch"><div class="ico" style="border-color:#7c3aed;">🏠</div><div class="t">Retiro</div></div>
+      </div>
+
+      <div class="seg-c"><b class="on">Resumen</b><b>Cuentas</b><b>Pendientes</b></div>
+
+      <div class="sh-c">Saldo por cuenta</div>
+      <div class="card-c">
+        <div class="row"><div class="ic">💵</div><div class="nm">Caja (Efectivo)<div class="bar"><i style="width:38%;background:#059669;"></i></div></div><div class="amt in-c">$54,77</div></div>
+        <div class="row"><div class="ic">🏦</div><div class="nm">Cuenta Bancaria<div class="bar"><i style="width:62%;background:#1d4ed8;"></i></div></div><div class="amt in-c">$90,00</div></div>
+      </div>
+
+      <div class="vs-c">
+        <div class="box"><div class="k">📅 Ayer</div><div class="v">$80,00</div></div>
+        <div class="box"><div class="k">☀️ Hoy</div><div class="v in-c">$30,00</div></div>
+      </div>
+    </div>
+    <div class="nav-c"><div class="n act"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+    <div class="sysnote">✓ ZONA SEGURA: el menú queda ARRIBA de las teclas del sistema</div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">EL MISMO CONCEPTO C — en modo oscuro (tu app ya lo tiene)</div>
+  <div class="ph-d">
+    <div class="scroll">
+      <div class="hero-c">
+        <div class="inner" style="padding:16px 16px 12px;">
+          <div class="l">🎯 Utilidad neta acumulada</div>
+          <div class="b" style="font-size:38px;">$ 144,77</div>
+          <span class="chip-var"><b>↑ +18%</b> vs abril</span>
+        </div>
+        <div class="alerts"><span>🔴 1 deuda</span><span>🧾 1 por cobrar</span><span class="go">›</span></div>
+      </div>
+      <div class="sh-c" style="color:#94a3b8;margin-top:13px;">Saldo por cuenta</div>
+      <div class="card-d">
+        <div class="row"><div class="ic">💵</div><div class="nm">Caja (Efectivo)</div><div class="amt in-c">$54,77</div></div>
+        <div class="row"><div class="ic">🏦</div><div class="nm">Cuenta Bancaria</div><div class="amt in-c">$90,00</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="p2head">
+  <div class="t">Qué corrige el Concepto C (punto por punto)</div>
+  ✅ <b>Avisos en franja propia</b> al pie del hero: ya no aprietan el número, se leen completos ("1 deuda · 1 por cobrar") y toda la franja es un botón que lleva a Pendientes.<br>
+  ✅ <b>Tu azul, más profundo</b> (degradado marino→azul): se siente premium SIN cambiar la identidad que tus usuarios ya conocen.<br>
+  ✅ <b>Letras más grandes en todo</b> (mínimo 12.5px, número 44px): pensado para tu público real.<br>
+  ✅ <b>Borde fino + sombra mínima</b> en tarjetas: estructura visible hasta a pleno sol.<br>
+  ✅ <b>Verde SOLO para dinero que entra, rojo SOLO para el que sale</b>; el resto en tinta neutra — el ojo va directo a lo que importa.<br>
+  ✅ <b>Rueda de registrar con anillo de color por tipo</b>: verde=ingreso, rojo=gasto… se reconoce sin leer.<br>
+  ✅ <b>Modo oscuro diseñado desde el día uno</b>, no como parche.
+</div>
+
 <div class="legend">
   <div class="t">Inicio elegido (lo guardo para implementar)</div>
   <b>Pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) → el contenido no satura porque ves una vista a la vez, pero todo sigue ahí.<br>
