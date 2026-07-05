@@ -485,6 +485,159 @@
   <b>Registro:</b> 4 tipos + monto con lectura de IVA en vivo + descripción con sugerencias + categoría + cuenta + pago dividido + selector IVA (Sin IVA por defecto ✓) + inventario con buscador/escáner/multi-producto + foto/notas/plantilla + "Más detalles". <b>Diario:</b> búsqueda, filtros por tipo (y por banco), agrupación por mes con totales, ventas multi-producto agrupadas, deudas con estado. <b>Inventario:</b> triple valor (venta/costo/ganancia), búsqueda, escáner, foto por producto, IVA por producto, alertas de stock diferenciadas (⛔/📉/✓). Solo cambió el vestido: bordes finos, tipografía ≥12px, verde=entra/rojo=sale.
 </div>
 
+<style>
+  /* ── Tanda 2 ── */
+  .pl-row{display:flex;justify-content:space-between;padding:11px 16px;font-size:14px;font-weight:600;border-top:1px solid #f1f4f9;}
+  .pl-row:first-child{border-top:none;}
+  .bars{display:flex;align-items:flex-end;gap:10px;height:86px;padding:14px 16px 4px;}
+  .bars i{flex:1;background:linear-gradient(180deg,#2563eb,#1d4ed8);border-radius:6px 6px 0 0;}
+  .bars-lbl{display:flex;gap:10px;padding:2px 16px 12px;}
+  .bars-lbl span{flex:1;text-align:center;font-size:10.5px;color:#8592aa;font-weight:700;}
+  .act3{display:flex;gap:8px;margin-top:12px;}
+  .act3 div{flex:1;text-align:center;background:#fff;border:1.5px solid #e7ebf3;border-radius:12px;padding:11px 4px;font-size:12px;font-weight:800;color:#1d4ed8;}
+  .set-row{display:flex;align-items:center;gap:12px;padding:13px 16px;font-size:14px;font-weight:600;}
+  .set-row+.set-row{border-top:1px solid #f1f4f9;}
+  .set-row .go{margin-left:auto;color:#c3cad8;font-weight:800;}
+  .tgl{margin-left:auto;width:40px;height:22px;border-radius:12px;background:#059669;position:relative;flex-shrink:0;}
+  .tgl::after{content:'';position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff;}
+  .age{display:flex;gap:6px;padding:2px 16px 13px;}
+  .age div{flex:1;}
+  .age .k{font-size:10px;color:#8592aa;font-weight:700;text-align:center;margin-top:4px;}
+  .age .bar2{height:8px;border-radius:4px;}
+  .dim{background:linear-gradient(rgba(16,24,40,.45),rgba(16,24,40,.6));padding-top:60px;}
+  .shx{background:#fff;border-radius:20px 20px 0 0;padding:8px 15px 18px;}
+  .shx .hd{width:40px;height:5px;border-radius:3px;background:#e0e5ef;margin:4px auto 12px;}
+  .shx .ttl{font-size:15px;font-weight:800;margin-bottom:11px;text-align:center;}
+</style>
+
+<div class="p2head">
+  <div class="t">🚀 TANDA 2 — Reportes, Ajustes, Cartera y hojas (estilo C)</div>
+  Última tanda de pantallas. Con tu visto bueno de las dos tandas queda <b>el rediseño completo aprobado</b> y recién ahí empezamos la migración a la app real, por partes, web y APK a la vez.
+</div>
+
+<div class="stage">
+  <div class="p2tag">REPORTES — Estado de Resultados + gráficas + exportes</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">📊 Reportes</div><div class="u">‹ Julio 2026 ›</div></div>
+    <div class="scroll">
+      <div class="card-c" style="margin-bottom:12px;">
+        <div class="pl-row"><span>💰 Ventas</span><span class="in-c">$190,00</span></div>
+        <div class="pl-row"><span style="color:#8592aa;">(−) Costo de ventas (CMV)</span><span class="out-c">$16,00</span></div>
+        <div class="pl-row"><span>= Utilidad bruta</span><span>$174,00</span></div>
+        <div class="pl-row"><span style="color:#8592aa;">(−) Gastos operativos</span><span class="out-c">$29,23</span></div>
+        <div class="pl-row" style="background:#ecfdf5;font-weight:800;font-size:15px;"><span>🎯 UTILIDAD NETA</span><span class="in-c">$144,77</span></div>
+      </div>
+      <div style="font-size:11.5px;color:#d97706;background:#fef3e2;border:1px solid #fde3bd;border-radius:10px;padding:8px 12px;font-weight:700;margin-bottom:12px;">⚠️ Presupuesto de Transporte al 90% este mes</div>
+      <div class="sh-c">Últimos 6 meses</div>
+      <div class="card-c">
+        <div class="bars"><i style="height:35%;"></i><i style="height:48%;"></i><i style="height:40%;"></i><i style="height:62%;"></i><i style="height:55%;"></i><i style="height:88%;background:linear-gradient(180deg,#059669,#047857);"></i></div>
+        <div class="bars-lbl"><span>Feb</span><span>Mar</span><span>Abr</span><span>May</span><span>Jun</span><span>Jul</span></div>
+      </div>
+      <div class="act3"><div>📄 PDF</div><div>📗 Excel</div><div>📅 Anual</div></div>
+      <div class="card-c" style="margin-top:12px;">
+        <div class="set-row">📖 Libro Diario (Debe / Haber)<span class="go">›</span></div>
+        <div class="set-row">🍩 Gastos por categoría<span class="go">›</span></div>
+      </div>
+    </div>
+    <div class="nav-c"><div class="n"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n act"><span class="ni">📊</span>Reportes</div><div class="n"><span class="ni">⚙️</span>Ajustes</div></div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">CARTERA DE CLIENTES — aging, estados, cobros parciales</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Cartera de clientes</div><div class="u">＋ Venta a crédito</div></div>
+    <div class="scroll">
+      <div class="card-c" style="margin-bottom:12px;"><div style="padding:13px 16px;display:flex;text-align:center;">
+        <div style="flex:1;"><div style="font-size:11.5px;color:#8592aa;font-weight:700;">TOTAL</div><div style="font-size:17px;font-weight:800;">$310</div></div>
+        <div style="flex:1;border-left:1px solid #f1f4f9;"><div style="font-size:11.5px;color:#8592aa;font-weight:700;">PENDIENTE</div><div style="font-size:17px;font-weight:800;color:#d97706;">$180</div></div>
+        <div style="flex:1;border-left:1px solid #f1f4f9;"><div style="font-size:11.5px;color:#8592aa;font-weight:700;">VENCIDO</div><div style="font-size:17px;font-weight:800;" class="out-c">$60</div></div>
+      </div>
+      <div class="age">
+        <div><div class="bar2" style="background:#fbbf24;width:70%;"></div><div class="k">1–30 días</div></div>
+        <div><div class="bar2" style="background:#f97316;width:45%;"></div><div class="k">31–60</div></div>
+        <div><div class="bar2" style="background:#dc2626;width:25%;"></div><div class="k">61–90</div></div>
+        <div><div class="bar2" style="background:#7f1d1d;width:10%;"></div><div class="k">+90</div></div>
+      </div></div>
+      <div class="fch"><span class="on">Todos</span><span>Pendientes</span><span>Vencidos</span><span>Pagados</span></div>
+      <div class="card-c">
+        <div class="row"><div class="ic" style="background:#fdecec;">👤</div><div class="nm">J. García · RUC 1792…<div style="font-size:11.5px;color:#8592aa;font-weight:500;margin-top:2px;">Venció hace 12 días</div></div><div style="text-align:right;"><div class="amt out-c">$60,00</div><span class="stk out">VENCIDO</span></div></div>
+        <div class="row"><div class="ic" style="background:#fef3e2;">👤</div><div class="nm">M. Torres<div style="font-size:11.5px;color:#8592aa;font-weight:500;margin-top:2px;">Vence en 3 días</div></div><div style="text-align:right;"><div class="amt">$80,00</div><span class="stk low">PENDIENTE</span></div></div>
+        <div class="row"><div class="ic" style="background:#eff4ff;">👤</div><div class="nm">L. Paz<div style="font-size:11.5px;color:#8592aa;font-weight:500;margin-top:2px;">Cobrado $25 de $50 · historial ›</div></div><div style="text-align:right;"><div class="amt" style="color:#1d4ed8;">$50,00</div><span class="stk" style="background:#eff4ff;color:#1d4ed8;">PARCIAL</span></div></div>
+        <div class="row"><div class="ic" style="background:#ecfdf5;">👤</div><div class="nm">P. Ruiz<div style="font-size:11.5px;color:#8592aa;font-weight:500;margin-top:2px;">Pagado el 28/06</div></div><div style="text-align:right;"><div class="amt in-c">$120,00</div><span class="stk ok">✓ PAGADO</span></div></div>
+      </div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">AJUSTES — todo agrupado, experimentales al fondo</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">⚙️ Ajustes</div><div class="u">v2026</div></div>
+    <div class="scroll">
+      <div class="sh-c">Mi empresa</div>
+      <div class="card-c" style="margin-bottom:12px;">
+        <div class="set-row">🏢 Nombre, moneda y datos<span class="go">›</span></div>
+        <div class="set-row">👥 Usuarios y PIN de dueño<span class="go">›</span></div>
+        <div class="set-row">🌙 Modo oscuro<span class="tgl"></span></div>
+      </div>
+      <div class="sh-c">Mis datos</div>
+      <div class="card-c" style="margin-bottom:12px;">
+        <div class="set-row">🔗 Compartir entre dispositivos<span class="go">›</span></div>
+        <div class="set-row">📤 Exportar respaldo (con fotos)<span class="go">›</span></div>
+        <div class="set-row">📥 Importar datos<span class="go">›</span></div>
+        <div class="set-row">🔐 Respaldo cifrado con contraseña<span class="go">›</span></div>
+      </div>
+      <div class="sh-c">Herramientas</div>
+      <div class="card-c" style="margin-bottom:12px;">
+        <div class="set-row">🔁 Gastos recurrentes<span class="go">›</span></div>
+        <div class="set-row">🎯 Presupuesto mensual<span class="go">›</span></div>
+        <div class="set-row">⭐ Plantillas rápidas<span class="go">›</span></div>
+      </div>
+      <div class="sh-c">Información</div>
+      <div class="card-c" style="margin-bottom:12px;">
+        <div class="set-row">📘 Manual completo (PDF)<span class="go">›</span></div>
+        <div class="set-row">🧪 Funciones experimentales (BETA)<span class="go">›</span></div>
+      </div>
+    </div>
+    <div class="nav-c"><div class="n"><span class="ni">🏠</span>Inicio</div><div class="n"><span class="ni">📒</span>Diario</div><div class="n"><span class="ni">📦</span>Inventario</div><div class="n"><span class="ni">📊</span>Reportes</div><div class="n act"><span class="ni">⚙️</span>Ajustes</div></div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">HOJAS — compartir entre dispositivos y retiro del dueño</div>
+  <div class="ph-c">
+    <div class="dim">
+      <div class="shx">
+        <div class="hd"></div>
+        <div class="ttl">🔗 Compartir entre dispositivos</div>
+        <div class="card-c">
+          <div class="set-row">📱 Enviar TODO a mi otro equipo<span class="go">›</span></div>
+          <div class="set-row">🧾 Enviar inventario al vendedor<span class="go">›</span></div>
+          <div class="set-row">📨 Vendedor: enviar mis ventas al dueño<span class="go">›</span></div>
+          <div class="set-row">📥 Recibir archivo<span class="go">›</span></div>
+        </div>
+        <div style="font-size:11.5px;color:#8592aa;margin-top:9px;text-align:center;">Todo por WhatsApp o archivo — sin internet, sin nube. Con protección anti-mezcla de empresas.</div>
+      </div>
+    </div>
+    <div style="height:10px;background:#f4f6fb;"></div>
+    <div class="dim" style="padding-top:40px;">
+      <div class="shx">
+        <div class="hd"></div>
+        <div class="ttl">🏠 Retiro del dueño</div>
+        <div class="big-c" style="border:none;padding:8px;margin-bottom:8px;"><div class="k">MONTO A RETIRAR</div><div class="v" style="font-size:32px;">$ 50,00</div></div>
+        <div class="inp-c">💵 Desde: Caja (Efectivo) ▾</div>
+        <div class="inp-c">📅 02/07/2026</div>
+        <div class="sv-c" style="margin-top:4px;">✅ Registrar retiro</div>
+        <div style="font-size:11.5px;color:#8592aa;margin-top:8px;text-align:center;">No es un gasto del negocio: no toca tu utilidad.</div>
+      </div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+</div>
+
+<div class="p2head">
+  <div class="t">Checklist tanda 2 — nada se pierde</div>
+  <b>Reportes:</b> P&L NIIF completo (ventas, CMV, bruta, operativos, neta), alerta de presupuesto, gráfica 6 meses, PDF + Excel + Resumen anual, Libro Diario Debe/Haber, gastos por categoría. <b>Cartera:</b> totales, aging 1-30/31-60/61-90/+90, filtros por estado, RUC/cédula, vencimientos, cobros parciales con historial, venta a crédito. <b>Ajustes:</b> empresa/moneda, usuarios+PIN, modo oscuro, compartir, respaldos (normal y cifrado), importar, recurrentes, presupuesto, plantillas, manual PDF, BETA al fondo. <b>Hojas:</b> compartir dueño↔vendedor completo y retiro del dueño con su regla contable. Las hojas de plantillas y escáner usan este mismo patrón de tarjeta deslizable.
+</div>
+
 <div class="legend">
   <div class="t">Inicio elegido (lo guardo para implementar)</div>
   <b>Pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) → el contenido no satura porque ves una vista a la vez, pero todo sigue ahí.<br>
