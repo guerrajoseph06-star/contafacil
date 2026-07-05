@@ -638,6 +638,111 @@
   <b>Reportes:</b> P&L NIIF completo (ventas, CMV, bruta, operativos, neta), alerta de presupuesto, gráfica 6 meses, PDF + Excel + Resumen anual, Libro Diario Debe/Haber, gastos por categoría. <b>Cartera:</b> totales, aging 1-30/31-60/61-90/+90, filtros por estado, RUC/cédula, vencimientos, cobros parciales con historial, venta a crédito. <b>Ajustes:</b> empresa/moneda, usuarios+PIN, modo oscuro, compartir, respaldos (normal y cifrado), importar, recurrentes, presupuesto, plantillas, manual PDF, BETA al fondo. <b>Hojas:</b> compartir dueño↔vendedor completo y retiro del dueño con su regla contable. Las hojas de plantillas y escáner usan este mismo patrón de tarjeta deslizable.
 </div>
 
+<style>
+  /* ── Tanda 3: agregar productos y datos ── */
+  .dd{background:#fff;border:1.5px solid #bfd3ff;border-radius:12px;overflow:hidden;margin-bottom:10px;box-shadow:0 8px 20px rgba(29,78,216,.12);}
+  .dd .op{display:flex;align-items:center;gap:10px;padding:11px 13px;font-size:13.5px;font-weight:600;}
+  .dd .op+.op{border-top:1px solid #f1f4f9;}
+  .dd small{color:#8592aa;font-weight:500;display:block;font-size:11.5px;margin-top:1px;}
+  .pline{border:1px solid #e7ebf3;border-radius:14px;padding:11px 13px;margin-bottom:9px;background:#fff;}
+  .pline .r1{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700;}
+  .pline .r2{font-size:12px;color:#8592aa;font-weight:600;margin-top:5px;display:flex;justify-content:space-between;}
+  .qty{display:flex;align-items:center;margin-left:auto;border:1.5px solid #e7ebf3;border-radius:10px;overflow:hidden;}
+  .qty b{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#1d4ed8;background:#f7f9fd;}
+  .qty span{width:30px;text-align:center;font-size:14px;font-weight:800;}
+  .hint{display:flex;gap:8px;align-items:flex-start;background:#eff4ff;border:1px solid #d3e0ff;color:#1e40af;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:600;line-height:1.5;margin-top:9px;}
+  .hint.amber{background:#fef3e2;border-color:#fde3bd;color:#92400e;}
+  .hint.green{background:#ecfdf5;border-color:#bbf1d9;color:#065f46;}
+  .sugg{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;}
+  .sugg span{background:#fff;border:1.5px dashed #bfd3ff;color:#1d4ed8;border-radius:16px;padding:6px 12px;font-size:12px;font-weight:700;}
+</style>
+
+<div class="p2head">
+  <div class="t">🛒 TANDA 3 (final) — Agregar productos y datos en ingresos/gastos</div>
+  Lo que pediste ver: el buscador de producto, el carrito multi-producto con cantidades, la compra que repone inventario y las ayudas inteligentes al escribir. <b>Cero pasos extra</b>: todo pasa dentro del mismo formulario, como hoy. Con tu visto bueno aquí, el rediseño queda 100% completo y arranca la migración.
+</div>
+
+<div class="stage">
+  <div class="p2tag">VENTA — buscar producto y carrito (monto se calcula solo)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">💰 Ingreso</div></div>
+    <div class="scroll">
+      <div class="big-c"><div class="k">MONTO · 🔒 calculado por el carrito</div><div class="v">$ 52,00</div><div style="font-size:12px;color:#8592aa;margin-top:3px;">Incluye: base $46,09 + IVA 15%: $5,91</div></div>
+      <div class="sec-c"><div class="st" style="border-color:#d97706;">📦 Inventario — ☑ esta venta afecta stock</div><div class="bd">
+        <div class="inp-c" style="border-color:#1d4ed8;background:#fff;color:#101828;font-weight:700;">🔍 blu<span style="color:#c3cad8;">|</span> <span style="float:right;" class="ivat">📷</span></div>
+        <div class="dd">
+          <div class="op">👚 Blusa talla M<small>$15,00 · Stock 8 · IVA 15%</small></div>
+          <div class="op">👕 Blusa niño <span class="stk low">📉 3</span><small>$9,50 · IVA 15%</small></div>
+        </div>
+        <div class="pline">
+          <div class="r1">👚 Blusa talla M<div class="qty"><b>−</b><span>2</span><b>＋</b></div></div>
+          <div class="r2"><span>$15,00 c/u · IVA 15% 🔒 del producto</span><span style="color:#101828;font-weight:800;">$30,00</span></div>
+          <div class="r2" style="color:#d97706;"><span>Precio lista $16,00 → descuento $1,00 (6%)</span></div>
+        </div>
+        <div class="pline">
+          <div class="r1">👖 Jean clásico<div class="qty"><b>−</b><span>1</span><b>＋</b></div></div>
+          <div class="r2"><span>$22,00 c/u · IVA 15% 🔒</span><span style="color:#101828;font-weight:800;">$22,00</span></div>
+        </div>
+        <div style="text-align:center;font-size:13px;color:#1d4ed8;font-weight:800;padding:4px 0 8px;">＋ otro producto</div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;border-top:1px solid #f1f4f9;padding-top:10px;"><span>🛒 3 artículos</span><span class="in-c">$52,00</span></div>
+        <div class="hint green">✅ Al guardar: baja el stock, se registra el costo (CMV) y tu ganancia queda exacta — todo automático.</div>
+      </div></div>
+      <div class="sv-c">✅ Guardar venta</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">COMPRA — gasto que repone inventario (contable F1)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">💸 Gasto</div></div>
+    <div class="scroll">
+      <div class="big-c"><div class="k">MONTO</div><div class="v">$ 80,00</div><div style="font-size:12px;color:#8592aa;margin-top:3px;">+IVA 15%: $12,00 · Total $92,00</div></div>
+      <div class="sec-c"><div class="st" style="border-color:#d97706;">📦 Inventario — ☑ esta compra repone stock</div><div class="bd">
+        <div class="inp-c">👚 Blusa talla M ▾</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="inp-c" style="flex:1;margin:0;">Cantidad: 10</div>
+          <div class="inp-c" style="flex:1.4;margin:0;">Costo: $8,00 c/u</div>
+        </div>
+        <div class="hint">📦 Esta compra va al <b>inventario</b>, no a tus gastos: la ganancia se calcula recién al vender. El costo $8,00 queda como "último costo" del producto.</div>
+      </div></div>
+      <div class="sec-c"><div class="st" style="border-color:#7c3aed;">🧾 IVA / Impuesto</div><div class="bd">
+        <div class="iva3"><b>🚫 Sin IVA</b><b class="on">➕ +15%</b><b>✅ Incluido</b></div>
+        <div class="hint amber">💡 El IVA de esta compra ($12,00) suele ser <b>crédito tributario</b> — revísalo con tu contador. Puedes cambiarlo.</div>
+      </div></div>
+      <div class="sv-c">✅ Guardar compra</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">DATOS INTELIGENTES — sugerencias al escribir (sin bloquear nada)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">💰 Ingreso</div></div>
+    <div class="scroll">
+      <div class="sugg"><span>⭐ Plantilla: Venta día · $20</span><span>⭐ Internet · $25</span></div>
+      <div class="sec-c"><div class="st" style="border-color:#1d4ed8;">📝 Detalle</div><div class="bd">
+        <div class="inp-c" style="border-color:#1d4ed8;background:#fff;color:#101828;font-weight:700;">vent<span style="color:#c3cad8;">|</span></div>
+        <div class="dd">
+          <div class="op">🕘 Venta del día<small>usada 12 veces</small></div>
+          <div class="op">🕘 Venta de blusas al cliente García<small>hace 3 días</small></div>
+        </div>
+        <div class="inp-c">Categoría: Ventas ▾</div>
+        <div class="hint">💡 La categoría <b>Internet</b> suele llevar IVA 15% incluido — te lo marco solo si no has elegido nada. Tú siempre mandas.</div>
+      </div></div>
+      <div class="sec-c"><div class="st" style="border-color:#059669;">💳 Cobro</div><div class="bd">
+        <div class="inp-c">💵 Caja (Efectivo) ▾ <span class="ivat">recordada</span></div>
+        <div class="hint green">🧠 La app recuerda la última cuenta que usaste para cada tipo de registro.</div>
+      </div></div>
+      <div class="sv-c">✅ Guardar</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+</div>
+
+<div class="p2head">
+  <div class="t">Checklist tanda 3 — la inteligencia que ya tienes, mejor vestida</div>
+  <b>Venta:</b> buscador con stock/precio/IVA a la vista, resultados con alerta 📉, carrito multi-producto con stepper de cantidad, IVA bloqueado por producto, auto-precio con descuento visible (Camino A), monto calculado solo, CMV automático explicado en verde. <b>Compra:</b> reposición de stock con cantidad y costo unitario, aviso F1 (va a inventario, no a gasto), último costo actualizado, sugerencia de crédito tributario NO bloqueante. <b>Datos:</b> plantillas como chips fantasma, sugerencias de descripción por historial, sugerencia de IVA por categoría (suave), cuenta recordada por tipo. Nada nuevo que aprender: es lo que ya hace tu app, con ropa C.
+</div>
+
 <div class="legend">
   <div class="t">Inicio elegido (lo guardo para implementar)</div>
   <b>Pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) → el contenido no satura porque ves una vista a la vez, pero todo sigue ahí.<br>
