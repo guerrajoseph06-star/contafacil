@@ -743,6 +743,151 @@
   <b>Venta:</b> buscador con stock/precio/IVA a la vista, resultados con alerta 📉, carrito multi-producto con stepper de cantidad, IVA bloqueado por producto, auto-precio con descuento visible (Camino A), monto calculado solo, CMV automático explicado en verde. <b>Compra:</b> reposición de stock con cantidad y costo unitario, aviso F1 (va a inventario, no a gasto), último costo actualizado, sugerencia de crédito tributario NO bloqueante. <b>Datos:</b> plantillas como chips fantasma, sugerencias de descripción por historial, sugerencia de IVA por categoría (suave), cuenta recordada por tipo. Nada nuevo que aprender: es lo que ya hace tu app, con ropa C.
 </div>
 
+<style>
+  /* ── Formularios completos por dentro ── */
+  .lr{display:flex;align-items:center;gap:8px;margin:10px 2px 6px;}
+  .lr b{font-size:13px;font-weight:800;color:#3d4a63;}
+  .req{font-size:9.5px;background:#fdecec;color:#dc2626;border-radius:6px;padding:2px 7px;font-weight:800;}
+  .opc{font-size:9.5px;background:#eef1f7;color:#8592aa;border-radius:6px;padding:2px 7px;font-weight:800;}
+  .avz{background:#eff4ff;color:#1e40af;border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600;line-height:1.5;margin-bottom:12px;}
+  .avz.am{background:#fef3c7;color:#92400e;}
+  .fold{border:1.5px dashed #bfd3ff;border-radius:14px;padding:4px 12px 12px;margin-bottom:12px;background:#fbfcff;}
+  .fold .fh{text-align:center;font-size:12px;color:#1d4ed8;font-weight:800;padding:8px 0 4px;}
+</style>
+
+<div class="p2head">
+  <div class="t">📋 EL FORMULARIO COMPLETO POR DENTRO — campo por campo, sin esconder nada</div>
+  Lo que pediste de verdad: <b>TODO lo que hay que llenar</b> en cada tipo de registro, de arriba a abajo, para juzgar si está fácil o hay que acomodarlo. Cada campo lleva su etiqueta: <span class="req">OBLIGATORIO</span> o <span class="opc">OPCIONAL</span>. Lo punteado azul es lo que vive plegado en "Más detalles" (aquí lo abrí para que lo veas todo). Dato clave: <b>para guardar solo se exigen 3 cosas — monto, descripción y cuenta.</b> Todo lo demás es opcional.
+</div>
+
+<div class="stage">
+  <div class="p2tag">💰 INGRESO — completo (7 secciones, solo 3 obligatorios)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">💰 Ingreso</div></div>
+    <div class="scroll">
+      <div class="tt-c"><b class="on">💰 Ingreso</b><b>💸 Gasto</b><b>↔️ Traslado</b><b>🔴 Deuda</b></div>
+      <div class="lr"><b>Monto</b><span class="req">OBLIGATORIO</span></div>
+      <div class="big-c" style="margin-bottom:4px;"><div class="v">$ 25,00</div><div style="font-size:12px;color:#8592aa;margin-top:2px;">Sin IVA · el monto es el total</div></div>
+      <div class="lr"><b>Descripción</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">Venta de blusas al cliente García</div>
+      <div class="lr"><b>Fecha</b><span class="opc">YA VIENE PUESTA (hoy)</span></div>
+      <div class="inp-c">02/07/2026 📅</div>
+      <div class="lr"><b>Categoría</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">— Categoría — ▾</div>
+      <div class="lr"><b>¿En qué cuenta entró el dinero?</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">💵 Caja (Efectivo) ▾ <span class="ivat">recordada</span></div>
+      <div class="inp-c" style="background:#fff;">▢ El cobro se recibió en 2 cuentas <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="lr"><b>🧾 IVA</b><span class="opc">YA VIENE EN "SIN IVA"</span></div>
+      <div class="iva3" style="margin-bottom:12px;"><b class="on">🚫 Sin IVA</b><b>➕ +15%</b><b>✅ Incluido</b></div>
+      <div class="inp-c" style="background:#fff;">▢ 📦 Esta venta afecta inventario <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="inp-c" style="background:#fff;">📷 Foto del comprobante <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="fold">
+        <div class="fh">Más detalles ▴ &nbsp;<span style="color:#8592aa;font-weight:600;">(plegado por defecto — aquí abierto para que lo veas)</span></div>
+        <div class="lr"><b>Notas</b><span class="opc">OPCIONAL</span></div>
+        <div class="inp-c">Factura #, nombre del cliente, detalles…</div>
+        <div style="text-align:center;font-size:12.5px;color:#8592aa;font-weight:700;padding-top:4px;">⭐ Guardar como plantilla</div>
+      </div>
+      <div class="sv-c">✅ Guardar</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">💸 GASTO — completo (cambia la cuenta y suma la factura detallada)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">💸 Gasto</div></div>
+    <div class="scroll">
+      <div class="tt-c"><b>💰 Ingreso</b><b class="on" style="border-color:#dc2626;color:#dc2626;background:#fdecec;">💸 Gasto</b><b>↔️ Traslado</b><b>🔴 Deuda</b></div>
+      <div class="lr"><b>Monto</b><span class="req">OBLIGATORIO</span></div>
+      <div class="big-c" style="margin-bottom:4px;"><div class="v">$ 25,23</div></div>
+      <div class="lr"><b>Descripción</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">Internet del local</div>
+      <div class="lr"><b>Fecha</b><span class="opc">YA VIENE PUESTA</span></div>
+      <div class="inp-c">02/07/2026 📅</div>
+      <div class="lr"><b>Categoría</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">🌐 Internet ▾</div>
+      <div class="avz">💡 Esta categoría suele llevar IVA 15% incluido — te lo marqué, puedes cambiarlo.</div>
+      <div class="lr"><b>¿De qué cuenta salió el dinero?</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">🏦 Cuenta Bancaria ▾ <span class="ivat">recordada</span></div>
+      <div class="inp-c" style="background:#fff;">▢ Se pagó desde 2 cuentas <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="lr"><b>🧾 IVA</b><span class="opc">SUGERIDO POR LA CATEGORÍA</span></div>
+      <div class="iva3" style="margin-bottom:12px;"><b>🚫 Sin IVA</b><b>➕ +15%</b><b class="on">✅ Incluido</b></div>
+      <div class="inp-c" style="background:#fff;">▢ 📦 Esta compra repone inventario <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="inp-c" style="background:#fff;">📷 Foto de la factura <span class="opc" style="float:right;">OPCIONAL</span></div>
+      <div class="fold">
+        <div class="fh">Más detalles ▴</div>
+        <div class="inp-c" style="background:#fff;border-color:#bfd3ff;color:#1d4ed8;font-weight:700;text-align:center;">🧾 Registro detallado de factura</div>
+        <div style="font-size:11.5px;color:#8592aa;margin:-4px 2px 8px;">¿Tu factura mezcla productos 0% y 15%? Este registro separa las tarifas.</div>
+        <div class="lr"><b>Notas</b><span class="opc">OPCIONAL</span></div>
+        <div class="inp-c">Detalle, número de factura…</div>
+        <div style="text-align:center;font-size:12.5px;color:#8592aa;font-weight:700;padding-top:4px;">⭐ Guardar como plantilla</div>
+      </div>
+      <div class="sv-c">✅ Guardar</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">↔️ TRASLADO — el más corto (4 campos y listo)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">↔️ Traslado</div></div>
+    <div class="scroll">
+      <div class="tt-c"><b>💰 Ingreso</b><b>💸 Gasto</b><b class="on" style="border-color:#1d4ed8;color:#1d4ed8;background:#eff4ff;">↔️ Traslado</b><b>🔴 Deuda</b></div>
+      <div class="avz">↔️ Un traslado mueve dinero entre tus cuentas. <b>No afecta ingresos ni gastos.</b></div>
+      <div class="lr"><b>Monto</b><span class="req">OBLIGATORIO</span></div>
+      <div class="big-c" style="margin-bottom:4px;"><div class="v">$ 50,00</div></div>
+      <div class="lr"><b>Cuenta Origen (de)</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">💵 Caja (Efectivo) ▾</div>
+      <div class="lr"><b>Cuenta Destino (a)</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">🏦 Cuenta Bancaria ▾</div>
+      <div class="lr"><b>Descripción</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">Depósito del día</div>
+      <div class="lr"><b>Fecha</b><span class="opc">YA VIENE PUESTA</span></div>
+      <div class="inp-c">02/07/2026 📅</div>
+      <div class="fold"><div class="fh">Más detalles ▴</div>
+        <div class="lr"><b>Notas</b><span class="opc">OPCIONAL</span></div>
+        <div class="inp-c">Referencia del depósito…</div>
+      </div>
+      <div class="sv-c">✅ Guardar</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+
+  <div class="p2tag">🔴 DEUDA — completo (con sus campos propios)</div>
+  <div class="ph-c">
+    <div class="top"><div class="co">← Nueva transacción</div><div class="u">🔴 Deuda</div></div>
+    <div class="scroll">
+      <div class="tt-c"><b>💰 Ingreso</b><b>💸 Gasto</b><b>↔️ Traslado</b><b class="on" style="border-color:#d97706;color:#d97706;background:#fef3e2;">🔴 Deuda</b></div>
+      <div class="avz am">🔴 Una deuda es dinero que <b>debes</b>. No afecta tu resultado hasta que la pagues.</div>
+      <div class="lr"><b>Monto de la deuda</b><span class="req">OBLIGATORIO</span></div>
+      <div class="big-c" style="margin-bottom:4px;"><div class="v">$ 500,00</div></div>
+      <div class="lr"><b>Descripción</b><span class="req">OBLIGATORIO</span></div>
+      <div class="inp-c">Préstamo para mercadería</div>
+      <div class="lr"><b>Categoría de deuda</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">🏦 Préstamo bancario ▾</div>
+      <div class="lr"><b>Acreedor (¿a quién le debes?)</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">Alianza del Valle</div>
+      <div class="lr"><b>🏁 Vencimiento (fin de la deuda)</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">15/12/2026 📅</div>
+      <div class="lr"><b>💵 Monto mensual a pagar</b><span class="opc">OPCIONAL</span></div>
+      <div class="inp-c">$ 100,00 <span style="float:right;font-size:11px;color:#8592aa;">≈ 5 cuotas</span></div>
+      <div class="lr"><b>Estado</b><span class="opc">YA VIENE EN "PENDIENTE"</span></div>
+      <div class="inp-c">🔴 Pendiente de pago ▾</div>
+      <div class="lr"><b>Fecha</b><span class="opc">YA VIENE PUESTA</span></div>
+      <div class="inp-c">02/07/2026 📅</div>
+      <div class="fold"><div class="fh">Más detalles ▴</div>
+        <div class="lr"><b>Notas</b><span class="opc">OPCIONAL</span></div>
+        <div class="inp-c">Condiciones, interés…</div>
+      </div>
+      <div class="sv-c">✅ Guardar</div>
+    </div>
+    <div class="sysbar"><span>◁</span><span>◯</span><span>▢</span></div>
+  </div>
+</div>
+
+<div class="p2head">
+  <div class="t">Mi veredicto como diseñador: ¿hay que cambiarlo o simplificarlo?</div>
+  Mi análisis honesto: <b>el formulario NO está sobrecargado</b> — el problema era de PRESENTACIÓN, no de cantidad. Para registrar de verdad solo llenas <b>monto + descripción + cuenta</b> (la fecha ya viene puesta y el IVA ya viene en Sin IVA): son <b>10-15 segundos</b>. Todo lo demás es opcional y lo opcional menos usado ya vive plegado en "Más detalles". Lo que SÍ cambia con el estilo C: etiquetas de OBLIGATORIO/OPCIONAL a la vista (nadie se pregunta "¿tengo que llenar esto?"), secciones con franja de color para ubicarse de un vistazo, y los avisos inteligentes en tarjetitas suaves que explican sin estorbar. <b>Ni un campo se quita, ni un paso se agrega.</b>
+</div>
+
 <div class="legend">
   <div class="t">Inicio elegido (lo guardo para implementar)</div>
   <b>Pestañas seleccionables</b> (Resumen · Cuentas · Pendientes) → el contenido no satura porque ves una vista a la vez, pero todo sigue ahí.<br>
