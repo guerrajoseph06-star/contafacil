@@ -1236,3 +1236,31 @@ body.dark-mode {
 .dark-mode .dash-seg { background: #1e293b; }
 .dark-mode .dash-seg button.on { background: #334155; color: #93c5fd; }
 .dark-mode #screen-dashboard .card { border-color: #2b3a52; }
+
+/* ═══ FORMULARIO estilo C — migración Parte 2 ═══ */
+.form-sec { background: var(--white); border: 1px solid #e7ebf3; border-radius: 16px;
+  padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.form-sec-t { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800;
+  color: var(--gray-700); margin: -12px -14px 12px; padding: 10px 14px; background: #fafbfe;
+  border-bottom: 1px solid #f1f4f9; border-left: 4px solid var(--sec, #1d4ed8);
+  border-radius: 15px 15px 0 0; }
+.tag-req, .tag-opc { font-size: 9.5px; border-radius: 6px; padding: 2px 7px; font-weight: 800;
+  margin-left: 5px; vertical-align: 1px; letter-spacing: .2px; white-space: nowrap; }
+.tag-req { background: #fdecec; color: #dc2626; }
+.tag-opc { background: #eef1f7; color: #8592aa; }
+#screen-form .form-control { background: #f7f9fd; border: 1.5px solid #e7ebf3; border-radius: 12px; }
+#screen-form .form-control:focus { background: var(--white); }
+#screen-form .amount-input-wrap { background: var(--white); border: 1px solid #e7ebf3;
+  border-radius: 16px; padding: 14px 16px 8px; margin-bottom: 12px; text-align: center;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+#form-more { border: 1.5px dashed #bfd3ff; border-radius: 14px; padding: 12px 12px 4px;
+  background: #fbfcff; margin-bottom: 6px; }
+
+/* Modo oscuro del formulario C */
+.dark-mode .form-sec { background: #1e293b; border-color: #2b3a52; }
+.dark-mode .form-sec-t { background: #16202f; border-bottom-color: #2b3a52; color: #cbd5e1; }
+.dark-mode .tag-opc { background: #2b3a52; color: #94a3b8; }
+.dark-mode .tag-req { background: #4c1d1d; color: #fca5a5; }
+.dark-mode #screen-form .form-control { background: #16202f; border-color: #334155; }
+.dark-mode #screen-form .amount-input-wrap { background: #1e293b; border-color: #2b3a52; }
+.dark-mode #form-more { background: #16202f; border-color: #334155; }

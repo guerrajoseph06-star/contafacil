@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260705b">
+  <link rel="stylesheet" href="css/style.css?v=20260705c">
   <!-- Chart.js empaquetado localmente (sin CDN — 100% offline desde la primera carga).
        OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app):
        OneDrive bloquea escrituras del shell en esta carpeta fuente. NO hacer "sync limpio". -->
@@ -532,9 +532,11 @@
       padding:9px 12px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe;
       color:#1e40af; margin-bottom:12px; margin-top:-6px;"></div>
 
+    <div class="form-sec" style="--sec:#1d4ed8;">
+    <div class="form-sec-t">📝 Detalle</div>
     <!-- Descripción con autocompletar inteligente -->
     <div class="form-group" style="position:relative;">
-      <label class="form-label">Descripción *</label>
+      <label class="form-label">Descripción <span class="tag-req">OBLIGATORIO</span></label>
       <input type="text" id="f-desc" class="form-control"
         placeholder="Ej: Venta de blusas al cliente García" maxlength="120"
         autocomplete="off" oninput="onDescInput()" onblur="_onDescBlur()">
@@ -551,6 +553,7 @@
     <div class="form-group">
       <label class="form-label" id="f-date-label">Fecha *</label>
       <input type="date" id="f-date" class="form-control" onchange="_liabilityHint()">
+    </div>
     </div>
 
     <!-- Campos dinámicos según tipo -->
@@ -1426,9 +1429,9 @@
 <!-- SheetJS empaquetado localmente para lectura/escritura Excel (sin CDN) -->
 <script src="js/lib/xlsx.full.min.js?v=0.20.3"></script>
 <!-- Scripts -->
-<script src="js/platform.js?v=20260705b"></script>
-<script src="js/db.js?v=20260705b"></script>
-<script src="js/app.js?v=20260705b"></script>
-<script src="js/tax.js?v=20260705b"></script>
+<script src="js/platform.js?v=20260705c"></script>
+<script src="js/db.js?v=20260705c"></script>
+<script src="js/app.js?v=20260705c"></script>
+<script src="js/tax.js?v=20260705c"></script>
 </body>
 </html>

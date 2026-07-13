@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.05b';
+const APP_VERSION = '2026.07.05c';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -3560,16 +3560,19 @@ function renderFormFields(tx) {
       <div style="background:var(--primary-light); border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--primary); font-weight:600;">
         ↔️ Un traslado mueve dinero entre tus cuentas. <strong>No afecta ingresos ni gastos.</strong>
       </div>
+      <div class="form-sec" style="--sec:#1d4ed8;">
+      <div class="form-sec-t">↔️ Cuentas del traslado</div>
       <div class="form-group">
-        <label class="form-label">Cuenta Origen (de)</label>
+        <label class="form-label">Cuenta Origen (de) <span class="tag-req">OBLIGATORIO</span></label>
         <select id="f-from-account" class="form-control" onchange="_onAcctChange('from')">${accOptions('fromAccount')}</select>
       </div>
       ${_bankSubHtml('from', tx?.fromBankName || '')}
       <div class="form-group">
-        <label class="form-label">Cuenta Destino (a)</label>
+        <label class="form-label">Cuenta Destino (a) <span class="tag-req">OBLIGATORIO</span></label>
         <select id="f-to-account" class="form-control" onchange="_onAcctChange('to')">${accOptions('toAccount')}</select>
       </div>
       ${_bankSubHtml('to', tx?.toBankName || '')}
+      </div>
     `;
   } else if (isLiability) {
     // DEUDA: con categoría de pasivos y estado
@@ -3577,21 +3580,23 @@ function renderFormFields(tx) {
       <div style="background:#fef3c7; border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px; color:#92400e; font-weight:600;">
         🔴 Una deuda es dinero que <strong>debes</strong>. No afecta tu resultado hasta que la pagues.
       </div>
+      <div class="form-sec" style="--sec:#d97706;">
+      <div class="form-sec-t">🔴 Datos de la deuda</div>
       <div class="form-group">
-        <label class="form-label">Categoría de deuda</label>
+        <label class="form-label">Categoría de deuda <span class="tag-opc">OPCIONAL</span></label>
         <select id="f-category" class="form-control">${catOptions}</select>
       </div>
       <div class="form-group">
-        <label class="form-label">Acreedor (¿a quién le debes?)</label>
+        <label class="form-label">Acreedor (¿a quién le debes?) <span class="tag-opc">OPCIONAL</span></label>
         <input type="text" id="f-creditor" class="form-control" value="${tx?.creditor || ''}" placeholder="Ej: Alianza del Valle, Banco X">
       </div>
       <div class="form-group">
-        <label class="form-label">🏁 Vencimiento (fin de la deuda)</label>
+        <label class="form-label">🏁 Vencimiento (fin de la deuda) <span class="tag-opc">OPCIONAL</span></label>
         <input type="date" id="f-liability-end" class="form-control"
           value="${tx?.liabilityEndDate || ''}" onchange="_liabilityHint()">
       </div>
       <div class="form-group">
-        <label class="form-label">💵 Monto mensual a pagar (opcional)</label>
+        <label class="form-label">💵 Monto mensual a pagar <span class="tag-opc">OPCIONAL</span></label>
         <input type="number" id="f-liability-monthly" class="form-control"
           value="${tx?.liabilityMonthly || ''}" placeholder="Ej: 100.00" min="0" step="any"
           inputmode="decimal" oninput="_liabilityHint()">
@@ -3603,6 +3608,7 @@ function renderFormFields(tx) {
           <option value="pending" ${tx?.liabilityStatus !== 'paid' ? 'selected' : ''}>🔴 Pendiente de pago</option>
           <option value="paid"    ${tx?.liabilityStatus === 'paid'  ? 'selected' : ''}>✅ Pagada</option>
         </select>
+      </div>
       </div>
     `;
   } else {
@@ -3625,14 +3631,16 @@ function renderFormFields(tx) {
     const split2Label      = isIncome ? '¿Cuánto entró en la 2da cuenta?'   : '¿Cuánto se pagó con la 2da cuenta?';
 
     html += `
-      <div class="form-group">
-        <label class="form-label">Categoría</label>
+      <div class="form-sec" style="--sec:#0e7490;">
+        <div class="form-sec-t">🏷️ Categoría <span class="tag-opc">OPCIONAL</span></div>
         <select id="f-category" class="form-control" onchange="_onCategoryChange()">${catOptions}</select>
         <div id="cat-tax-aviso" style="display:none; margin-top:6px; font-size:12px; line-height:1.45;
           padding:8px 11px; border-radius:8px;"></div>
       </div>
+      <div class="form-sec" style="--sec:#059669;">
+      <div class="form-sec-t">💳 ${isIncome ? 'Cobro' : 'Pago'}</div>
       <div class="form-group">
-        <label class="form-label">${cuentaLabel}</label>
+        <label class="form-label">${cuentaLabel} <span class="tag-req">OBLIGATORIO</span></label>
         <select id="f-account" class="form-control" onchange="_onAcctChange('main')">${accSel(acc1Sel)}</select>
       </div>
       ${_bankSubHtml('main', mainBankName)}
@@ -3655,6 +3663,7 @@ function renderFormFields(tx) {
         </div>
         <div id="split-info" style="font-size:12px; min-height:16px; margin-bottom:8px;"></div>
       </div>
+      </div>
     `;
 
     // ── Selector de IVA ──────────────────────────────────────
@@ -3665,8 +3674,8 @@ function renderFormFields(tx) {
       ['IVA_INCLUIDO',    '✅', 'IVA incluido'],
     ];
     html += `
-      <div class="form-group">
-        <label class="form-label">🧾 IVA / Impuesto</label>
+      <div class="form-sec" style="--sec:#7c3aed;">
+        <div class="form-sec-t">🧾 IVA / Impuesto <span class="tag-opc">YA VIENE EN SIN IVA</span></div>
         <div id="iva-btn-row" style="display:flex; gap:6px; margin-bottom:6px;">
           ${ivaOptions.map(([t, ico, lbl]) => `
             <button type="button" id="iva-btn-${t}" onclick="selectIva('${t}')"
@@ -3690,6 +3699,8 @@ function renderFormFields(tx) {
     if (products.length) {
       const checked = tx?.affectsInventory ? 'checked' : '';
       html += `
+        <div class="form-sec" style="--sec:#d97706;">
+        <div class="form-sec-t">📦 Inventario <span class="tag-opc">OPCIONAL</span></div>
         <div class="form-group">
           <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px; background:var(--gray-50); border-radius:8px;">
             <input type="checkbox" id="f-affects-inv" ${checked} onchange="toggleInventorySection()" style="width:18px;height:18px; accent-color:var(--primary);">
@@ -3735,6 +3746,7 @@ function renderFormFields(tx) {
             Agrega varios productos a la misma venta. El total y el IVA de cada uno se calculan solos.
           </div>` : ''}
         </div>
+        </div>
       `;
     } else {
       html += `
@@ -3767,7 +3779,9 @@ function renderFormFields(tx) {
 
   // La etiqueta de "Fecha" cambia de significado en una deuda
   const dateLabel = document.getElementById('f-date-label');
-  if (dateLabel) dateLabel.textContent = isLiability ? '📅 Inicio de la deuda *' : 'Fecha *';
+  if (dateLabel) dateLabel.innerHTML = isLiability
+    ? '📅 Inicio de la deuda <span class="tag-opc">YA VIENE PUESTA (hoy)</span>'
+    : 'Fecha <span class="tag-opc">YA VIENE PUESTA (hoy)</span>';
 }
 
 function toggleInventorySection() {
