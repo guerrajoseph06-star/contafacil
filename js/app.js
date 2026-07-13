@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.02d';
+const APP_VERSION = '2026.07.05a';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -6265,7 +6265,7 @@ function renderUpcomingAlerts() {
     `;
   };
 
-  const notifBtn = ('Notification' in window) && Notification.permission !== 'granted' && Notification.permission !== 'denied'
+  const notifBtn = Platform.notifState() === 'prompt'
     ? `<button onclick="_requestNotifPermission()" style="width:100%; padding:9px; margin-top:4px;
         background:none; border:1.5px dashed var(--gray-300); border-radius:10px;
         font-size:12px; color:var(--gray-500); cursor:pointer; font-weight:600;">
@@ -6299,23 +6299,24 @@ function renderUpcomingAlerts() {
 // Alias para compatibilidad con llamadas existentes
 function renderUpcomingRecurrings() { renderUpcomingAlerts(); }
 
-// ── Notificaciones nativas del navegador ─────────────────────────────────────
+// ── Notificaciones de recordatorios (web: navegador · app: nativas Android) ──
 async function _requestNotifPermission() {
-  if (!('Notification' in window)) {
-    showToast('❌ Tu navegador no admite notificaciones'); return;
+  const perm = await Platform.requestNotifPermission();
+  if (perm === 'unsupported') {
+    showToast('❌ Este equipo no admite notificaciones'); return;
   }
-  const perm = await Notification.requestPermission();
   if (perm === 'granted') {
     showToast('✅ Notificaciones activadas');
     _fireNotifications(true); // forzar aunque ya se envió hoy
     renderUpcomingAlerts();
+    renderSettings?.();
   } else {
-    showToast('⚠️ Notificaciones bloqueadas en el navegador');
+    showToast('⚠️ Notificaciones bloqueadas — actívalas en los ajustes del equipo');
   }
 }
 
 function _fireNotifications(force = false) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (Platform.notifState() !== 'granted') return;
 
   // Una vez por día (salvo que se llame con force=true)
   const today = new Date().toISOString().slice(0, 10);
@@ -6331,27 +6332,24 @@ function _fireNotifications(force = false) {
   const venc   = alerts.filter(a => a.vencido);
 
   hoy.forEach(a => {
-    new Notification(a.tipo === 'cobro' ? '💳 Cobro HOY' : '💸 Pago HOY', {
-      body: `${a.titulo}\n${fmt(a.monto)}`,
-      icon: '/contafacil/icons/icon-192.png',
-      tag:  `cf-${a.id}-${today}`,
-    });
+    Platform.showNotification(
+      a.tipo === 'cobro' ? '💳 Cobro HOY' : '💸 Pago HOY',
+      `${a.titulo}\n${fmt(a.monto)}`
+    );
   });
 
   manana.forEach(a => {
-    new Notification(a.tipo === 'cobro' ? '💳 Cobro mañana' : '💸 Pago mañana', {
-      body: `${a.titulo}\n${fmt(a.monto)}`,
-      icon: '/contafacil/icons/icon-192.png',
-      tag:  `cf-${a.id}-${today}`,
-    });
+    Platform.showNotification(
+      a.tipo === 'cobro' ? '💳 Cobro mañana' : '💸 Pago mañana',
+      `${a.titulo}\n${fmt(a.monto)}`
+    );
   });
 
   if (venc.length > 0) {
-    new Notification(`⚠️ ${venc.length} cobro${venc.length > 1 ? 's' : ''} vencido${venc.length > 1 ? 's' : ''}`, {
-      body: venc.slice(0, 3).map(a => `${a.titulo} · ${fmt(a.monto)}`).join('\n'),
-      icon: '/contafacil/icons/icon-192.png',
-      tag:  `cf-overdue-${today}`,
-    });
+    Platform.showNotification(
+      `⚠️ ${venc.length} cobro${venc.length > 1 ? 's' : ''} vencido${venc.length > 1 ? 's' : ''}`,
+      venc.slice(0, 3).map(a => `${a.titulo} · ${fmt(a.monto)}`).join('\n')
+    );
   }
 }
 
@@ -9514,20 +9512,21 @@ function renderSettings() {
   const notifDesc  = document.getElementById('settings-notif-desc');
   const notifArrow = document.getElementById('settings-notif-arrow');
   const notifBtn   = document.getElementById('settings-notif-btn');
-  if (notifDesc && 'Notification' in window) {
-    if (Notification.permission === 'granted') {
+  if (notifDesc) {
+    const st = Platform.notifState();
+    if (st === 'granted') {
       notifDesc.textContent = '🟢 Notificaciones activas';
       if (notifArrow) notifArrow.textContent = '✓';
       if (notifBtn)   notifBtn.style.opacity = '0.7';
-    } else if (Notification.permission === 'denied') {
-      notifDesc.textContent = '🔴 Bloqueadas en el navegador';
+    } else if (st === 'denied') {
+      notifDesc.textContent = '🔴 Bloqueadas — actívalas en los ajustes del equipo';
       if (notifArrow) notifArrow.textContent = '✗';
-    } else {
+    } else if (st === 'prompt') {
       notifDesc.textContent = 'Toca para activar recordatorios';
       if (notifArrow) notifArrow.textContent = '›';
+    } else {
+      notifDesc.textContent = 'No compatible con este equipo';
     }
-  } else if (notifDesc) {
-    notifDesc.textContent = 'No compatible con este navegador';
   }
 }
 
@@ -10024,8 +10023,9 @@ document.addEventListener('DOMContentLoaded', () => {
   DB.init();
   initSecurity();
 
-  // Disparar notificaciones nativas al abrir la app (una vez por día)
-  _fireNotifications();
+  // Disparar notificaciones al abrir la app (una vez por día).
+  // Pequeña espera: en la app instalada la caché del permiso nativo es asíncrona.
+  setTimeout(() => _fireNotifications(), 1500);
 
   // Auto-bloqueo por inactividad: reiniciar temporizador en cualquier interacción
   ['click', 'touchstart', 'keydown', 'scroll'].forEach(ev =>

@@ -138,6 +138,63 @@ const Platform = (() => {
     }
   }
 
+  // ── Notificaciones (recordatorios de cobros/pagos) ──────────────────────
+  // Web: API Notification del navegador. App instalada: notificaciones
+  // NATIVAS de Android (LocalNotifications) — el WebView no trae la API web.
+  let _notifPerm = 'unsupported'; // caché síncrona: granted | denied | prompt | unsupported
+
+  function _syncWebNotifPerm() {
+    if ('Notification' in window) {
+      _notifPerm = Notification.permission === 'default' ? 'prompt' : Notification.permission;
+    }
+  }
+
+  async function _refreshNotifPerm() {
+    if (_isNative()) {
+      try {
+        const r = await _plugins().LocalNotifications.checkPermissions();
+        _notifPerm = r.display === 'prompt-with-rationale' ? 'prompt' : r.display;
+      } catch (e) { _notifPerm = 'unsupported'; }
+    } else {
+      _syncWebNotifPerm();
+    }
+    return _notifPerm;
+  }
+
+  // Estado actual del permiso (síncrono, desde la caché)
+  function notifState() { return _notifPerm; }
+
+  async function requestNotifPermission() {
+    if (_isNative()) {
+      try {
+        const r = await _plugins().LocalNotifications.requestPermissions();
+        _notifPerm = r.display === 'prompt-with-rationale' ? 'prompt' : r.display;
+      } catch (e) { _notifPerm = 'denied'; }
+      return _notifPerm;
+    }
+    if (!('Notification' in window)) return 'unsupported';
+    await Notification.requestPermission();
+    _syncWebNotifPerm();
+    return _notifPerm;
+  }
+
+  let _notifSeq = Math.floor(Date.now() / 1000) % 100000; // ids únicos para Android
+  async function showNotification(title, body) {
+    if (_isNative()) {
+      try {
+        await _plugins().LocalNotifications.schedule({
+          notifications: [{ id: (_notifSeq++ % 2147480000), title, body }],
+        });
+      } catch (e) { /* sin permiso o plugin ausente: silencio */ }
+      return;
+    }
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try { new Notification(title, { body, icon: 'icons/icon-192.png' }); } catch (e) {}
+  }
+
+  // Poblar la caché de permiso al cargar (en web es inmediato)
+  _syncWebNotifPerm();
+
   // ── Arranque en app nativa: botón atrás de Android + barra de estado ────
   if (env() === 'capacitor') {
     document.addEventListener('DOMContentLoaded', () => {
@@ -158,8 +215,12 @@ const Platform = (() => {
         StatusBar.setBackgroundColor({ color: '#ffffff' }).catch(() => {});
         StatusBar.setStyle({ style: 'LIGHT' }).catch(() => {});
       }
+      _refreshNotifPerm(); // poblar la caché con el permiso nativo real
     });
   }
 
-  return { env, saveFile, shareFile, printPage, printHTML, scanBarcode };
+  return {
+    env, saveFile, shareFile, printPage, printHTML, scanBarcode,
+    notifState, requestNotifPermission, showNotification,
+  };
 })();
