@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260705c">
+  <link rel="stylesheet" href="css/style.css?v=20260705d">
   <!-- Chart.js empaquetado localmente (sin CDN — 100% offline desde la primera carga).
        OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app):
        OneDrive bloquea escrituras del shell en esta carpeta fuente. NO hacer "sync limpio". -->
@@ -608,20 +608,21 @@
   </div>
   <div class="content">
 
-    <!-- Resumen hero -->
-    <div class="card" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:white;margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-size:13px;opacity:.85;margin-bottom:4px;">💰 Valor a precio de venta</div>
-          <div style="font-size:28px;font-weight:800;" id="inv-total-value">$ 0</div>
+    <!-- Resumen del inventario — estilo C: triple valor en tarjeta blanca -->
+    <div class="card" style="margin-bottom:12px; padding:13px 16px;">
+      <div style="display:flex; text-align:center; align-items:stretch;">
+        <div style="flex:1.4;">
+          <div style="font-size:11px; color:var(--gray-500); font-weight:700; letter-spacing:.3px;">💰 A PRECIO DE VENTA</div>
+          <div style="font-size:21px; font-weight:800; margin-top:3px;" id="inv-total-value">$ 0</div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:13px;opacity:.85;margin-bottom:4px;">Productos</div>
-          <div style="font-size:20px;font-weight:700;" id="inv-total-items">0</div>
+        <div style="width:1px; background:var(--gray-100);"></div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--gray-500); font-weight:700; letter-spacing:.3px;">📦 PRODUCTOS</div>
+          <div style="font-size:21px; font-weight:800; margin-top:3px;" id="inv-total-items">0</div>
         </div>
       </div>
       <div id="inv-cost-line" style="display:none; margin-top:10px; padding-top:10px;
-        border-top:1px solid rgba(255,255,255,.22); font-size:12px; opacity:.92; line-height:1.5;"></div>
+        border-top:1px solid var(--gray-100); font-size:12px; color:var(--gray-500); line-height:1.5;"></div>
     </div>
 
     <!-- Botones de acción -->
@@ -1429,9 +1430,9 @@
 <!-- SheetJS empaquetado localmente para lectura/escritura Excel (sin CDN) -->
 <script src="js/lib/xlsx.full.min.js?v=0.20.3"></script>
 <!-- Scripts -->
-<script src="js/platform.js?v=20260705c"></script>
-<script src="js/db.js?v=20260705c"></script>
-<script src="js/app.js?v=20260705c"></script>
-<script src="js/tax.js?v=20260705c"></script>
+<script src="js/platform.js?v=20260705d"></script>
+<script src="js/db.js?v=20260705d"></script>
+<script src="js/app.js?v=20260705d"></script>
+<script src="js/tax.js?v=20260705d"></script>
 </body>
 </html>

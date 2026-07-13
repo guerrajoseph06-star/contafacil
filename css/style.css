@@ -1256,6 +1256,18 @@ body.dark-mode {
 #form-more { border: 1.5px dashed #bfd3ff; border-radius: 14px; padding: 12px 12px 4px;
   background: #fbfcff; margin-bottom: 6px; }
 
+/* ═══ DIARIO + INVENTARIO estilo C — migración Parte 3 ═══ */
+#screen-journal .card, #screen-inventory .card {
+  border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.filter-chip { border: 1.5px solid var(--gray-200); font-weight: 700; padding: 7px 14px; }
+.filter-chip.active { box-shadow: 0 2px 8px rgba(37,99,235,.25); }
+#screen-journal .form-control, #screen-inventory .form-control {
+  border: 1.5px solid #e7ebf3; border-radius: 12px; }
+#screen-journal .tx-icon, #screen-inventory .tx-icon { border-radius: 13px; }
+.dark-mode #screen-journal .card, .dark-mode #screen-inventory .card { border-color: #2b3a52; }
+.dark-mode .filter-chip { border-color: #334155; }
+.dark-mode #screen-journal .form-control, .dark-mode #screen-inventory .form-control { border-color: #334155; }
+
 /* Modo oscuro del formulario C */
 .dark-mode .form-sec { background: #1e293b; border-color: #2b3a52; }
 .dark-mode .form-sec-t { background: #16202f; border-bottom-color: #2b3a52; color: #cbd5e1; }
