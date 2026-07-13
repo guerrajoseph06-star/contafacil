@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.05a';
+const APP_VERSION = '2026.07.05b';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1290,6 +1290,42 @@ function renderDashboard() {
 
   // Panel unificado de vencimientos (pagos recurrentes + cobros CxC)
   renderUpcomingAlerts();
+
+  // Inicio C: aplicar la pestaña activa e inicializar la rueda de registro
+  dashTab(_dashTab);
+  _initDashWheel();
+}
+
+// ── Inicio C: pestañas Resumen · Cuentas · Pendientes ────────────────────────
+let _dashTab = 'resumen'; // pestaña activa (se recuerda mientras la app está abierta)
+function dashTab(name) {
+  _dashTab = name;
+  ['resumen', 'cuentas', 'pendientes'].forEach(t => {
+    const pane = document.getElementById('dash-tab-' + t);
+    if (pane) pane.style.display = (t === name) ? 'block' : 'none';
+    const btn = document.querySelector('#dash-seg [data-tab="' + t + '"]');
+    if (btn) btn.classList.toggle('on', t === name);
+  });
+  // Pendientes sin contenido → mensaje amable en lugar de pantalla vacía
+  if (name === 'pendientes') {
+    const up    = document.getElementById('dash-upcoming');
+    const empty = document.getElementById('dash-pend-empty');
+    const hasUp = up && up.style.display !== 'none' && up.innerHTML.trim() !== '';
+    if (empty) empty.style.display = hasUp ? 'none' : 'block';
+  }
+}
+
+// Rueda de registro: al llegar al final, vuelve al inicio (gira hacia adelante)
+let _dashWheelInit = false;
+function _initDashWheel() {
+  const w = document.getElementById('dash-wheel');
+  if (!w || _dashWheelInit) return;
+  _dashWheelInit = true;
+  w.addEventListener('scroll', () => {
+    const max = w.scrollWidth - w.clientWidth;
+    if (max <= 8) return;
+    if (w.scrollLeft >= max - 4) w.scrollLeft = 6;
+  }, { passive: true });
 }
 
 // ── Comparativa mes anterior ──────────────────────────────────────────────────

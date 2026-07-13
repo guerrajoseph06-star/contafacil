@@ -1177,3 +1177,62 @@ body.dark-mode {
 }
 .topbar { padding-top: var(--sa-top); }
 .modal-overlay .sheet { padding-bottom: calc(24px + var(--sa-bottom)); }
+
+/* ═══ INICIO estilo C — migración Parte 1 del rediseño aprobado ═══ */
+.hero-c2 { padding: 0; overflow: hidden; background: linear-gradient(150deg, #1e3a8a, #2563eb); }
+.hero-c2-inner { padding: 18px 18px 14px; position: relative; }
+.hero-c2 .balance-amount { font-size: 42px; letter-spacing: -1.5px; }
+.hero-c2-chip { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,.16);
+  border-radius: 16px; padding: 4px 12px; font-size: 12.5px; font-weight: 700; color: #fff; margin-top: 2px; }
+.hero-c2-mline { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 11px;
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,.92); }
+.hero-c2-mline .hero-up { color: #86efac; font-weight: 800; }
+.hero-c2-mline .hero-dn { color: #fca5a5; font-weight: 800; }
+.hero-c2-alerts { display: flex; align-items: center; gap: 14px; background: rgba(0,0,0,.22);
+  padding: 9px 16px; overflow-x: auto; scrollbar-width: none; }
+.hero-c2-alerts::-webkit-scrollbar { display: none; }
+.hero-c2-alerts button { display: none; align-items: center; gap: 5px; background: none; border: none;
+  color: #fff; font-size: 12.5px; font-weight: 800; padding: 0; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0; }
+.hero-c2-alerts .hero-cnt { background: rgba(255,255,255,.25); border-radius: 9px;
+  padding: 0 7px; font-size: 11.5px; line-height: 18px; }
+/* si ninguna insignia está visible, la franja se oculta completa */
+.hero-c2-alerts:not(:has(button[style*="display: flex"])) { display: none; }
+
+.dash-sec-title { display: flex; align-items: center; gap: 8px; margin: 14px 4px 9px;
+  font-size: 13px; font-weight: 800; color: var(--gray-700); }
+.dash-sec-title::before { content: ''; width: 4px; height: 14px; border-radius: 3px; background: var(--primary); }
+.dash-sec-hint { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--gray-400); }
+
+.wheel-wrap { position: relative; margin-bottom: 4px; }
+.wheel-wrap::before, .wheel-wrap::after { content: ''; position: absolute; top: 0; bottom: 0;
+  width: 22px; z-index: 2; pointer-events: none; }
+.wheel-wrap::before { left: 0;  background: linear-gradient(90deg,  var(--gray-50), transparent); }
+.wheel-wrap::after  { right: 0; background: linear-gradient(270deg, var(--gray-50), transparent); }
+.wheel { display: flex; gap: 12px; overflow-x: auto; padding: 3px 4px 6px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-chip { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center;
+  gap: 5px; background: none; border: none; cursor: pointer; padding: 0; }
+.wheel-ico { width: 56px; height: 56px; border-radius: 50%; background: var(--white);
+  display: flex; align-items: center; justify-content: center; font-size: 23px;
+  border: 2.5px solid var(--gray-200); box-shadow: 0 1px 3px rgba(16,24,40,.08); transition: transform .12s; }
+.wheel-chip:active .wheel-ico { transform: scale(.92); }
+.wheel-lbl { font-size: 11.5px; font-weight: 700; color: var(--gray-700);
+  max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dash-seg { display: flex; background: var(--gray-200); border-radius: 14px; padding: 4px; margin: 10px 0 12px; }
+.dash-seg button { flex: 1; text-align: center; padding: 11px 4px; border-radius: 11px;
+  font-size: 13px; font-weight: 700; color: var(--gray-500); background: none; border: none;
+  cursor: pointer; transition: all .15s; }
+.dash-seg button.on { background: var(--white); color: var(--primary); font-weight: 800;
+  box-shadow: 0 2px 8px rgba(16,24,40,.08); }
+
+#screen-dashboard .card { border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+
+/* Modo oscuro del Inicio C */
+.dark-mode .wheel-ico { background: #1e293b; border-color: #334155; }
+.dark-mode .wheel-lbl, .dark-mode .dash-sec-title { color: #cbd5e1; }
+.dark-mode .dash-seg { background: #1e293b; }
+.dark-mode .dash-seg button.on { background: #334155; color: #93c5fd; }
+.dark-mode #screen-dashboard .card { border-color: #2b3a52; }

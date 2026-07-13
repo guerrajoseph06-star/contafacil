@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260705a">
+  <link rel="stylesheet" href="css/style.css?v=20260705b">
   <!-- Chart.js empaquetado localmente (sin CDN — 100% offline desde la primera carga).
        OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app):
        OneDrive bloquea escrituras del shell en esta carpeta fuente. NO hacer "sync limpio". -->
@@ -314,126 +314,114 @@
     <!-- Alerta stock mínimo -->
     <div id="dash-stock-alert" style="display:none;"></div>
 
-    <!-- Balance Hero -->
-    <div class="balance-hero" style="position:relative;">
-      <!-- Insignia de deudas — esquina superior derecha, toca para ver el desglose -->
-      <button id="dash-debt-badge" onclick="openDebtsPanel()" title="Ver mis deudas"
-        style="display:none; position:absolute; top:12px; right:12px; z-index:3; min-width:28px; height:28px;
-          padding:0 8px; background:#dc2626; color:#fff; border:2px solid rgba(255,255,255,.55);
-          border-radius:14px; font-size:13px; font-weight:800; cursor:pointer;
-          align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(0,0,0,.3);">
-        🔴 <span id="dash-debt-count" style="margin-left:3px;">0</span>
-      </button>
-      <!-- Insignia de cobros (cartera) — justo debajo de la de deudas -->
-      <button id="dash-cartera-badge" onclick="openCarteraPanel()" title="Ver cuentas por cobrar"
-        style="display:none; position:absolute; top:46px; right:12px; z-index:3; min-width:28px; height:28px;
-          padding:0 8px; background:#0891b2; color:#fff; border:2px solid rgba(255,255,255,.55);
-          border-radius:14px; font-size:13px; font-weight:800; cursor:pointer;
-          align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(0,0,0,.3);">
-        🧾 <span id="dash-cartera-count" style="margin-left:3px;">0</span>
-      </button>
-      <!-- Insignia de stock bajo/agotado — compacta, junto a las anteriores -->
-      <button id="dash-stock-badge" onclick="navigate('inventory')" title="Productos con stock bajo o agotado"
-        style="display:none; position:absolute; top:80px; right:12px; z-index:3; min-width:28px; height:28px;
-          padding:0 8px; background:#d97706; color:#fff; border:2px solid rgba(255,255,255,.55);
-          border-radius:14px; font-size:13px; font-weight:800; cursor:pointer;
-          align-items:center; justify-content:center; box-shadow:0 2px 7px rgba(0,0,0,.3);">
-        <span id="dash-stock-ico">📉</span> <span id="dash-stock-count" style="margin-left:3px;">0</span>
-      </button>
-      <div class="balance-label">🎯 Utilidad Neta Acumulada</div>
-      <div class="balance-amount" id="dash-balance">$ 0</div>
-      <div class="balance-row">
-        <div class="balance-mini">
-          <div class="balance-mini-label">📅 <span id="dash-month">Este mes</span></div>
-          <div class="balance-mini-amount" id="dash-net">$ 0</div>
-          <div id="dash-net-cmp" class="bal-cmp"></div>
+    <!-- Balance Hero — estilo C: número protagonista + franja de avisos al pie -->
+    <div class="balance-hero hero-c2" style="position:relative;">
+      <div class="hero-c2-inner">
+        <div class="balance-label">🎯 Utilidad Neta Acumulada</div>
+        <div class="balance-amount" id="dash-balance">$ 0</div>
+        <div class="hero-c2-chip">📅 <span id="dash-month">Este mes</span>: <span id="dash-net">$ 0</span>&nbsp;<span id="dash-net-cmp" class="bal-cmp"></span></div>
+        <div class="hero-c2-mline">
+          <span>💰 Ingresos <b class="hero-up" id="dash-income">$ 0</b> <span id="dash-income-cmp" class="bal-cmp"></span></span>
+          <span>💸 Gastos Op. <b class="hero-dn" id="dash-expense">$ 0</b> <span id="dash-expense-cmp" class="bal-cmp"></span></span>
         </div>
-        <div class="balance-mini">
-          <div class="balance-mini-label">💰 Ingresos</div>
-          <div class="balance-mini-amount" id="dash-income">$ 0</div>
-          <div id="dash-income-cmp" class="bal-cmp"></div>
+      </div>
+      <!-- Franja de avisos: cada segmento se toca para ver su detalle -->
+      <div class="hero-c2-alerts" id="dash-hero-alerts">
+        <button id="dash-debt-badge" onclick="openDebtsPanel()" title="Ver mis deudas">
+          🔴 Deudas <span class="hero-cnt" id="dash-debt-count">0</span>
+        </button>
+        <button id="dash-cartera-badge" onclick="openCarteraPanel()" title="Ver cuentas por cobrar">
+          🧾 Cobros <span class="hero-cnt" id="dash-cartera-count">0</span>
+        </button>
+        <button id="dash-stock-badge" onclick="navigate('inventory')" title="Productos con stock bajo o agotado">
+          <span id="dash-stock-ico">📉</span> Stock <span class="hero-cnt" id="dash-stock-count">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Rueda de registro — desliza los íconos, giran y se repiten -->
+    <div class="dash-sec-title">Registrar <span class="dash-sec-hint">↻ desliza la rueda</span></div>
+    <div class="wheel-wrap">
+      <div class="wheel" id="dash-wheel">
+        <button class="wheel-chip" onclick="setFormType('income'); navigate('form')">
+          <span class="wheel-ico" style="border-color:#059669;">💰</span><span class="wheel-lbl">Ingreso</span>
+        </button>
+        <button class="wheel-chip" onclick="setFormType('expense'); navigate('form')">
+          <span class="wheel-ico" style="border-color:#dc2626;">💸</span><span class="wheel-lbl">Gasto</span>
+        </button>
+        <button class="wheel-chip" onclick="setFormType('transfer'); navigate('form')">
+          <span class="wheel-ico" style="border-color:#1d4ed8;">↔️</span><span class="wheel-lbl">Traslado</span>
+        </button>
+        <button class="wheel-chip" onclick="setFormType('liability'); navigate('form')">
+          <span class="wheel-ico" style="border-color:#d97706;">🔴</span><span class="wheel-lbl">Deuda</span>
+        </button>
+        <button class="wheel-chip" onclick="openWithdrawalForm()">
+          <span class="wheel-ico" style="border-color:#7c3aed;">🏠</span><span class="wheel-lbl">Retiro</span>
+        </button>
+        <button class="wheel-chip" onclick="navigate('reports')">
+          <span class="wheel-ico" style="border-color:#0891b2;">📊</span><span class="wheel-lbl">Reporte</span>
+        </button>
+        <button class="wheel-chip" onclick="navigate('cartera')">
+          <span class="wheel-ico" style="border-color:#0e7490;">🧾</span><span class="wheel-lbl" id="dash-cartera-chip-val">Cobrar</span>
+        </button>
+        <button class="wheel-chip" onclick="navigate('assets')">
+          <span class="wheel-ico" style="border-color:#4338ca;">🏭</span><span class="wheel-lbl" id="dash-assets-chip-val">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pestañas del inicio: Resumen · Cuentas · Pendientes -->
+    <div class="dash-seg" id="dash-seg">
+      <button class="on" data-tab="resumen" onclick="dashTab('resumen')">Resumen</button>
+      <button data-tab="cuentas" onclick="dashTab('cuentas')">Cuentas</button>
+      <button data-tab="pendientes" onclick="dashTab('pendientes')">Pendientes</button>
+    </div>
+
+    <!-- ── Pestaña RESUMEN ── -->
+    <div id="dash-tab-resumen">
+      <!-- Resumen de hoy (visible solo si hay actividad hoy) -->
+      <div id="dash-today" style="display:none;"></div>
+
+      <!-- Plantillas rápidas (visible solo si hay plantillas guardadas) -->
+      <div id="dash-templates" style="display:none;"></div>
+
+      <!-- Recientes -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Movimientos Recientes</div>
+          <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="navigate('journal')">Ver todos →</button>
         </div>
-        <div class="balance-mini">
-          <div class="balance-mini-label">💸 Gastos Op.</div>
-          <div class="balance-mini-amount" id="dash-expense">$ 0</div>
-          <div id="dash-expense-cmp" class="bal-cmp"></div>
+        <div id="dash-recent"></div>
+      </div>
+    </div>
+
+    <!-- ── Pestaña CUENTAS ── -->
+    <div id="dash-tab-cuentas" style="display:none;">
+      <!-- Saldo por cuenta bancaria -->
+      <div id="dash-accounts" style="display:none;"></div>
+
+      <!-- Panel CMV (visible solo si hay ventas con inventario) -->
+      <div id="dash-cogs-panel" style="display:none; background:white; border-radius:var(--radius); padding:12px 16px; margin-bottom:12px; box-shadow:var(--shadow-sm); border-left:4px solid #7c3aed;">
+        <div style="font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">📦 Costos de Ventas este mes</div>
+        <div style="display:flex; gap:12px;">
+          <div style="flex:1; text-align:center; padding:8px; background:#faf5ff; border-radius:8px;">
+            <div style="font-size:11px; color:#9ca3af;">CMV</div>
+            <div style="font-size:16px; font-weight:800; color:#7c3aed;" id="dash-cogs-val">$ 0</div>
+          </div>
+          <div style="flex:1; text-align:center; padding:8px; background:#f0fdf4; border-radius:8px;">
+            <div style="font-size:11px; color:#9ca3af;">Utilidad Bruta</div>
+            <div style="font-size:16px; font-weight:800;" id="dash-gross-val">$ 0</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Panel CMV (visible solo si hay ventas con inventario) -->
-    <div id="dash-cogs-panel" style="display:none; background:white; border-radius:var(--radius); padding:12px 16px; margin-bottom:12px; box-shadow:var(--shadow-sm); border-left:4px solid #7c3aed;">
-      <div style="font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">📦 Costos de Ventas este mes</div>
-      <div style="display:flex; gap:12px;">
-        <div style="flex:1; text-align:center; padding:8px; background:#faf5ff; border-radius:8px;">
-          <div style="font-size:11px; color:#9ca3af;">CMV</div>
-          <div style="font-size:16px; font-weight:800; color:#7c3aed;" id="dash-cogs-val">$ 0</div>
-        </div>
-        <div style="flex:1; text-align:center; padding:8px; background:#f0fdf4; border-radius:8px;">
-          <div style="font-size:11px; color:#9ca3af;">Utilidad Bruta</div>
-          <div style="font-size:16px; font-weight:800;" id="dash-gross-val">$ 0</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Saldo por cuenta bancaria -->
-    <div id="dash-accounts" style="display:none;"></div>
-
-    <!-- Resumen de hoy (visible solo si hay actividad hoy) -->
-    <div id="dash-today" style="display:none;"></div>
-
-    <!-- Plantillas rápidas (visible solo si hay plantillas guardadas) -->
-    <div id="dash-templates" style="display:none;"></div>
-
-    <!-- Accesos rápidos -->
-    <div class="stat-chips">
-      <button class="stat-chip" onclick="setFormType('income'); navigate('form')">
-        <div class="stat-chip-icon">💰</div>
-        <div class="stat-chip-val" style="color:var(--success);">Ingreso</div>
-        <div class="stat-chip-lbl">Registrar</div>
-      </button>
-      <button class="stat-chip" onclick="setFormType('expense'); navigate('form')">
-        <div class="stat-chip-icon">💸</div>
-        <div class="stat-chip-val" style="color:var(--danger);">Gasto</div>
-        <div class="stat-chip-lbl">Registrar</div>
-      </button>
-      <button class="stat-chip" onclick="setFormType('liability'); navigate('form')">
-        <div class="stat-chip-icon">🔴</div>
-        <div class="stat-chip-val" style="color:var(--warning);">Deuda</div>
-        <div class="stat-chip-lbl">Registrar</div>
-      </button>
-      <button class="stat-chip" onclick="openWithdrawalForm()">
-        <div class="stat-chip-icon">🏠</div>
-        <div class="stat-chip-val" style="color:#6366f1;">Retiro</div>
-        <div class="stat-chip-lbl">Dueño</div>
-      </button>
-      <button class="stat-chip" onclick="navigate('reports')">
-        <div class="stat-chip-icon">📊</div>
-        <div class="stat-chip-val" style="color:var(--primary);">PDF</div>
-        <div class="stat-chip-lbl">Reporte</div>
-      </button>
-      <button class="stat-chip" onclick="navigate('cartera')">
-        <div class="stat-chip-icon">🧾</div>
-        <div class="stat-chip-val" style="color:#0891b2;" id="dash-cartera-chip-val">Cobrar</div>
-        <div class="stat-chip-lbl">Cartera</div>
-      </button>
-      <button class="stat-chip" onclick="navigate('assets')">
-        <div class="stat-chip-icon">🏭</div>
-        <div class="stat-chip-val" style="color:#4338ca;" id="dash-assets-chip-val">0</div>
-        <div class="stat-chip-lbl">Activos</div>
-      </button>
-    </div>
-
-    <!-- Próximos gastos automáticos (visible solo si hay recurrentes) -->
-    <div id="dash-upcoming" style="display:none;"></div>
-
-    <!-- Recientes -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Movimientos Recientes</div>
-        <button style="font-size:13px; color:var(--primary); font-weight:600; background:none;" onclick="navigate('journal')">Ver todos →</button>
-      </div>
-      <div id="dash-recent"></div>
+    <!-- ── Pestaña PENDIENTES ── -->
+    <div id="dash-tab-pendientes" style="display:none;">
+      <!-- Próximos vencimientos (recurrentes + cobros) -->
+      <div id="dash-upcoming" style="display:none;"></div>
+      <div id="dash-pend-empty" style="display:none; text-align:center; padding:26px 16px;
+        color:var(--gray-500); font-size:14px; font-weight:600;">✅ Nada pendiente por ahora</div>
     </div>
   </div>
 </div>
@@ -1438,9 +1426,9 @@
 <!-- SheetJS empaquetado localmente para lectura/escritura Excel (sin CDN) -->
 <script src="js/lib/xlsx.full.min.js?v=0.20.3"></script>
 <!-- Scripts -->
-<script src="js/platform.js?v=20260705a"></script>
-<script src="js/db.js?v=20260705a"></script>
-<script src="js/app.js?v=20260705a"></script>
-<script src="js/tax.js?v=20260705a"></script>
+<script src="js/platform.js?v=20260705b"></script>
+<script src="js/db.js?v=20260705b"></script>
+<script src="js/app.js?v=20260705b"></script>
+<script src="js/tax.js?v=20260705b"></script>
 </body>
 </html>
