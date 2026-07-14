@@ -1256,6 +1256,15 @@ body.dark-mode {
 #form-more { border: 1.5px dashed #bfd3ff; border-radius: 14px; padding: 12px 12px 4px;
   background: #fbfcff; margin-bottom: 6px; }
 
+/* ═══ estilo C — Parte 4 (cierre): tarjetas unificadas en TODA la app ═══ */
+.card { border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.month-nav { border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.settings-item { border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.modal-overlay .sheet { border: 1px solid #e7ebf3; border-bottom: none; }
+.sheet-handle { background: var(--gray-300); width: 42px; height: 5px; border-radius: 3px; }
+.dark-mode .card, .dark-mode .month-nav, .dark-mode .settings-item { border-color: #2b3a52; }
+.dark-mode .modal-overlay .sheet { border-color: #2b3a52; }
+
 /* ═══ DIARIO + INVENTARIO estilo C — migración Parte 3 ═══ */
 #screen-journal .card, #screen-inventory .card {
   border: 1px solid #e7ebf3; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
