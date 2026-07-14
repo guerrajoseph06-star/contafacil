@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.05e';
+const APP_VERSION = '2026.07.14a';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1269,21 +1269,17 @@ function renderDashboard() {
   // Plantillas rápidas de acceso directo
   renderTemplates();
 
-  // Chip de cartera con monto pendiente
+  // Chip de cartera con monto pendiente (actualiza original y clon de la rueda)
   const carteraStats = DB.getReceivableStats();
-  const chipVal = document.getElementById('dash-cartera-chip-val');
-  if (chipVal && carteraStats.totalPendiente > 0) {
-    chipVal.textContent = fmt(carteraStats.totalPendiente);
-  } else if (chipVal) {
-    chipVal.textContent = 'Cobrar';
-  }
+  const carteraTxt = carteraStats.totalPendiente > 0 ? fmt(carteraStats.totalPendiente) : 'Cobrar';
+  document.querySelectorAll('#dash-wheel [data-lbl="cartera"]')
+    .forEach(el => { el.textContent = carteraTxt; });
 
-  // Chip de activos fijos con cantidad registrada
-  const assetsChip = document.getElementById('dash-assets-chip-val');
-  if (assetsChip) {
-    const at = DB.getFixedAssetsTotals();
-    assetsChip.textContent = at.count > 0 ? at.count + (at.count === 1 ? ' activo' : ' activos') : '+ Añadir';
-  }
+  // Chip de activos fijos con cantidad registrada (original y clon)
+  const at = DB.getFixedAssetsTotals();
+  const assetsTxt = at.count > 0 ? at.count + (at.count === 1 ? ' activo' : ' activos') : '+ Añadir';
+  document.querySelectorAll('#dash-wheel [data-lbl="activos"]')
+    .forEach(el => { el.textContent = assetsTxt; });
 
   // Resumen del día (visible solo si hay actividad hoy)
   renderTodaySummary();
@@ -1315,16 +1311,30 @@ function dashTab(name) {
   }
 }
 
-// Rueda de registro: al llegar al final, vuelve al inicio (gira hacia adelante)
+// Rueda de registro INFINITA sin saltos visibles: se duplican los íconos y,
+// al avanzar exactamente una vuelta, el scroll se reubica una vuelta atrás.
+// Como el contenido duplicado es idéntico, el ojo no percibe el ajuste y el
+// usuario puede detenerse en cualquier punto (sin "retrocesos" fantasma).
 let _dashWheelInit = false;
 function _initDashWheel() {
   const w = document.getElementById('dash-wheel');
   if (!w || _dashWheelInit) return;
   _dashWheelInit = true;
+
+  const originals = Array.from(w.children);
+  originals.forEach(ch => {
+    const clone = ch.cloneNode(true);
+    // los clones no pueden repetir ids (los valores dinámicos usan data-lbl)
+    clone.removeAttribute('id');
+    clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    w.appendChild(clone);
+  });
+
+  // Distancia exacta de una vuelta: del primer ícono a su clon
+  const wrapDist = w.children[originals.length].offsetLeft - w.children[0].offsetLeft;
+  if (wrapDist <= 0) return;
   w.addEventListener('scroll', () => {
-    const max = w.scrollWidth - w.clientWidth;
-    if (max <= 8) return;
-    if (w.scrollLeft >= max - 4) w.scrollLeft = 6;
+    if (w.scrollLeft >= wrapDist) w.scrollLeft -= wrapDist;
   }, { passive: true });
 }
 
