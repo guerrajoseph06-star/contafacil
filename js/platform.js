@@ -138,6 +138,32 @@ const Platform = (() => {
     }
   }
 
+  // ── Dictado por voz (registro hablado de asientos) ──────────────────────
+  // Nativo: reconocedor de Android (RecognizerIntent) — offline si el idioma
+  // español está descargado. Web: Web Speech API (necesita internet al dictar).
+  async function dictate(prompt) {
+    if (_isNative()) {
+      const r = await _plugins().VozBridge.dictar({ prompt: prompt || 'Dicta tu registro…' });
+      return (r && r.texto) ? r.texto : '';
+    }
+    return new Promise((resolve, reject) => {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { reject(new Error('Este navegador no admite dictado — usa la app instalada')); return; }
+      const rec = new SR();
+      rec.lang = 'es-EC'; rec.interimResults = false; rec.maxAlternatives = 1;
+      let done = false;
+      rec.onresult = e => { done = true; resolve(e.results[0][0].transcript || ''); };
+      rec.onerror  = e => {
+        if (done) return;
+        done = true;
+        reject(new Error(e.error === 'not-allowed' ? 'Permiso de micrófono denegado'
+          : e.error === 'no-speech' ? 'No escuché nada' : 'No se pudo dictar'));
+      };
+      rec.onend = () => { if (!done) { done = true; resolve(''); } };
+      rec.start();
+    });
+  }
+
   // ── Notificaciones (recordatorios de cobros/pagos) ──────────────────────
   // Web: API Notification del navegador. App instalada: notificaciones
   // NATIVAS de Android (LocalNotifications) — el WebView no trae la API web.
@@ -220,7 +246,7 @@ const Platform = (() => {
   }
 
   return {
-    env, saveFile, shareFile, printPage, printHTML, scanBarcode,
+    env, saveFile, shareFile, printPage, printHTML, scanBarcode, dictate,
     notifState, requestNotifPermission, showNotification,
   };
 })();

@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>ContaFácil Pro</title>
-  <link rel="stylesheet" href="css/style.css?v=20260714a">
+  <link rel="stylesheet" href="css/style.css?v=20260714b">
   <!-- Chart.js empaquetado localmente (sin CDN — 100% offline desde la primera carga).
        OJO: js/lib/ e icons/ viven SOLO en la carpeta de deploy (Desktop\contafacil-app):
        OneDrive bloquea escrituras del shell en esta carpeta fuente. NO hacer "sync limpio". -->
@@ -343,6 +343,9 @@
     <div class="dash-sec-title">Registrar <span class="dash-sec-hint">↻ desliza la rueda</span></div>
     <div class="wheel-wrap">
       <div class="wheel" id="dash-wheel">
+        <button class="wheel-chip" onclick="startVoiceEntry()">
+          <span class="wheel-ico" style="border-color:#0891b2;">🎤</span><span class="wheel-lbl">Dictar</span>
+        </button>
         <button class="wheel-chip" onclick="setFormType('income'); navigate('form')">
           <span class="wheel-ico" style="border-color:#059669;">💰</span><span class="wheel-lbl">Ingreso</span>
         </button>
@@ -1430,9 +1433,10 @@
 <!-- SheetJS empaquetado localmente para lectura/escritura Excel (sin CDN) -->
 <script src="js/lib/xlsx.full.min.js?v=0.20.3"></script>
 <!-- Scripts -->
-<script src="js/platform.js?v=20260714a"></script>
-<script src="js/db.js?v=20260714a"></script>
-<script src="js/app.js?v=20260714a"></script>
-<script src="js/tax.js?v=20260714a"></script>
+<script src="js/platform.js?v=20260714b"></script>
+<script src="js/voz.js?v=20260714b"></script>
+<script src="js/db.js?v=20260714b"></script>
+<script src="js/app.js?v=20260714b"></script>
+<script src="js/tax.js?v=20260714b"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.14a';
+const APP_VERSION = '2026.07.14b';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1308,6 +1308,81 @@ function dashTab(name) {
     const empty = document.getElementById('dash-pend-empty');
     const hasUp = up && up.style.display !== 'none' && up.innerHTML.trim() !== '';
     if (empty) empty.style.display = hasUp ? 'none' : 'block';
+  }
+}
+
+// ── Registro por VOZ: dicta el asiento y revisa el formulario pre-llenado ────
+// Solo asientos contables (ingreso/gasto/traslado/deuda/retiro). NUNCA guarda
+// solo: el intérprete local (js/voz.js) llena el formulario y el usuario revisa.
+async function startVoiceEntry() {
+  let texto = '';
+  try {
+    texto = await Platform.dictate('Di tu registro: tipo, monto, detalle y cuenta');
+  } catch (e) {
+    showToast('🎤 ' + (e && e.message ? e.message : 'Dictado no disponible'), 3500);
+    return;
+  }
+  if (!texto || !texto.trim()) { showToast('🎤 No escuché nada — intenta de nuevo', 2500); return; }
+  const r = VOZ.parse(texto);
+
+  // Retiro del dueño: hoja propia
+  if (r.type === 'withdrawal') {
+    openWithdrawalForm();
+    setTimeout(() => {
+      const a = document.getElementById('w-amount');  if (a && r.amount != null) a.value = r.amount;
+      const c = document.getElementById('w-account'); if (c && r.account) c.value = r.account;
+      showToast('🎤 Escuché: «' + r.escuchado + '» — revisa y guarda', 4500);
+    }, 350);
+    return;
+  }
+
+  setFormType(r.type);
+  navigate('form');
+  setTimeout(() => _applyVoiceParse(r), 400);
+}
+
+function _applyVoiceParse(r) {
+  const amt = document.getElementById('f-amount');
+  if (amt && r.amount != null) { amt.value = r.amount; amt.dispatchEvent(new Event('input', { bubbles: true })); }
+  const desc = document.getElementById('f-desc');
+  if (desc && r.description) desc.value = r.description;
+
+  if (r.type === 'transfer') {
+    const f = document.getElementById('f-from-account');
+    if (f && r.fromAccount) { f.value = r.fromAccount; f.dispatchEvent(new Event('change')); }
+    const t = document.getElementById('f-to-account');
+    if (t && r.toAccount) { t.value = r.toAccount; t.dispatchEvent(new Event('change')); }
+  } else {
+    const acc = document.getElementById('f-account');
+    if (acc && r.account) { acc.value = r.account; acc.dispatchEvent(new Event('change')); }
+  }
+
+  // IVA dictado (solo ingreso/gasto); si no lo dijo, queda el default Sin IVA
+  if (r.ivaType && (r.type === 'income' || r.type === 'expense')) selectIva(r.ivaType);
+
+  // Producto EXACTO del inventario (nombre o SKU tal como lo guardó el usuario)
+  if (r.product && (r.type === 'income' || r.type === 'expense')) {
+    const cb = document.getElementById('f-affects-inv');
+    if (cb && !cb.checked) { cb.checked = true; toggleInventorySection(); }
+    _selectProduct(r.product);
+    const q = document.getElementById('f-quantity');
+    if (q && r.qty) { q.value = r.qty; q.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+
+  // Resumen del dictado + lo que falta revisar (vive dentro del bloque dinámico:
+  // se limpia solo al cambiar de tipo o reabrir el formulario)
+  const dyn = document.getElementById('form-dynamic-fields');
+  if (dyn) {
+    const old = document.getElementById('voz-banner'); if (old) old.remove();
+    const b = document.createElement('div');
+    b.id = 'voz-banner';
+    b.style.cssText = 'background:#eff4ff;border:1px solid #d3e0ff;color:#1e40af;border-radius:12px;' +
+      'padding:10px 13px;font-size:12.5px;font-weight:600;line-height:1.55;margin-bottom:12px;';
+    b.innerHTML = '🎤 Escuché: «' + escHtml(r.escuchado) + '»' +
+      (r.faltantes.length
+        ? '<br>💡 Revisa: ' + escHtml(r.faltantes.join(' · '))
+        : '<br>✅ Todo entendido — revisa y toca Guardar');
+    dyn.insertBefore(b, dyn.firstChild);
   }
 }
 
