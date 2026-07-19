@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.14c';
+const APP_VERSION = '2026.07.14d';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1411,32 +1411,10 @@ function _applyVoiceParse(r) {
   }
 }
 
-// Rueda de registro INFINITA sin saltos visibles: se duplican los íconos y,
-// al avanzar exactamente una vuelta, el scroll se reubica una vuelta atrás.
-// Como el contenido duplicado es idéntico, el ojo no percibe el ajuste y el
-// usuario puede detenerse en cualquier punto (sin "retrocesos" fantasma).
+// Rueda de registro con LÍMITES: scroll normal con inicio y fin claros.
+// (El giro infinito se probó y el dueño prefirió que la rueda tenga final.)
 let _dashWheelInit = false;
-function _initDashWheel() {
-  const w = document.getElementById('dash-wheel');
-  if (!w || _dashWheelInit) return;
-  _dashWheelInit = true;
-
-  const originals = Array.from(w.children);
-  originals.forEach(ch => {
-    const clone = ch.cloneNode(true);
-    // los clones no pueden repetir ids (los valores dinámicos usan data-lbl)
-    clone.removeAttribute('id');
-    clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    w.appendChild(clone);
-  });
-
-  // Distancia exacta de una vuelta: del primer ícono a su clon
-  const wrapDist = w.children[originals.length].offsetLeft - w.children[0].offsetLeft;
-  if (wrapDist <= 0) return;
-  w.addEventListener('scroll', () => {
-    if (w.scrollLeft >= wrapDist) w.scrollLeft -= wrapDist;
-  }, { passive: true });
-}
+function _initDashWheel() { /* rueda simple: sin clones ni giro infinito */ }
 
 // ── Comparativa mes anterior ──────────────────────────────────────────────────
 // Devuelve HTML para un badge de comparativa (fondo hero oscuro)
