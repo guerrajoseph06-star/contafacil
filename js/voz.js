@@ -71,37 +71,66 @@ const VOZ = (() => {
     ['income',     /\b(ingreso|ingresa|venta|vendi|vendimos|cobre|cobramos|recibi)\b/],
   ];
 
-  // ── Cuentas (palabras genéricas; los nombres reales del usuario pesan más) ──
-  const ACCOUNTS = [
-    ['a-caja',    /\b(efectivo|caja|cash)\b/],
-    ['a-banco',   /\b(banco|bancaria|transferencia|cuenta)\b/],
-    ['a-tarjeta', /\b(tarjeta)\b/],
-    ['a-digital', /\b(billetera|digital|deuna|de una|payphone)\b/],
+  // ── Cuentas ─────────────────────────────────────────────────────────────
+  // Resuelve SIEMPRE contra las cuentas reales del usuario: primero por su
+  // nombre exacto ("cuenta bancaria", "caja chica"…) y luego por palabras
+  // genéricas (efectivo→cuenta tipo caja, transferencia→tipo banco, etc.).
+  const GENERIC_ACC = [
+    [/\b(efectivo|caja|cash)\b/,                                /caja|efectivo/],
+    [/\b(banco|bancaria|transferencia|transferi|deposito)\b/,   /banco|bancaria/],
+    [/\b(tarjeta)\b/,                                           /tarjeta/],
+    [/\b(billetera|digital|deuna|de una|payphone)\b/,           /billetera|digital/],
   ];
 
   function findAccounts(text) {
+    let accounts = [];
+    try { accounts = DB.getAccounts(); } catch (e) {}
     const hits = []; // { id, index }
-    // nombres reales de las cuentas del usuario (mandan sobre las genéricas)
-    try {
-      DB.getAccounts().forEach(a => {
-        const n = norm(a.name);
-        const idx = n ? text.indexOf(n) : -1;
-        if (idx >= 0) hits.push({ id: a.id, index: idx, len: n.length });
-      });
-    } catch (e) {}
-    ACCOUNTS.forEach(([id, re]) => {
-      const m = text.match(re);
-      if (m && !hits.some(h => h.id === id)) hits.push({ id, index: m.index, len: m[0].length });
+    // 1) nombres reales (mandan): "cuenta bancaria", "banco pichincha"…
+    accounts.forEach(a => {
+      const n = norm(a.name);
+      if (n.length < 4) return;
+      const idx = text.indexOf(n);
+      if (idx >= 0) hits.push({ id: a.id, index: idx });
+    });
+    // 2) genéricas → mapeadas a la cuenta real cuyo nombre encaje
+    GENERIC_ACC.forEach(([textRe, nameRe]) => {
+      const m = text.match(textRe);
+      if (!m) return;
+      const acc = accounts.find(x => nameRe.test(norm(x.name)));
+      if (acc && !hits.some(h => h.id === acc.id)) hits.push({ id: acc.id, index: m.index });
     });
     hits.sort((a, b) => a.index - b.index);
     return hits;
   }
 
-  // ── IVA ─────────────────────────────────────────────────────────────────
+  // ── Categoría: por el nombre real que el usuario tiene guardado ──────────
+  function findCategory(text, type) {
+    try {
+      let best = null;
+      DB.getCategoriesByType(type === 'income' ? 'income' : 'expense').forEach(c => {
+        const n = norm(c.name);
+        if (n.length >= 3 && text.indexOf(n) >= 0 && (!best || n.length > best.len)) {
+          best = { id: c.id, len: n.length };
+        }
+      });
+      return best ? best.id : null;
+    } catch (e) { return null; }
+  }
+
+  // ── Banco específico ("banco pichincha" → sub-campo del banco) ──────────
+  const BANK_RE = /\b(?:banco |cooperativa )?(pichincha|guayaquil|pacifico|produbanco|bolivariano|internacional|austro|machala|amazonas|solidario|loja|jep|cooprogreso|29 de octubre|alianza del valle)\b/;
+  function findBankName(text) {
+    const m = text.match(BANK_RE);
+    if (!m) return null;
+    return m[1].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  // ── IVA — OJO: el reconocedor suele escribir "iba" en vez de "IVA" ──────
   function findIva(text) {
-    if (/\b(mas iva|más iva)\b/.test(text) || /\+\s*iva/.test(text)) return 'IVA_NO_INCLUIDO';
-    if (/\b(con iva|iva incluido|incluye iva|incluido el iva)\b/.test(text)) return 'IVA_INCLUIDO';
-    if (/\bsin iva\b/.test(text)) return 'SIN_IVA';
+    if (/\bmas (iva|iba)\b/.test(text) || /\+\s*(iva|iba)\b/.test(text)) return 'IVA_NO_INCLUIDO';
+    if (/\b(con (iva|iba)|(iva|iba) incluido|incluye (iva|iba)|incluido el (iva|iba))\b/.test(text)) return 'IVA_INCLUIDO';
+    if (/\bsin (iva|iba)\b/.test(text)) return 'SIN_IVA';
     return null;
   }
 
@@ -136,7 +165,8 @@ const VOZ = (() => {
       .replace(/\b(dolares|dolar|usd|pesos|pagado|pagada|cobrado|cobrada)\b/g, ' ')
       .replace(/\b(en|con|por|de|del|la|el|los|las|a|al|un|una|listo|ok)\b/g, ' ')
       .replace(/\b(efectivo|caja|banco|bancaria|tarjeta|billetera|digital|transferencia|cuenta)\b/g, ' ')
-      .replace(/\b(mas iva|con iva|sin iva|iva incluido|incluye iva|iva)\b/g, ' ')
+      .replace(/\b(mas iva|con iva|sin iva|iva incluido|incluye iva|iva|mas iba|con iba|sin iba|iba incluido|incluye iba|iba)\b/g, ' ')
+      .replace(BANK_RE, ' ')
       .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!d) return '';
     return d.charAt(0).toUpperCase() + d.slice(1);
@@ -158,9 +188,9 @@ const VOZ = (() => {
     const amt = findAmount(text);
     if (amt) consumed.push(amt.raw); else faltantes.push('el monto');
 
-    // cuentas (traslado usa dos)
+    // cuentas (traslado usa dos; ingreso/gasto con dos = pago dividido)
     const accs = findAccounts(text);
-    let account = null, fromAccount = null, toAccount = null;
+    let account = null, fromAccount = null, toAccount = null, splitAccount = null;
     if (type === 'transfer') {
       if (accs.length >= 2) { fromAccount = accs[0].id; toAccount = accs[1].id; }
       else if (accs.length === 1) { fromAccount = accs[0].id; faltantes.push('la cuenta destino'); }
@@ -169,7 +199,16 @@ const VOZ = (() => {
       if (accs.length) account = accs[0].id;
       // la deuda no lleva cuenta en su formulario; retiro/ingreso/gasto sí
       else if (type !== 'liability') faltantes.push('la cuenta');
+      // dos medios distintos dictados → pago/cobro dividido en 2 cuentas
+      if ((type === 'income' || type === 'expense') && accs.length >= 2) {
+        splitAccount = accs[1].id;
+        faltantes.push('el reparto entre las 2 cuentas');
+      }
     }
+
+    // categoría por nombre real + banco específico
+    const categoryId = (type === 'income' || type === 'expense') ? findCategory(text, type) : null;
+    const bankName = findBankName(text);
 
     // IVA (solo ingreso/gasto)
     let ivaType = null;
@@ -188,7 +227,8 @@ const VOZ = (() => {
     return {
       escuchado, type,
       amount: amt ? amt.amount : null,
-      description, account, fromAccount, toAccount,
+      description, account, fromAccount, toAccount, splitAccount,
+      categoryId, bankName,
       ivaType, product: product ? product.id : null, qty: product ? product.qty : null,
       faltantes,
     };

@@ -8,7 +8,7 @@ let currentScreen = 'dashboard';
 
 // Versión del código. Si la app muestra una versión distinta a esta tras recargar,
 // el navegador está usando archivos viejos en caché.
-const APP_VERSION = '2026.07.14b';
+const APP_VERSION = '2026.07.14c';
 
 // ── Service Worker: app 100% offline + actualizaciones limpias ────────────────
 let _cfWantsReload = false; // solo recargar cuando el usuario pide actualizar
@@ -1347,17 +1347,42 @@ function _applyVoiceParse(r) {
   const desc = document.getElementById('f-desc');
   if (desc && r.description) desc.value = r.description;
 
+  // Categoría dictada por su nombre real (dispara la sugerencia suave de IVA)
+  if (r.categoryId && (r.type === 'income' || r.type === 'expense')) {
+    const cat = document.getElementById('f-category');
+    if (cat) { cat.value = r.categoryId; cat.dispatchEvent(new Event('change')); }
+  }
+
   if (r.type === 'transfer') {
     const f = document.getElementById('f-from-account');
     if (f && r.fromAccount) { f.value = r.fromAccount; f.dispatchEvent(new Event('change')); }
     const t = document.getElementById('f-to-account');
     if (t && r.toAccount) { t.value = r.toAccount; t.dispatchEvent(new Event('change')); }
   } else {
+    // dos medios dictados → abrir el pago/cobro dividido y llenar ambas cuentas
+    if (r.splitAccount) {
+      const cb = document.getElementById('f-split-on');
+      if (cb && !cb.checked) { cb.checked = true; toggleSplitPayment(); }
+    }
     const acc = document.getElementById('f-account');
     if (acc && r.account) { acc.value = r.account; acc.dispatchEvent(new Event('change')); }
+    if (r.splitAccount) {
+      const acc2 = document.getElementById('f-account2');
+      if (acc2) { acc2.value = r.splitAccount; acc2.dispatchEvent(new Event('change')); }
+    }
   }
 
-  // IVA dictado (solo ingreso/gasto); si no lo dijo, queda el default Sin IVA
+  // Banco específico dictado ("banco pichincha") → primer sub-campo visible
+  if (r.bankName) {
+    ['main', 'split', 'from', 'to'].some(slot => {
+      const sub = document.getElementById('bank-sub-' + slot);
+      const inp = document.getElementById('bank-name-' + slot);
+      if (sub && inp && sub.style.display !== 'none') { inp.value = r.bankName; return true; }
+      return false;
+    });
+  }
+
+  // IVA dictado EXPLÍCITO al final: manda sobre la sugerencia de la categoría
   if (r.ivaType && (r.type === 'income' || r.type === 'expense')) selectIva(r.ivaType);
 
   // Producto EXACTO del inventario (nombre o SKU tal como lo guardó el usuario)
